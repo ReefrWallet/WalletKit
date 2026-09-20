@@ -1,0 +1,3 @@
+[submodule "Sources/gRPC/sui-rpc-api-v2"]
+	path = Sources/gRPC/sui-rpc-api-v2
+	url = https://github.com/MystenLabs/sui-apis.git

@@ -1,0 +1,7 @@
+[workspace]
+resolver = "2"
+members = [
+    "walletkit-ffi",
+    "walletkit-hardware",
+    "walletkit-trezor",
+]

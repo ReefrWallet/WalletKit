@@ -1,0 +1,65 @@
+[
+  {
+    "label": "ed25519-sui-keytool-1",
+    "scheme": "ed25519",
+    "privateKey": "0xb0d98b24ac472e59b076533b4b45657e05811553411829604754c40d0c829ea1",
+    "publicKey": "0xc0cd8bbd32d910c5b2113e3014c72e8c4b592f68bcb4609ac9c64c7016f1b3e0",
+    "address": "0x05a566077b72ce40e68f58d34e6d02181726c49892192dbad3c42e11857797c7"
+  },
+  {
+    "label": "ed25519-sui-keytool-2",
+    "scheme": "ed25519",
+    "privateKey": "0x7c0864aa39cb5638d1e60e5c02efc2c483a50fb9a236aeb063fee05c9b969415",
+    "publicKey": "0xadf322334f8123fe5427f2643120226006d4650e17b32dab18bffdfb3e8339d2",
+    "address": "0x06ae71c9355c56b57a4bdc32713f814b2817e8c1dfdb7e9ebed6aa3d52246765"
+  },
+  {
+    "label": "ed25519-sui-keytool-3",
+    "scheme": "ed25519",
+    "privateKey": "0x0750310a6a26fefb8c9ca7cabda953d217f87f6cba6c2a6a50de5c3627b8580f",
+    "publicKey": "0xe15a95e45327159aece2f91ab25c8485330528dde706a27a7fac9936c6f8870a",
+    "address": "0xcc6fae025a0c935ff6f0d4a0d0222549bfd669f76299d1748ed29b268cef8155"
+  },
+  {
+    "label": "secp256k1-sui-keytool-1",
+    "scheme": "secp256k1",
+    "privateKey": "0x7a0212395465aeb755e3baa1660914a2012e3525eb4e47534a40a022c2d53ba6",
+    "publicKey": "0x02dd7e46b7f633e95dc3e7ed6b85591cddf7d6e6b294257aafe78513407d1c4405",
+    "address": "0x8c42d768205e9eb03538d430171cb2ed97c918237ac2a1da37993d603046bfc6"
+  },
+  {
+    "label": "secp256k1-sui-keytool-2",
+    "scheme": "secp256k1",
+    "privateKey": "0x05b1127db1030e57acda7d5c6a13b4db6259414078bb6ce2466fbe5c173f0cee",
+    "publicKey": "0x028f8984b25b9d8e034f73822d6e904681840944f995cc70ca8d97dc7af8f58199",
+    "address": "0x0a240a6b3770afd5153530ab39904e89bfe0b74a01706b28da79d8db29394b29"
+  },
+  {
+    "label": "secp256k1-sui-keytool-3",
+    "scheme": "secp256k1",
+    "privateKey": "0x87a078cf7a3384932080fe7b9f3dd77b637a4881d34e28b3a42b1d15a74c3080",
+    "publicKey": "0x02706659431067fcc1b7d6898f7ff61d83c437357792540969aab50114bc49d628",
+    "address": "0xab92556e0cfaf9a0a898ad0cfa7f71556d4de579edf94ff296de82c9a7523549"
+  },
+  {
+    "label": "secp256r1-sui-keytool-1",
+    "scheme": "secp256r1",
+    "privateKey": "0x3aa27d736a68c698d9d4b6848a61f167dfb8349b51ed2e448feaeb1ee459e174",
+    "publicKey": "0x023fde6fec117bf292985b9d09f051911e8c759536806d29ccebca103ac533a63a",
+    "address": "0xeb833959573fb2fec1f23eddef25519cad739715a4b68cb52a37df453c2b071b"
+  },
+  {
+    "label": "secp256r1-sui-keytool-2",
+    "scheme": "secp256r1",
+    "privateKey": "0x327d6a073be12e8a4065967f414dc193ccf910ba8276b7b0ee9ecada13763eec",
+    "publicKey": "0x0297b3997e2eacfbbebedabfcedf10dcb6a1229eeb584563df9e9a848bbc50d45f",
+    "address": "0xf93dc1ec1874e62c550fa03ba959c557ade36671528982fdadda308b8e6e04cc"
+  },
+  {
+    "label": "secp256r1-sui-keytool-3",
+    "scheme": "secp256r1",
+    "privateKey": "0x267f7d311e882eb7a6c48d5943d5c696e32cedd380040c4505c513f50bce4a44",
+    "publicKey": "0x03b70db9bd4da4bf86e59ef286d979a0c555a5eb87675587effbeef288bd62b9b8",
+    "address": "0xf4ac77116139b52c7163bc06a1f114c7c88742a6d1d5980be06ac21930dc5e2c"
+  }
+]

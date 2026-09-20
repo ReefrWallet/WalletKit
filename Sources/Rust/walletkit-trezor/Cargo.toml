@@ -1,0 +1,19 @@
+[package]
+name = "walletkit-trezor"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Trezor hardware wallet support for WalletKit, implementing walletkit-hardware's traits by wrapping the Trezor team's own trezor-client crate (USB/HID wire protocol) rather than reimplementing it. USB is only wired up on macOS (see Docs/Overview.md's \"Transport and platform constraints\" — Trezor devices aren't MFi-certified, so iOS has no generic USB HID access); other targets compile the same public API as a transport-unavailable stub so walletkit-ffi's exported surface never differs by platform."
+
+[dependencies]
+async-trait = "0.1"
+tokio = { version = "1", features = ["sync", "rt-multi-thread"] }
+walletkit-hardware = { path = "../walletkit-hardware" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+trezor-client = { version = "0.1", default-features = false, features = [
+    "bitcoin",
+    "ethereum",
+] }
+bitcoin = "0.32"
+hex = "0.4"

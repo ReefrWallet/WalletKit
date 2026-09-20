@@ -1,0 +1,52 @@
+//
+//  Base58.swift
+//  WalletKit
+//
+//  Created by Andrey Yurkevich on 28/08/2026.
+//  Copyright © 2026 Reefr Wallet. All rights reserved.
+//
+
+import Foundation
+
+/// Decodes Base58 (Bitcoin-alphabet) strings to raw bytes — the encoding
+/// Sui's gRPC API uses for object and transaction digests, as opposed to
+/// the `0x`-hex encoding used everywhere else in the API.
+///
+/// Internal to WalletKit; consumed by ``SuiGRPCClient/ownedCoins(of:coinType:)``
+/// when decoding the `digest` field of each returned object reference.
+enum Base58 {
+    private static let alphabet = Array("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
+    private static let indexByCharacter = Dictionary(
+        uniqueKeysWithValues: alphabet.enumerated().map { ($1, $0) }
+    )
+
+    /// Decodes `string` from Base58 to its raw bytes.
+    ///
+    /// - Parameter string: A Base58-encoded string, e.g. a Sui object digest
+    ///   as returned by `ListOwnedObjects`.
+    /// - Throws: ``BlockchainClientError/decodingFailed(reason:)`` if
+    ///   `string` contains any character outside the Base58 alphabet.
+    static func decode(_ string: String) throws -> Data {
+        var bytes: [Int] = [0]
+        for character in string {
+            guard let digit = indexByCharacter[character] else {
+                throw BlockchainClientError.decodingFailed(
+                    reason: "'\(string)' is not valid Base58 (bad character '\(character)')"
+                )
+            }
+            var carry = digit
+            for index in 0..<bytes.count {
+                let value = bytes[index] * 58 + carry
+                bytes[index] = value & 0xFF
+                carry = value >> 8
+            }
+            while carry > 0 {
+                bytes.append(carry & 0xFF)
+                carry >>= 8
+            }
+        }
+        let leadingZeros = string.prefix(while: { $0 == "1" }).count
+        let significant = Data(bytes.reversed().map { UInt8($0) })
+        return Data(repeating: 0, count: leadingZeros) + significant
+    }
+}

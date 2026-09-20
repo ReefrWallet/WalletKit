@@ -1,0 +1,8 @@
+# UniFFI Swift bindings configuration.
+# https://mozilla.github.io/uniffi-rs/latest/swift/configuration.html
+
+[bindings.swift]
+module_name = "WalletKit"
+
+generate_case_iterable_conformance = true
+generate_codable_conformance = true

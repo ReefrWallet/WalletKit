@@ -1,0 +1,76 @@
+[
+  {
+    "label": "ed25519-split-and-transfer-sui",
+    "scheme": "ed25519",
+    "note": "Split 1 SUI off the gas coin and transfer it to a recipient — the canonical wallet PTB. Built with `sui client ptb --gas-coin ... --split-coins gas [1000000000] --assign new_coins --transfer-objects [new_coins] @<recipient> --serialize-unsigned-transaction` against a local `sui start` test validator (so the gas object reference is real, not fabricated), signed with `sui keytool sign --address <address> --data <base64 tx bytes>`, and independently confirmed both via `sui keytool decode-or-verify-tx` and by executing the signed transaction with `sui client execute-signed-tx` on that same local network.",
+    "privateKey": "0xa44ed9faeeedae8860e8a5649a24c8f39a029bdb0156a30a10619b1101bf63fb",
+    "publicKey": "0x2719070e668d4d0a252e018d702cdcb39ca5d6b1381a120507f58b3528dc1167",
+    "address": "0x81a9f133e7d8e1f294cc01cf15eaeedac71acb943cd4369d072d6bb9190b9d22",
+    "unsignedPtb": {
+      "sender": "0x81a9f133e7d8e1f294cc01cf15eaeedac71acb943cd4369d072d6bb9190b9d22",
+      "commands": ["SplitCoins(GasCoin, [1000000000])", "TransferObjects([Result(0)], 0x000000000000000000000000000000000000000000000000000000000000000a)"],
+      "transfers": [
+        { "amount": 1000000000, "recipient": "0x000000000000000000000000000000000000000000000000000000000000000a" }
+      ],
+      "gasObjectId": "0x6e4e1e19c021c43d17211485dc767dd5a073ed5bcd9b64aec0c96b7778b4c46c",
+      "gasObjectVersion": 2,
+      "gasObjectDigest": "0x327d6584dcef7a8e65c95e0d3dbdc38f355ab64b4e764149b4f3abd2200eed73",
+      "gasPrice": 1000,
+      "gasBudget": 3000000,
+      "expiration": "None"
+    },
+    "transactionDataBcsHex": "0x000002000800ca9a3b000000000020000000000000000000000000000000000000000000000000000000000000000a02020001010000010102000001010081a9f133e7d8e1f294cc01cf15eaeedac71acb943cd4369d072d6bb9190b9d22016e4e1e19c021c43d17211485dc767dd5a073ed5bcd9b64aec0c96b7778b4c46c020000000000000020327d6584dcef7a8e65c95e0d3dbdc38f355ab64b4e764149b4f3abd2200eed7381a9f133e7d8e1f294cc01cf15eaeedac71acb943cd4369d072d6bb9190b9d22e803000000000000c0c62d000000000000",
+    "blake2bDigestHex": "0xfdd4d54dda35d38ff624982dfdc40249cd5cc8c17876217a5f0f78ef49e4be68",
+    "signatureHex": "0x006115229ef8d5c6f29c2a708c1341becb6944e658dcb0ddd314dcf7594afbbeabb6a29ec2bc486fabd11743ae75c4f457b5dd5cf1c55b5160e6b2a2dae01e150c2719070e668d4d0a252e018d702cdcb39ca5d6b1381a120507f58b3528dc1167"
+  },
+  {
+    "label": "secp256k1-split-two-and-transfer-to-two-recipients",
+    "scheme": "secp256k1",
+    "note": "Splits the gas coin into two new coins and transfers each to a different recipient, to exercise multi-argument SplitCoins/TransferObjects and NestedResult-free multi-command PTBs. Sourced/verified the same way as the ed25519 vector (real local-network gas object, `sui keytool sign`, `decode-or-verify-tx`, and `execute-signed-tx`).",
+    "privateKey": "0x35b445c01f900d75927600227efba65bee7d4316c7215901bcb916111bf6c580",
+    "publicKey": "0x029bff7a4d9fdbde6acafc1cea722a07dce3ac4cb9434ee6c08abf1de18a0b558d",
+    "address": "0x41be2d2f579c126ecec89724fb36e9d339f67b229e73eb60a58893b818f8e416",
+    "unsignedPtb": {
+      "sender": "0x41be2d2f579c126ecec89724fb36e9d339f67b229e73eb60a58893b818f8e416",
+      "commands": [
+        "SplitCoins(GasCoin, [250000000, 90000000])",
+        "TransferObjects([Result(0).0], 0x...b0b0)",
+        "TransferObjects([Result(0).1], 0x...c0c0)"
+      ],
+      "transfers": [
+        { "amount": 250000000, "recipient": "0x000000000000000000000000000000000000000000000000000000000000b0b0" },
+        { "amount": 90000000, "recipient": "0x000000000000000000000000000000000000000000000000000000000000c0c0" }
+      ],
+      "gasObjectId": "0x0f38fcb3643e7452578cc81cd7d67b8298497380227a4e2e3bc21e4dd28d242c",
+      "gasObjectVersion": 3,
+      "gasObjectDigest": "0xad20b5b7d839bd26e6ffc2f04153b5ae2436b75b2e16c777910d4056b6510c49",
+      "gasPrice": 1000,
+      "gasBudget": 5000000,
+      "expiration": "None"
+    },
+    "transactionDataBcsHex": "0x000004000880b2e60e000000000008804a5d05000000000020000000000000000000000000000000000000000000000000000000000000b0b00020000000000000000000000000000000000000000000000000000000000000c0c003020002010000010100010103000000000102000101030000010001030041be2d2f579c126ecec89724fb36e9d339f67b229e73eb60a58893b818f8e416010f38fcb3643e7452578cc81cd7d67b8298497380227a4e2e3bc21e4dd28d242c030000000000000020ad20b5b7d839bd26e6ffc2f04153b5ae2436b75b2e16c777910d4056b6510c4941be2d2f579c126ecec89724fb36e9d339f67b229e73eb60a58893b818f8e416e803000000000000404b4c000000000000",
+    "blake2bDigestHex": "0xbfe31b12ad6b6dc001f13c83db5af62229f4d3ea46dbed322582e4304d0b335c",
+    "signatureHex": "0x019bd059b7b61b08b4be8a0be2db7e3b2f20f26455628368aa912388e0756511da427d9ae0d2ed35fc9e100b419119ab6762de2f4ca06be44b86d8ffdac9933d51029bff7a4d9fdbde6acafc1cea722a07dce3ac4cb9434ee6c08abf1de18a0b558d"
+  },
+  {
+    "label": "secp256r1-merge-coins",
+    "scheme": "secp256r1",
+    "note": "Merges a second owned coin into a first one (Command::MergeCoins, no CallArg::Pure inputs at all — every argument is an object reference), sourced/verified the same way as the other two vectors. `Curve` has no Secp256r1 case yet (see `blockchain_clients::sui_signer`), so this vector isn't driven through `SuiSignerFfi.sign` — it's here for the `scheme` field to route past it, and for whenever secp256r1 support lands.",
+    "privateKey": "0xe209706ef23fc2b8a71d6970a751a6337bef4aef5df3015d458732947eb86f31",
+    "publicKey": "0x020e4fd660a3817fc1c51aca94f9d9383e05f8343e5177cfb5c96da82489b4e0a5",
+    "address": "0x83c6194c6ebf695d849380a708b5085b27be21572ef8adbaee9cede8a221cb4c",
+    "unsignedPtb": {
+      "sender": "0x83c6194c6ebf695d849380a708b5085b27be21572ef8adbaee9cede8a221cb4c",
+      "commands": ["MergeCoins(0x07e86cc9...f23de, [0x8ef3d92c...f69fd7])"],
+      "gasObjectId": "0xfdfe48323ebc3f910ad180b647070e732e2a5ed3b5450b514dc096bbbee6280a",
+      "gasObjectVersion": 4,
+      "gasObjectDigest": "0xa2cfa34f1fb548c3dbbb13d8fbcc2b8a7593860fd27f8f876929f072f2455219",
+      "gasPrice": 1000,
+      "gasBudget": 2000000,
+      "expiration": "None"
+    },
+    "transactionDataBcsHex": "0x000002010007e86cc9053fc9b220bf1f2d08259e13d5c4033b80a17bed9828b36fd42f23de040000000000000020be17c6e725cd4521a4656b728b8402a5ea9b13cf0165014ff96ad7d3d1137de701008ef3d92c3263b0ae16df3b73822a3ef382fc91b5c21d56f001bc5947a3f69fd7040000000000000020461c56629e9e4869949b2bc726741e16d9187355b8999502256fb66264497f4201030100000101010083c6194c6ebf695d849380a708b5085b27be21572ef8adbaee9cede8a221cb4c01fdfe48323ebc3f910ad180b647070e732e2a5ed3b5450b514dc096bbbee6280a040000000000000020a2cfa34f1fb548c3dbbb13d8fbcc2b8a7593860fd27f8f876929f072f245521983c6194c6ebf695d849380a708b5085b27be21572ef8adbaee9cede8a221cb4ce80300000000000080841e000000000000",
+    "blake2bDigestHex": "0x396a377f52492a2ff6c440a28d792845a204203202caecd6fdcdc6fec7e867fe",
+    "signatureHex": "0x024f97700ac153cd79b7c99510d9e3ad54d78803c0360baae5d00b81b6bab7305108e0ac111b545fe80e2f38e650f89a28390312e16a427e93c5cc8cc9b127b382020e4fd660a3817fc1c51aca94f9d9383e05f8343e5177cfb5c96da82489b4e0a5"
+  }
+]

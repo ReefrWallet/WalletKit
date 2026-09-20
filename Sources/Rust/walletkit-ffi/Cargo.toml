@@ -1,0 +1,79 @@
+[package]
+name = "walletkit-ffi"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "UniFFI export layer for WalletKit."
+
+[lib]
+name = "walletkit_ffi"
+crate-type = ["cdylib", "staticlib", "lib"]
+
+[features]
+default = []
+cli = ["uniffi/cli"]
+
+[dependencies]
+# `tokio` async runtime for hardware wallet operations (`hardware::`),
+# which are backed by real device I/O — see
+# `Walletkit/Docs/Overview.md`'s "Hardware wallet support".
+uniffi = { version = "0.32", features = ["tokio"] }
+# Async foreign-trait support for `HardwareDeviceDelegateFfi`: uniffi's
+# native async-fn-in-trait codegen needs the trait to be dyn-compatible,
+# which plain `async fn` in a trait isn't, so `async_trait` desugars it
+# into boxed-future methods before `#[uniffi::export]` sees it.
+async-trait = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+walletkit-hardware = { path = "../walletkit-hardware" }
+walletkit-trezor = { path = "../walletkit-trezor" }
+# Ethereum-specific primitives for `blockchain_clients::ethereum` (address
+# derivation, legacy/EIP-155 transaction RLP + signing hash). `secp256k1`
+# feature lets `Address::from_secp256k1_public_key` take this crate's
+# existing `secp256k1::PublicKey` directly, and `rlp` feature provides
+# `alloy_rlp::Encodable`/`Decodable` for `Address`/`U256`/`Bytes`.
+alloy-primitives = { version = "1", features = ["rlp", "secp256k1"] }
+alloy-rlp = "0.3"
+# Sui's address scheme (flag byte + public key, Blake2b-256) for
+# `blockchain_clients::sui`.
+blake2 = "0.10"
+# Bitcoin address/descriptor encoding, PSBT assembly, and BIP-143/BIP-341
+# sighash + taproot key-tweak support for `blockchain_clients::bitcoin`.
+# Pinned to the same major version `walletkit-trezor` already depends on
+# (see its Cargo.toml) so the two crates' `bitcoin`/`secp256k1` types stay
+# compatible across the workspace dependency graph.
+bitcoin = "0.32"
+bip39 = { version = "2", features = [
+    "std",
+    "rand",
+    "zeroize",
+    "chinese-simplified",
+    "chinese-traditional",
+    "czech",
+    "french",
+    "italian",
+    "japanese",
+    "korean",
+    "portuguese",
+    "spanish",
+] }
+bs58 = { version = "0.5", features = ["check"] }
+ed25519-dalek = "2"
+hex = "0.4"
+hmac = "0.12"
+ripemd = "0.1"
+secp256k1 = { version = "0.31", features = ["recovery"] }
+sha2 = "0.10"
+thiserror = "2"
+zeroize = "1"
+
+[dev-dependencies]
+serde_json = "1"
+
+# Generates Swift (and other foreign-language) bindings from the built
+# library. Run with `cargo run --features cli --bin uniffi-bindgen --
+# generate --library <path-to-libwalletkit_ffi> --language swift --out-dir
+# <dir>` — see ../README.md.
+[[bin]]
+name = "uniffi-bindgen"
+path = "uniffi-bindgen.rs"
+required-features = ["cli"]
