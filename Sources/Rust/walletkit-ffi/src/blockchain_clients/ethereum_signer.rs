@@ -546,7 +546,7 @@ mod tests {
     }
 
     fn vectors() -> Vec<Vector> {
-        let raw = include_str!("../../../../TestVectors/ethereum-tx.json");
+        let raw = include_str!("../../../../../TestVectors/ethereum-tx.json");
         let json: serde_json::Value = serde_json::from_str(raw).expect("ethereum-tx.json is valid JSON");
         json.as_array()
             .expect("ethereum-tx.json is a JSON array")
@@ -710,7 +710,7 @@ mod tests {
     }
 
     fn eip1559_vectors() -> Vec<EIP1559Vector> {
-        let raw = include_str!("../../../../TestVectors/ethereum-tx.json");
+        let raw = include_str!("../../../../../TestVectors/ethereum-tx.json");
         let json: serde_json::Value = serde_json::from_str(raw).expect("ethereum-tx.json is valid JSON");
         json.as_array()
             .expect("ethereum-tx.json is a JSON array")

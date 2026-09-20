@@ -71,7 +71,7 @@ mod tests {
     fn vectors() -> Vec<(String, String, String)> {
         // (label, privateKey, address) — only `address` is used here; the
         // private keys are exercised by `ethereum_signer`'s tests instead.
-        let raw = include_str!("../../../../TestVectors/ethereum-address.json");
+        let raw = include_str!("../../../../../TestVectors/ethereum-address.json");
         let json: serde_json::Value = serde_json::from_str(raw).expect("ethereum-address.json is valid JSON");
         json.as_array()
             .expect("ethereum-address.json is a JSON array")

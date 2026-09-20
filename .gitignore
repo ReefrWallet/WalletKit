@@ -7,3 +7,4 @@ Sources/Generated/.DS_Store
 *.xcworkspace
 /Frameworks/
 /Sources/Generated/
+/.build/

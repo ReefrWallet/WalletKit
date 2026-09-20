@@ -135,9 +135,9 @@ let project = Project(
     additionalFiles: [
         "*.md",
         "Docs/**/*",
-        "Rust/walletkit-ffi/**/*",
-        "Rust/Cargo.toml",
-        "Rust/README.md",
+        "Sources/Rust/walletkit-ffi/**/*",
+        "Sources/Rust/Cargo.toml",
+        "Sources/Rust/README.md",
         "Makefile",
         "Project.swift"
     ]

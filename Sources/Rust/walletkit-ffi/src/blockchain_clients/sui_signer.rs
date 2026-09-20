@@ -145,7 +145,7 @@ mod tests {
     /// (Sui CLI 1.66.2) — see `TestVectors/sui-address.json` for how each
     /// entry's `privateKey` was recovered from the tool's output.
     fn vectors() -> Vec<Vector> {
-        let raw = include_str!("../../../../TestVectors/sui-address.json");
+        let raw = include_str!("../../../../../TestVectors/sui-address.json");
         let json: serde_json::Value = serde_json::from_str(raw).expect("sui-address.json is valid JSON");
         json.as_array()
             .expect("sui-address.json is a JSON array")
@@ -286,7 +286,7 @@ mod tests {
     /// confirmed with both `sui keytool decode-or-verify-tx` and `sui
     /// client execute-signed-tx` — see `TestVectors/sui-tx.json`.
     fn tx_vectors() -> Vec<TxVector> {
-        let raw = include_str!("../../../../TestVectors/sui-tx.json");
+        let raw = include_str!("../../../../../TestVectors/sui-tx.json");
         let json: serde_json::Value = serde_json::from_str(raw).expect("sui-tx.json is valid JSON");
         json.as_array()
             .expect("sui-tx.json is a JSON array")

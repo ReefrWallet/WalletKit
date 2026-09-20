@@ -13,7 +13,7 @@ pub fn english_vectors() -> Vec<(String, String, String, String)> {
 /// entries of the reference BIP39 test vectors (e.g. `"japanese"`,
 /// `"chinese_simplified"` — the snake_case keys used in the vectors file).
 pub fn vectors_for(language_key: &str) -> Vec<(String, String, String, String)> {
-    let raw = include_str!("../../../TestVectors/bip39.json");
+    let raw = include_str!("../../../../TestVectors/bip39.json");
     let json: Value = serde_json::from_str(raw).expect("bip39.json is valid JSON");
     json[language_key]
         .as_array()

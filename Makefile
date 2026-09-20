@@ -43,7 +43,7 @@ export PATH := $(RUST_BIN_DIR):$(PATH)
 
 CARGO ?= $(shell command -v cargo 2>/dev/null || echo $(RUST_BIN_DIR)/cargo)
 RUSTUP ?= $(shell command -v rustup 2>/dev/null || echo $(RUST_BIN_DIR)/rustup)
-RUST_DIR := Rust
+RUST_DIR := Sources/Rust
 CRATE_DIR := $(RUST_DIR)/walletkit-ffi
 TARGET_DIR := $(RUST_DIR)/target
 LIB_NAME := libwalletkit_ffi.a
