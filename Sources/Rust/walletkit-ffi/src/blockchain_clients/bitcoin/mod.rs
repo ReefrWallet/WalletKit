@@ -13,7 +13,10 @@ mod psbt;
 mod signer;
 
 pub use address::BitcoinAddressFfi;
-pub use descriptor::{BitcoinDescriptorFfi, BitcoinScriptTypeFfi};
+pub use descriptor::{bitcoin_fingerprint, BitcoinDescriptorFfi, BitcoinScriptTypeFfi};
 pub use network::BitcoinNetworkFfi;
-pub use psbt::{bitcoin_build_unsigned_psbt, bitcoin_estimate_vsize, BitcoinInputKindFfi, BitcoinPsbtInputFfi, BitcoinPsbtOutputFfi};
+pub use psbt::{
+    bitcoin_build_unsigned_psbt, bitcoin_estimate_vsize, bitcoin_psbt_fee, bitcoin_psbt_input_derivations,
+    BitcoinInputKindFfi, BitcoinPsbtInputDerivationFfi, BitcoinPsbtInputFfi, BitcoinPsbtOutputFfi,
+};
 pub use signer::BitcoinSignerFfi;

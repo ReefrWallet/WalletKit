@@ -1,0 +1,45 @@
+name: WalletKit CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install macOS build dependencies
+        run: |
+          brew install grpc-swift libusb pkg-config protobuf swift-protobuf
+          protoc --version
+
+      - name: Install mise and local-node tools
+        run: |
+          curl https://mise.run | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/mise" install
+
+      - name: Generate Swift inputs
+        run: make walletkit-ffi sui-grpc
+
+      - name: Run Rust tests
+        run: make test
+
+      - name: Run Swift tests
+        run: swift test

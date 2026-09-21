@@ -60,6 +60,18 @@ pub struct EthereumEIP1559Signature {
     pub s: Vec<u8>,
 }
 
+/// Which Bitcoin network a `bitcoin_sign_psbt` call targets — mirrors
+/// `walletkit-ffi`'s `blockchain_clients::bitcoin::BitcoinNetworkFfi` so
+/// this crate doesn't need to depend on it (same reasoning as
+/// `HardwareCurve` mirroring `common::Curve`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HardwareBitcoinNetwork {
+    Mainnet,
+    Testnet,
+    Signet,
+    Regtest,
+}
+
 /// A connected hardware wallet — a source of public keys and signatures,
 /// read from / produced by the device rather than derived or computed
 /// in-process.
@@ -96,6 +108,38 @@ pub trait HardwareDevice: Send + Sync {
         path: Vec<HardwarePathSegment>,
         fields: EthereumEIP1559TxFields,
     ) -> Result<EthereumEIP1559Signature, HardwareError>;
+
+    /// Reads the account-level extended public key (xpub, including its
+    /// chain code) at `path` from the device, Base58Check-encoded with
+    /// mainnet (`xpub`) version bytes regardless of which Bitcoin network
+    /// `path` is actually for.
+    ///
+    /// Unlike `public_key`, which only returns the raw key at one exact
+    /// path, this carries enough material to build a `BitcoinDescriptor`
+    /// capable of deriving every external/change address under `path`
+    /// without a further device round-trip. Always mainnet-serialized
+    /// because `walletkit-ffi`'s own `ExtendedKeyFfi::from_serialized`
+    /// only recognizes `xpub`/`xprv` version bytes, never `tpub`/`tprv` —
+    /// the same reason `BitcoinDescriptorFfi::from_xpub` doesn't validate
+    /// its xpub's version bytes against the caller's requested network.
+    async fn bitcoin_xpub(&self, path: Vec<HardwarePathSegment>) -> Result<String, HardwareError>;
+
+    /// Signs a Bitcoin PSBT (built by `bitcoin_build_unsigned_psbt`) on
+    /// the device via its interactive `SignTx`/`TxRequest`/`TxAck` flow,
+    /// driven entirely from the PSBT's own `witness_utxo`/
+    /// `bip32_derivation`/`tap_key_origins` fields — no separate
+    /// per-input key material is needed, unlike the software signer.
+    ///
+    /// Returns the finalized, consensus-serialized raw transaction: the
+    /// device streams the fully signed transaction back directly as it
+    /// completes, rather than per-input signatures, so no separate
+    /// finalize step is needed the way `BitcoinSignerFfi::sign_psbt` +
+    /// `finalize_psbt` need one for a software-derived key.
+    async fn bitcoin_sign_psbt(
+        &self,
+        psbt: Vec<u8>,
+        network: HardwareBitcoinNetwork,
+    ) -> Result<Vec<u8>, HardwareError>;
 
     /// Disconnects from this device.
     async fn disconnect(&self);

@@ -7,7 +7,7 @@ use tokio::sync::oneshot;
 use trezor_client::{protos, AvailableDevice};
 use walletkit_hardware::{
     EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
-    HardwareButtonRequest, HardwareDeviceDelegate, HardwareError, HardwarePathSegment,
+    HardwareBitcoinNetwork, HardwareButtonRequest, HardwareDeviceDelegate, HardwareError, HardwarePathSegment,
 };
 
 use super::{error::map_trezor_error, interaction::drive_interaction};
@@ -32,6 +32,16 @@ enum Command {
         path: Vec<HardwarePathSegment>,
         fields: EthereumEIP1559TxFields,
         reply: oneshot::Sender<Result<EthereumEIP1559Signature, HardwareError>>,
+    },
+    BitcoinXpub {
+        path: Vec<HardwarePathSegment>,
+        network: HardwareBitcoinNetwork,
+        reply: oneshot::Sender<Result<String, HardwareError>>,
+    },
+    BitcoinSignPsbt {
+        psbt: Vec<u8>,
+        network: HardwareBitcoinNetwork,
+        reply: oneshot::Sender<Result<Vec<u8>, HardwareError>>,
     },
     Disconnect,
 }
@@ -123,6 +133,15 @@ impl DeviceWorker {
                         );
                         let _ = reply.send(result);
                     }
+                    Command::BitcoinXpub { path, network, reply } => {
+                        let result = super::device::bitcoin_xpub(&mut trezor, &path, network, &delegate, &runtime);
+                        let _ = reply.send(result);
+                    }
+                    Command::BitcoinSignPsbt { psbt, network, reply } => {
+                        let result =
+                            super::device::bitcoin_sign_psbt(&mut trezor, &psbt, network, &delegate, &runtime);
+                        let _ = reply.send(result);
+                    }
                     Command::Disconnect => break,
                 }
             }
@@ -166,6 +185,30 @@ impl DeviceWorker {
         let (reply_tx, reply_rx) = oneshot::channel::<Result<EthereumEIP1559Signature, HardwareError>>();
         self.command_tx
             .send(Command::EthereumSignTxEip1559 { path, fields, reply: reply_tx })
+            .map_err(|_| HardwareError::Disconnected)?;
+        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+    }
+
+    pub(super) async fn bitcoin_xpub(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        network: HardwareBitcoinNetwork,
+    ) -> Result<String, HardwareError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx
+            .send(Command::BitcoinXpub { path, network, reply: reply_tx })
+            .map_err(|_| HardwareError::Disconnected)?;
+        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+    }
+
+    pub(super) async fn bitcoin_sign_psbt(
+        &self,
+        psbt: Vec<u8>,
+        network: HardwareBitcoinNetwork,
+    ) -> Result<Vec<u8>, HardwareError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx
+            .send(Command::BitcoinSignPsbt { psbt, network, reply: reply_tx })
             .map_err(|_| HardwareError::Disconnected)?;
         reply_rx.await.map_err(|_| HardwareError::Disconnected)?
     }

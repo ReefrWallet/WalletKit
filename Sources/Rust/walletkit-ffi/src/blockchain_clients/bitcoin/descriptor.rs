@@ -17,8 +17,9 @@
 use std::str::FromStr;
 
 use bitcoin::bip32::{ChildNumber, Xpub};
+use bitcoin::hashes::Hash;
 use bitcoin::key::UntweakedPublicKey;
-use bitcoin::{Address, CompressedPublicKey, NetworkKind};
+use bitcoin::{Address, CompressedPublicKey};
 
 use crate::blockchain_clients::bitcoin::address::BitcoinAddressFfi;
 use crate::blockchain_clients::bitcoin::network::BitcoinNetworkFfi;
@@ -51,12 +52,22 @@ fn invalid(reason: impl Into<String>) -> WalletKitErrorFfi {
     WalletKitErrorFfi::InvalidAddress { reason: reason.into() }
 }
 
-fn expected_network_kind(network: BitcoinNetworkFfi) -> NetworkKind {
-    match network {
-        BitcoinNetworkFfi::Mainnet => NetworkKind::Main,
-        BitcoinNetworkFfi::Testnet | BitcoinNetworkFfi::Signet | BitcoinNetworkFfi::Regtest => NetworkKind::Test,
-    }
+/// Computes the BIP-32 fingerprint for a compressed secp256k1 public
+/// key — the first 4 bytes of `RIPEMD160(SHA256(pubkey))`. The Swift
+/// side derives keys via its own from-scratch `ExtendedKeyFfi`, which
+/// has no exported fingerprint accessor, so account creation
+/// (`AccountService`) calls this directly to build a
+/// `BitcoinDescriptorFfi` for a newly derived local account.
+///
+/// - Throws `.invalidAddress` if `public_key` isn't a valid 33-byte
+///   compressed secp256k1 public key.
+#[uniffi::export]
+pub fn bitcoin_fingerprint(public_key: Vec<u8>) -> Result<Vec<u8>, WalletKitErrorFfi> {
+    let key = bitcoin::secp256k1::PublicKey::from_slice(&public_key).map_err(|err| invalid(err.to_string()))?;
+    let hash = bitcoin::hashes::hash160::Hash::hash(&key.serialize());
+    Ok(hash.as_byte_array()[0..4].to_vec())
 }
+
 
 /// Parses a `/`-separated path of BIP-32 segments with no leading `m/`
 /// (e.g. `84'/0'/0'` or `84'/0'/0'/0/5`) — shared with `psbt`, which needs
@@ -130,11 +141,19 @@ impl BitcoinDescriptorFfi {
     /// xpub and its BIP-32 origin (the master key's fingerprint and the
     /// hardened path the xpub sits at, e.g. `84'/0'/0'`).
     ///
+    /// `network` is trusted as-is and not cross-checked against `xpub`'s
+    /// own version bytes (xpub vs tpub): this crate's own `ExtendedKeyFfi`
+    /// — the source of every xpub this constructor actually receives —
+    /// always serializes with the mainnet version bytes regardless of
+    /// which network the key is for (it has no network concept at all,
+    /// being shared with Ethereum/Sui, which have no xpub/tpub
+    /// distinction), so a real version-byte check would reject every
+    /// non-mainnet xpub this codebase ever produces.
+    ///
     /// - Throws `.invalidAddress` if `xpub` doesn't parse, `account_path`
-    ///   isn't a well-formed `/`-separated path, `master_fingerprint` isn't
-    ///   4 bytes, `script_type` is `.singleAddress` (which has no xpub),
-    ///   or `xpub`'s own version bytes (xpub/tpub) disagree with
-    ///   `network`'s main-vs-test kind.
+    ///   isn't a well-formed `/`-separated path, `master_fingerprint`
+    ///   isn't 4 bytes, or `script_type` is `.singleAddress` (which has
+    ///   no xpub).
     #[uniffi::constructor]
     pub fn from_xpub(
         xpub: String,
@@ -146,9 +165,6 @@ impl BitcoinDescriptorFfi {
         Self::script_prefix(script_type)?;
 
         let parsed_xpub = Xpub::from_str(&xpub).map_err(|err| invalid(err.to_string()))?;
-        if parsed_xpub.network != expected_network_kind(network) {
-            return Err(invalid(format!("xpub {xpub:?} does not match network {network:?}")));
-        }
 
         let fingerprint: [u8; 4] = master_fingerprint
             .as_slice()
@@ -286,6 +302,14 @@ impl BitcoinDescriptorFfi {
     pub fn master_fingerprint(&self) -> Vec<u8> {
         self.master_fingerprint.to_vec()
     }
+
+    /// The account-level path this descriptor's xpub sits at (e.g.
+    /// `"84'/0'/0'"`, no leading `m/`) — empty for `SingleAddress`, which
+    /// has no xpub. Callers append `/{chain}/{index}` to build a PSBT
+    /// input's full per-address derivation path.
+    pub fn account_path(&self) -> String {
+        format_account_path(&self.account_path)
+    }
 }
 
 #[cfg(test)]
@@ -312,6 +336,26 @@ mod tests {
         let fingerprint = bitcoin::hashes::hash160::Hash::hash(&master_public.serialize()).as_byte_array()[0..4].to_vec();
         let account_key = master.derive(crate::common::DerivationPath::parse("m/84'/0'/0'").unwrap()).unwrap();
         (account_key.serialized_public(), fingerprint)
+    }
+
+    #[test]
+    fn bitcoin_fingerprint_matches_the_manually_computed_master_fingerprint() {
+        let seed = MnemonicFfi::generate(MnemonicWordCount::Words24, Wordlist::English).to_seed("".to_string());
+        let master = seed.master_key(CurveFfi::Secp256k1);
+        let compressed = master.public_key().raw_bytes();
+        assert_eq!(compressed.len(), 33);
+
+        let secp = bitcoin::secp256k1::Secp256k1::new();
+        let secret = bitcoin::secp256k1::SecretKey::from_slice(&master.private_key().unwrap().raw_bytes()).unwrap();
+        let public = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &secret);
+        let expected = bitcoin::hashes::hash160::Hash::hash(&public.serialize()).as_byte_array()[0..4].to_vec();
+
+        assert_eq!(bitcoin_fingerprint(compressed).unwrap(), expected);
+    }
+
+    #[test]
+    fn bitcoin_fingerprint_rejects_a_malformed_public_key() {
+        assert!(matches!(bitcoin_fingerprint(vec![0u8; 10]), Err(WalletKitErrorFfi::InvalidAddress { .. })));
     }
 
     fn wpkh_descriptor() -> BitcoinDescriptorFfi {
@@ -413,18 +457,23 @@ mod tests {
     }
 
     #[test]
-    fn from_xpub_rejects_a_network_mismatch() {
+    fn from_xpub_accepts_a_mainnet_style_xpub_for_a_test_network() {
+        // `test_account()`'s xpub always carries mainnet version bytes
+        // (see `ExtendedKeyFfi`'s module docs) — `from_xpub` must accept
+        // it regardless of the requested network, trusting `network`
+        // as-is rather than cross-checking it against the xpub's own
+        // version bytes.
         let (xpub, fingerprint) = test_account();
-        assert!(matches!(
-            BitcoinDescriptorFfi::from_xpub(
-                xpub,
-                BitcoinScriptTypeFfi::P2wpkh,
-                BitcoinNetworkFfi::Testnet,
-                fingerprint,
-                "84'/0'/0'".to_string(),
-            ),
-            Err(WalletKitErrorFfi::InvalidAddress { .. })
-        ));
+        let descriptor = BitcoinDescriptorFfi::from_xpub(
+            xpub,
+            BitcoinScriptTypeFfi::P2wpkh,
+            BitcoinNetworkFfi::Regtest,
+            fingerprint,
+            "84'/1'/0'".to_string(),
+        )
+        .unwrap();
+        assert_eq!(descriptor.network(), BitcoinNetworkFfi::Regtest);
+        assert!(descriptor.derive_address(0, 0).unwrap().string().starts_with("bcrt1q"));
     }
 
     #[test]

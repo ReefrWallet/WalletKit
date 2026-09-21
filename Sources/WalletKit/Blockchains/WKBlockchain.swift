@@ -34,7 +34,7 @@ public enum WKBlockchain: Equatable, Hashable, Codable, Sendable {
 
 public extension WKBlockchain {
     static var allMainnets: [WKBlockchain] {
-        let mainnets = [WKBlockchain.sui(.mainnet)] + EVMBlockchain.allMainnets // others are not yet supported
+        let mainnets = [WKBlockchain.bitcoin(.mainnet), .sui(.mainnet)] + EVMBlockchain.allMainnets // others are not yet supported
         return mainnets.sorted { $0 < $1 }
     }
 

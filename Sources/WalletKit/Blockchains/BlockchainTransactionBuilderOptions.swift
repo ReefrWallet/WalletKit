@@ -40,4 +40,10 @@ public enum BlockchainTransactionBuilderOptions: Sendable {
     /// `nil` sub-fields fall back to the simulated/fetched value.
     /// Only meaningful for Sui — other chains ignore this.
     case suiGasOverride(budget: UInt64?, price: UInt64?)
+
+    /// Override the fee rate for a Bitcoin transaction.
+    ///
+    /// `nil` falls back to the rate fetched from the configured backend.
+    /// Only meaningful for Bitcoin — other chains ignore this.
+    case bitcoinFeeOverride(feeRateSatPerVByte: UInt64?)
 }

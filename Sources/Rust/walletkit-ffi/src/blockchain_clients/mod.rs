@@ -25,9 +25,9 @@ mod sui_address;
 mod sui_signer;
 
 pub use bitcoin::{
-    bitcoin_build_unsigned_psbt, bitcoin_estimate_vsize, BitcoinAddressFfi, BitcoinDescriptorFfi,
-    BitcoinInputKindFfi, BitcoinNetworkFfi, BitcoinPsbtInputFfi, BitcoinPsbtOutputFfi, BitcoinScriptTypeFfi,
-    BitcoinSignerFfi,
+    bitcoin_build_unsigned_psbt, bitcoin_estimate_vsize, bitcoin_fingerprint, bitcoin_psbt_fee,
+    bitcoin_psbt_input_derivations, BitcoinAddressFfi, BitcoinDescriptorFfi, BitcoinInputKindFfi, BitcoinNetworkFfi,
+    BitcoinPsbtInputDerivationFfi, BitcoinPsbtInputFfi, BitcoinPsbtOutputFfi, BitcoinScriptTypeFfi, BitcoinSignerFfi,
 };
 pub use ethereum_abi::{ethereum_function_selector, ethereum_keccak256};
 pub use ethereum_address::EthereumAddressFfi;

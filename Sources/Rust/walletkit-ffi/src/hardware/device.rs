@@ -3,7 +3,10 @@ use std::sync::Arc;
 use walletkit_hardware as hw;
 
 use crate::{
-    blockchain_clients::{EthereumEIP1559SignTxFfi, EthereumEIP1559SignatureFfi, EthereumSignTxFfi, EthereumSignatureFfi},
+    blockchain_clients::{
+        BitcoinNetworkFfi, EthereumEIP1559SignTxFfi, EthereumEIP1559SignatureFfi, EthereumSignTxFfi,
+        EthereumSignatureFfi,
+    },
     common::{BigIntFfi, CurveFfi, DerivationPath},
     errors::WalletKitErrorFfi,
     keys::PublicKeyFfi,
@@ -83,6 +86,38 @@ impl HardwareDeviceFfi {
         Ok(EthereumEIP1559SignatureFfi { y_parity: signature.y_parity, r: signature.r, s: signature.s })
     }
 
+    /// Reads the account-level extended public key (xpub, with its chain
+    /// code) at `path` from the device, Base58Check-encoded — enough to
+    /// build a `BitcoinDescriptorFfi` that derives every external/change
+    /// address under `path` without a further device round-trip. `network`
+    /// only affects the serialization's version bytes (`xpub` vs `tpub`),
+    /// not which key is derived.
+    ///
+    /// Throws `.userCancelled`/`.userRejectedOnDevice` if the user backs
+    /// out, or `.deviceDisconnected` if the device goes away mid-request.
+    pub async fn bitcoin_xpub(&self, path: DerivationPath, network: BitcoinNetworkFfi) -> Result<String, WalletKitErrorFfi> {
+        let segments = to_hardware_segments(&path);
+        let xpub = self.inner.bitcoin_xpub(segments, to_hardware_bitcoin_network(network)).await?;
+        Ok(xpub)
+    }
+
+    /// Signs a Bitcoin PSBT (built by `bitcoin_build_unsigned_psbt`) on the
+    /// device via its interactive `SignTx`/`TxRequest`/`TxAck` flow, driven
+    /// entirely from the PSBT's own `bip32_derivation`/`tap_key_origins`
+    /// fields. Returns the finalized, consensus-serialized raw transaction.
+    ///
+    /// Throws `.userCancelled`/`.userRejectedOnDevice` if the user backs
+    /// out, `.deviceDisconnected` if the device goes away mid-signature, or
+    /// `.signingFailed` if the device reports a protocol-level failure.
+    pub async fn bitcoin_sign_psbt(
+        &self,
+        psbt: Vec<u8>,
+        network: BitcoinNetworkFfi,
+    ) -> Result<Vec<u8>, WalletKitErrorFfi> {
+        let raw_tx = self.inner.bitcoin_sign_psbt(psbt, to_hardware_bitcoin_network(network)).await?;
+        Ok(raw_tx)
+    }
+
     /// Disconnects from this device.
     pub async fn disconnect(&self) {
         self.inner.disconnect().await
@@ -97,6 +132,15 @@ fn to_hardware_curve(curve: CurveFfi) -> hw::HardwareCurve {
     match curve {
         CurveFfi::Secp256k1 => hw::HardwareCurve::Secp256k1,
         CurveFfi::Ed25519 => hw::HardwareCurve::Ed25519,
+    }
+}
+
+fn to_hardware_bitcoin_network(network: BitcoinNetworkFfi) -> hw::HardwareBitcoinNetwork {
+    match network {
+        BitcoinNetworkFfi::Mainnet => hw::HardwareBitcoinNetwork::Mainnet,
+        BitcoinNetworkFfi::Testnet => hw::HardwareBitcoinNetwork::Testnet,
+        BitcoinNetworkFfi::Signet => hw::HardwareBitcoinNetwork::Signet,
+        BitcoinNetworkFfi::Regtest => hw::HardwareBitcoinNetwork::Regtest,
     }
 }
 
@@ -147,6 +191,14 @@ mod tests {
     fn to_hardware_curve_maps_every_curve() {
         assert_eq!(to_hardware_curve(CurveFfi::Secp256k1), hw::HardwareCurve::Secp256k1);
         assert_eq!(to_hardware_curve(CurveFfi::Ed25519), hw::HardwareCurve::Ed25519);
+    }
+
+    #[test]
+    fn to_hardware_bitcoin_network_maps_every_network() {
+        assert_eq!(to_hardware_bitcoin_network(BitcoinNetworkFfi::Mainnet), hw::HardwareBitcoinNetwork::Mainnet);
+        assert_eq!(to_hardware_bitcoin_network(BitcoinNetworkFfi::Testnet), hw::HardwareBitcoinNetwork::Testnet);
+        assert_eq!(to_hardware_bitcoin_network(BitcoinNetworkFfi::Signet), hw::HardwareBitcoinNetwork::Signet);
+        assert_eq!(to_hardware_bitcoin_network(BitcoinNetworkFfi::Regtest), hw::HardwareBitcoinNetwork::Regtest);
     }
 
     #[test]

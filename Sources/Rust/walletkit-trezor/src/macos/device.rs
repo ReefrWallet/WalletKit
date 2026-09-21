@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use trezor_client::{protos, Trezor};
 use walletkit_hardware::{
     EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
-    HardwareButtonRequest, HardwareCurve, HardwareDevice as HardwareDeviceTrait, HardwareDeviceDelegate,
-    HardwareDeviceInfo, HardwareError, HardwarePathSegment,
+    HardwareBitcoinNetwork, HardwareButtonRequest, HardwareCurve, HardwareDevice as HardwareDeviceTrait,
+    HardwareDeviceDelegate, HardwareDeviceInfo, HardwareError, HardwarePathSegment,
 };
 
 use super::{interaction::drive_interaction, worker::DeviceWorker};
@@ -83,6 +83,22 @@ impl HardwareDeviceTrait for TrezorDevice {
         fields: EthereumEIP1559TxFields,
     ) -> Result<EthereumEIP1559Signature, HardwareError> {
         self.worker.ethereum_sign_tx_eip1559(path, fields).await
+    }
+
+    async fn bitcoin_xpub(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        network: HardwareBitcoinNetwork,
+    ) -> Result<String, HardwareError> {
+        self.worker.bitcoin_xpub(path, network).await
+    }
+
+    async fn bitcoin_sign_psbt(
+        &self,
+        psbt: Vec<u8>,
+        network: HardwareBitcoinNetwork,
+    ) -> Result<Vec<u8>, HardwareError> {
+        self.worker.bitcoin_sign_psbt(psbt, network).await
     }
 
     async fn disconnect(&self) {
@@ -233,6 +249,90 @@ pub(super) fn ethereum_sign_tx_eip1559(
     })
 }
 
+/// Runs on the device's worker thread. Drives `trezor-client`'s own
+/// `SignTx`/`TxRequest`/`TxAck` state machine (`Trezor::sign_tx` +
+/// `SignTxProgress::ack_psbt`), which answers every request straight from
+/// `psbt`'s `witness_utxo`/`bip32_derivation`/`tap_key_origins` fields —
+/// the same ones `bitcoin_build_unsigned_psbt` already populates, so
+/// nothing Bitcoin-specific needs hand-rolling the way the Ethereum flow
+/// above does (that one exists to get PIN-hook interaction driving, which
+/// this gets for free through the same `drive_interaction` calls).
+///
+/// The device streams the fully signed transaction back progressively as
+/// `TxRequest.serialized.serialized_tx` chunks (concatenated here into
+/// `raw_tx`) rather than per-input signatures — once
+/// `SignTxProgress::finished()` is true, `raw_tx` is the complete,
+/// consensus-serialized, broadcastable transaction.
+pub(super) fn bitcoin_sign_psbt(
+    trezor: &mut Trezor,
+    psbt_bytes: &[u8],
+    network: HardwareBitcoinNetwork,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<Vec<u8>, HardwareError> {
+    let psbt = bitcoin::psbt::Psbt::deserialize(psbt_bytes)
+        .map_err(|err| HardwareError::SigningFailed { reason: err.to_string() })?;
+    let network = to_bitcoin_network(network);
+
+    let mut progress = drive_interaction(
+        trezor.sign_tx(&psbt, network),
+        delegate,
+        runtime,
+        &HardwareButtonRequest::ConfirmTransaction,
+    )?;
+
+    let mut raw_tx = Vec::new();
+    loop {
+        if let Some(part) = progress.get_serialized_tx_part() {
+            raw_tx.extend_from_slice(part);
+        }
+        if progress.finished() {
+            break;
+        }
+        progress = drive_interaction(
+            progress.ack_psbt(&psbt, network),
+            delegate,
+            runtime,
+            &HardwareButtonRequest::ConfirmTransaction,
+        )?;
+    }
+
+    Ok(raw_tx)
+}
+
+/// Runs on the device's worker thread. Reads the extended public key
+/// (xpub, with its chain code intact) at `path` via the same
+/// `GetPublicKey` wire message `get_public_key` uses — the difference is
+/// this keeps the whole `bip32::Xpub` response (`.to_string()`) instead of
+/// discarding its chain code down to the raw key, since a Bitcoin
+/// descriptor needs to derive child addresses from it later without
+/// going back to the device.
+pub(super) fn bitcoin_xpub(
+    trezor: &mut Trezor,
+    path: &[HardwarePathSegment],
+    network: HardwareBitcoinNetwork,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<String, HardwareError> {
+    let derivation_path = to_bip32_path(path);
+    let xpub = drive_interaction(
+        trezor.get_public_key(&derivation_path, to_bitcoin_network(network), false),
+        delegate,
+        runtime,
+        &HardwareButtonRequest::ConfirmPublicKey,
+    )?;
+    Ok(xpub.to_string())
+}
+
+fn to_bitcoin_network(network: HardwareBitcoinNetwork) -> bitcoin::Network {
+    match network {
+        HardwareBitcoinNetwork::Mainnet => bitcoin::Network::Bitcoin,
+        HardwareBitcoinNetwork::Testnet => bitcoin::Network::Testnet,
+        HardwareBitcoinNetwork::Signet => bitcoin::Network::Signet,
+        HardwareBitcoinNetwork::Regtest => bitcoin::Network::Regtest,
+    }
+}
+
 fn to_bip32_path(path: &[HardwarePathSegment]) -> bitcoin::bip32::DerivationPath {
     path.iter()
         .map(|segment| bitcoin::bip32::ChildNumber::from(segment.to_address_n()))
@@ -250,6 +350,14 @@ fn to_field(to: &Option<Vec<u8>>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn to_bitcoin_network_maps_every_case() {
+        assert_eq!(to_bitcoin_network(HardwareBitcoinNetwork::Mainnet), bitcoin::Network::Bitcoin);
+        assert_eq!(to_bitcoin_network(HardwareBitcoinNetwork::Testnet), bitcoin::Network::Testnet);
+        assert_eq!(to_bitcoin_network(HardwareBitcoinNetwork::Signet), bitcoin::Network::Signet);
+        assert_eq!(to_bitcoin_network(HardwareBitcoinNetwork::Regtest), bitcoin::Network::Regtest);
+    }
 
     #[test]
     fn to_field_formats_a_recipient_as_a_hex_address() {

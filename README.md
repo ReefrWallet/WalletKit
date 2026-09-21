@@ -1,62 +1,118 @@
 # WalletKit
 
-Crypto wallet utilities for Swift, using Rust implementations. WalletKit is
-the shared key-management and blockchain-access core for Reefr Wallet.
+WalletKit is a source-first Swift toolkit for building non-custodial wallet
+applications on Apple platforms. Its cryptographic core is implemented in Rust
+and exposed through an idiomatic Swift API using UniFFI.
 
-See `Docs/Overview.md` for the full architecture and rationale, not all of it 
-implemented yet — see "Status" below).
+> [!WARNING]
+> WalletKit is under active development and has not received a production
+> security audit. Do not use it to protect real funds without completing your
+> own security review and testing.
 
-## Features
+## What it provides
 
-- BIP39 mnemonic generation/import (12/15/18/21/24 words) and BIP39 seed
-  derivation, wordlist-aware
-- BIP32 (secp256k1) and SLIP-0010 (ed25519) hierarchical key derivation
-  from a path (`m/44'/60'/0'/0/0`), plus xpub/xprv-style serialization
-- Arbitrary-precision integers (`BigInt`/`BigUInt`) bridged across the FFI
-  boundary for balances, gas prices, and `uint256`/`int256`-shaped values
-- Ethereum: EIP-55 checksummed address derivation, address
-  parsing/validation, and legacy/EIP-155 transaction signing (RLP decode →
-  sign → re-encode) from a raw `PrivateKey`
-- Sui: address derivation (Blake2b-256 of scheme flag + public key,
-  ed25519 and secp256k1) and address parsing/validation
-- Hardware wallet support (`HardwareDevice`, `HardwareDeviceManager`,
-  `HardwareDeviceDelegate`) for Trezor over USB — device discovery,
-  connection, public-key retrieval, and Ethereum transaction signing
-  (`EthereumTrezorSigner`), with PIN/passphrase/button prompts relayed to
-  the app through `HardwareDeviceDelegate`. USB is macOS-only (see
-  "Status"); Bluetooth/other transports aren't implemented.
+| Area | Current capabilities |
+| --- | --- |
+| Keys | BIP-39 mnemonic generation and import; BIP-39 seed derivation; BIP-32 secp256k1 and SLIP-0010 ed25519 derivation; extended-key serialization; arbitrary-precision integers. |
+| Ethereum | Address derivation and validation, legacy EIP-155 and EIP-1559 transaction signing, transaction construction, JSON-RPC access, and ERC-20 support. |
+| Sui | Address derivation and validation, BCS transaction construction and signing, and a gRPC client. |
+| Hardware wallets | Trezor discovery, connection, public-key retrieval, and Ethereum signing over USB on macOS. |
+| Bitcoin | Experimental descriptors, BIP-84 native SegWit and BIP-86 Taproot address derivation, plus Electrum and Esplora backend components. |
 
-## Status
+The Swift façade lives in `Sources/WalletKit`; the Rust implementation and
+UniFFI export layer live in `Sources/Rust`.
 
-This is early and under active development. Notably not implemented yet:
+## Platform and distribution status
 
-- Sui transaction signing (BCS encoding + intent-signing wrapper)
-- Signing through an `Account` rather than a raw `PrivateKey`
-  (`Signer.sign(transaction:account:)` currently throws)
-- Hardware wallet support beyond Trezor-over-USB: Bluetooth/QR-air-gap
-  transports, other vendors (Ledger, Keystone, ...), and iOS (Trezor
-  devices aren't MFi-certified, so iOS has no generic USB HID access —
-  Trezor Safe 7's Bluetooth would be the first real iOS story)
-- Any chain beyond Ethereum and Sui (Bitcoin, Tron, Solana, Cardano are
-  identifier-only extension points)
-
-## Building
-
-The Rust crate, XCFramework packaging, and Swift binding generation are
-driven by the top-level `Makefile`:
+WalletKit targets iOS, iPadOS, and macOS and includes a Swift Package manifest.
+The native XCFramework, UniFFI bindings, and Sui gRPC sources are generated
+inputs, so build them before using a source checkout as a Swift package:
 
 ```sh
-make walletkit-ffi   # build the Rust crate + package XCFramework + Swift bindings
-make test            # run the Rust test suite
+make walletkit-ffi sui-grpc
+swift build
 ```
 
-See `Rust/README.md` for host-only Rust iteration (`cargo build`/`cargo
-test` without the full cross-platform build).
+Use a local package dependency while developing WalletKit:
+
+```swift
+.package(path: "../WalletKit")
+```
+
+Publishing it as a URL dependency additionally requires shipping the generated
+XCFramework and Swift sources as part of the release artifact.
+
+Bitcoin support is still being built out: callers must provide and operate a
+Bitcoin backend endpoint. Other listed network types—Cardano, Solana, and
+Tron—are extension points only, not functional chain clients.
+
+## Requirements
+
+- macOS with Xcode Command Line Tools for Apple-framework builds
+- Rust and `rustup`
+- Git submodules, for Sui's gRPC protocol definitions
+- For Sui gRPC bindings: `protoc`, `protoc-gen-swift`, and
+  `protoc-gen-grpc-swift` v2 (for example,
+  `brew install protobuf swift-protobuf protoc-gen-grpc-swift`)
+
+## Getting started
+
+Clone recursively so the Sui protocol definitions are available:
+
+```sh
+git clone --recurse-submodules https://github.com/kervich/WalletKit.git
+cd WalletKit
+```
+
+Run the Rust test suite on the host:
+
+```sh
+make test
+```
+
+Build the Apple XCFramework and Swift bindings when working with the Swift
+targets:
+
+```sh
+make walletkit-ffi
+```
+
+Generate the Sui gRPC Swift sources when they need to be refreshed:
+
+```sh
+make sui-grpc
+```
+
+`make all` runs both generation pipelines and the Rust tests. For quicker
+Rust-only iteration, see [Sources/Rust/README.md](Sources/Rust/README.md).
 
 ## Testing
 
-Rust-side unit tests live alongside the code they cover and run against
-shared JSON test vectors in `TestVectors/` (BIP39, Ethereum address/tx,
-Sui address) so both the Rust crate and its Swift bindings can be checked
-against identical expected output. See "Testing strategy" in
-`Docs/Overview.md` for the full two-layer (Rust + Swift) approach.
+Rust tests live beside the implementation. Shared vectors in `TestVectors/`
+cover BIP-39, Ethereum addresses and transactions, and Sui addresses and
+transactions; they keep the Rust and Swift layers aligned on the same expected
+results. Swift tests live in `Tests/` and include unit coverage plus local-node
+integration coverage.
+
+## Project layout
+
+| Path | Purpose |
+| --- | --- |
+| `Sources/WalletKit/` | Public Swift API, chain clients, and transaction builders |
+| `Sources/Rust/` | Rust cryptography, hardware abstractions, and UniFFI layer |
+| `Sources/gRPC/` | Sui gRPC protocol submodule and generated-source inputs |
+| `TestVectors/` | Cross-language test vectors |
+| `Tests/` | Swift unit and integration tests |
+| `Docs/Overview.md` | Architecture notes and longer-term design |
+
+## Hardware wallet scope
+
+Trezor over USB is the only current hardware-wallet path, and it is macOS-only.
+Bluetooth and air-gapped transports, other vendors, and iOS hardware-wallet
+support are not implemented.
+
+## Contributing
+
+Please keep cryptographic and transaction-format changes accompanied by test
+vectors or other interoperable fixtures. Avoid adding secrets, seed phrases, or
+funded private keys to the repository or its test output.

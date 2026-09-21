@@ -24,9 +24,42 @@ extension DerivationPath {
                 purpose = 54
             }
             try self.init(string: "m/\(purpose)'/784'/0'/0'/\(accountIndex)'")
+        case .bitcoin:
+            throw WalletKitError.internalError(
+                message: "Bitcoin has no single derivation path — use DerivationPath.bitcoinAccount(network:scriptType:accountIndex:) instead"
+            )
         default:
             throw WalletKitError.internalError(message: "Unsupported blockchain: \(blockchain)")
         }
+    }
+
+    /// The BIP-84 (`m/84'/{0|1}'/{accountIndex}'`) or BIP-86
+    /// (`m/86'/{0|1}'/{accountIndex}'`) account-level path for a Bitcoin
+    /// account — where a ``BitcoinDescriptor``'s xpub sits, not a full
+    /// address path. Bitcoin derives external/change addresses
+    /// non-hardened below this via
+    /// ``BitcoinDescriptorFfi/deriveAddress(chain:index:)``, not through
+    /// a plain ``DerivationPath`` the way EVM/Sui do — this is why
+    /// ``init(_:accountIndex:curve:)`` throws for `.bitcoin` instead of
+    /// handling it.
+    ///
+    /// - Parameter network: Selects the coin type — `0'` for `.mainnet`,
+    ///   `1'` for any test network (testnet/signet/regtest all
+    ///   conventionally share coin type `1'` per SLIP-44).
+    public static func bitcoinAccount(
+        network: BitcoinNetwork,
+        scriptType: BitcoinScriptType,
+        accountIndex: UInt32
+    ) throws -> DerivationPath {
+        let purpose: UInt32
+        switch scriptType {
+        case .p2wpkh: purpose = 84
+        case .p2tr: purpose = 86
+        case .singleAddress:
+            throw WalletKitError.internalError(message: "SingleAddress descriptors have no derivation path")
+        }
+        let coinType: UInt32 = network == .mainnet ? 0 : 1
+        return try DerivationPath(string: "m/\(purpose)'/\(coinType)'/\(accountIndex)'")
     }
 
     /// Parses a `m/44'/60'/0'/0/0`-style derivation path string.

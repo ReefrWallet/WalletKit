@@ -103,6 +103,37 @@ public final class Mnemonic: MnemonicProtocol {
 
 // MARK: - MnemonicWordCount
 
+#if SWIFT_PACKAGE
+extension MnemonicWordCount: RawRepresentable {
+    public typealias RawValue = UInt32
+
+    /// The number of words this case represents (12, 15, 18, 21, or 24).
+    public var rawValue: UInt32 {
+        switch self {
+        case .words12: return 12
+        case .words15: return 15
+        case .words18: return 18
+        case .words21: return 21
+        case .words24: return 24
+        }
+    }
+
+    /// Creates a word count from its raw integer value.
+    ///
+    /// - Parameter rawValue: A BIP39 word count (12, 15, 18, 21, or 24).
+    /// - Returns: `nil` if `rawValue` isn't a supported BIP39 word count.
+    public init?(rawValue: UInt32) {
+        switch rawValue {
+        case 12: self = .words12
+        case 15: self = .words15
+        case 18: self = .words18
+        case 21: self = .words21
+        case 24: self = .words24
+        default: return nil
+        }
+    }
+}
+#else
 extension MnemonicWordCount: @retroactive RawRepresentable {
     public typealias RawValue = UInt32
 
@@ -132,3 +163,4 @@ extension MnemonicWordCount: @retroactive RawRepresentable {
         }
     }
 }
+#endif

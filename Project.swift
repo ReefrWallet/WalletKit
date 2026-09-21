@@ -130,7 +130,7 @@ let project = Project(
         "OTHER_LDFLAGS[sdk=macosx*]": ["-lc++", libUsbPathFlag, "-lusb-1.0"],
         "STRING_CATALOG_GENERATE_SYMBOLS": true
     ]),
-    targets: [walletKitRust, walletKitGRPC, walletKit, walletKitTesting, /*walletKitTestsIOS,*/ walletKitTestsMac],
+    targets: [walletKitRust, walletKitGRPC, walletKit, walletKitTesting, walletKitTestsMac],
     schemes: schemes,
     additionalFiles: [
         "*.md",

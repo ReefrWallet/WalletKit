@@ -55,6 +55,53 @@ pub enum BitcoinInputKindFfi {
     P2tr,
 }
 
+/// One input's BIP-32 origin, read back from a built PSBT — what
+/// `BitcoinPKeySigner` needs to derive the matching private key for each
+/// input before calling `BitcoinSignerFfi::sign_psbt`, since that method
+/// matches its supplied keys to inputs positionally rather than reading
+/// this back itself.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct BitcoinPsbtInputDerivationFfi {
+    pub master_fingerprint: Vec<u8>,
+    /// The input's full derivation path with no leading `m/`, e.g.
+    /// `"84'/0'/0'/0/5"`.
+    pub derivation_path: String,
+    pub is_taproot: bool,
+}
+
+/// Reads back each input's BIP-32 origin from `psbt`'s
+/// `bip32_derivation` (P2WPKH) or `tap_key_origins` (P2TR) map, in input
+/// order.
+///
+/// - Throws `.invalidAddress` if `psbt` doesn't deserialize, or an input
+///   has neither map populated (i.e. wasn't built by
+///   `bitcoin_build_unsigned_psbt`).
+#[uniffi::export]
+pub fn bitcoin_psbt_input_derivations(psbt: Vec<u8>) -> Result<Vec<BitcoinPsbtInputDerivationFfi>, WalletKitErrorFfi> {
+    let psbt = Psbt::deserialize(&psbt).map_err(|err| invalid(err.to_string()))?;
+
+    psbt.inputs
+        .iter()
+        .map(|input| {
+            if let Some((_, (_leaf_hashes, (fingerprint, path)))) = input.tap_key_origins.iter().next() {
+                Ok(BitcoinPsbtInputDerivationFfi {
+                    master_fingerprint: fingerprint.to_bytes().to_vec(),
+                    derivation_path: path.to_string(),
+                    is_taproot: true,
+                })
+            } else if let Some((_, (fingerprint, path))) = input.bip32_derivation.iter().next() {
+                Ok(BitcoinPsbtInputDerivationFfi {
+                    master_fingerprint: fingerprint.to_bytes().to_vec(),
+                    derivation_path: path.to_string(),
+                    is_taproot: false,
+                })
+            } else {
+                Err(invalid("input has no BIP-32 derivation info"))
+            }
+        })
+        .collect()
+}
+
 fn invalid(reason: impl Into<String>) -> WalletKitErrorFfi {
     WalletKitErrorFfi::InvalidAddress { reason: reason.into() }
 }
@@ -139,6 +186,22 @@ pub fn bitcoin_build_unsigned_psbt(
     Ok(psbt.serialize())
 }
 
+/// The transaction fee already implied by a PSBT built by
+/// `bitcoin_build_unsigned_psbt` — `sum(input witness_utxo values) -
+/// sum(output values)`. Lets a caller show the real fee a just-built
+/// transfer will pay without waiting for it to be signed or broadcast.
+///
+/// - Throws `.invalidAddress` if `psbt` doesn't deserialize, an input is
+///   missing its `witness_utxo` (i.e. wasn't built by
+///   `bitcoin_build_unsigned_psbt`), or the outputs sum to more than the
+///   inputs.
+#[uniffi::export]
+pub fn bitcoin_psbt_fee(psbt: Vec<u8>) -> Result<u64, WalletKitErrorFfi> {
+    let psbt = Psbt::deserialize(&psbt).map_err(|err| invalid(err.to_string()))?;
+    let fee = psbt.fee().map_err(|err| invalid(err.to_string()))?;
+    Ok(fee.to_sat())
+}
+
 /// Estimates a transaction's virtual size in vbytes from its input/output
 /// shapes — approximate (used only for a fee estimate, never for
 /// consensus), using widely cited per-item vsize contributions: a P2WPKH
@@ -215,11 +278,55 @@ mod tests {
     }
 
     #[test]
+    fn psbt_input_derivations_round_trips_a_wpkh_inputs_origin() {
+        let bytes = bitcoin_build_unsigned_psbt(vec![wpkh_input(&test_txid())], vec![output(90_000)], 0).unwrap();
+        let derivations = bitcoin_psbt_input_derivations(bytes).unwrap();
+        assert_eq!(derivations.len(), 1);
+        assert_eq!(derivations[0].master_fingerprint, vec![0x1a, 0x2b, 0x3c, 0x4d]);
+        assert_eq!(derivations[0].derivation_path, "84'/0'/0'/0/5");
+        assert!(!derivations[0].is_taproot);
+    }
+
+    #[test]
+    fn psbt_input_derivations_round_trips_a_taproot_inputs_origin() {
+        let mut input = wpkh_input(&test_txid());
+        input.is_taproot = true;
+        input.derivation_path = "86'/0'/0'/0/5".to_string();
+
+        let bytes = bitcoin_build_unsigned_psbt(vec![input], vec![output(90_000)], 0).unwrap();
+        let derivations = bitcoin_psbt_input_derivations(bytes).unwrap();
+        assert_eq!(derivations.len(), 1);
+        assert_eq!(derivations[0].derivation_path, "86'/0'/0'/0/5");
+        assert!(derivations[0].is_taproot);
+    }
+
+    #[test]
+    fn psbt_input_derivations_rejects_malformed_psbt_bytes() {
+        assert!(matches!(
+            bitcoin_psbt_input_derivations(vec![0xff, 0x00]),
+            Err(WalletKitErrorFfi::InvalidAddress { .. })
+        ));
+    }
+
+    #[test]
     fn build_unsigned_psbt_records_witness_utxo() {
         let bytes =
             bitcoin_build_unsigned_psbt(vec![wpkh_input(&test_txid())], vec![output(90_000)], 0).unwrap();
         let psbt = Psbt::deserialize(&bytes).unwrap();
         assert_eq!(psbt.inputs[0].witness_utxo.as_ref().unwrap().value, Amount::from_sat(100_000));
+    }
+
+    #[test]
+    fn psbt_fee_is_inputs_minus_outputs() {
+        let bytes =
+            bitcoin_build_unsigned_psbt(vec![wpkh_input(&test_txid())], vec![output(90_000)], 0).unwrap();
+        // wpkh_input() funds 100_000 sats; output() spends 90_000.
+        assert_eq!(bitcoin_psbt_fee(bytes).unwrap(), 10_000);
+    }
+
+    #[test]
+    fn psbt_fee_rejects_malformed_psbt_bytes() {
+        assert!(matches!(bitcoin_psbt_fee(vec![0xff, 0x00]), Err(WalletKitErrorFfi::InvalidAddress { .. })));
     }
 
     #[test]

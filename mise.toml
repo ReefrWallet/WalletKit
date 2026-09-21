@@ -1,0 +1,3 @@
+[tools]
+foundry = "1.7.1"
+sui = "testnet-v1.78.1"
