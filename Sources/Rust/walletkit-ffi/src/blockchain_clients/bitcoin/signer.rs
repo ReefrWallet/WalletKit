@@ -241,6 +241,7 @@ mod tests {
                 }
             ),
             is_taproot,
+            non_witness_utxo: None,
         }
     }
 

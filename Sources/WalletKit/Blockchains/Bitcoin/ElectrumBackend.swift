@@ -76,6 +76,10 @@ struct ElectrumBackend: BitcoinBackend {
         return BitcoinBackendTransaction(txid: decoded.txid, height: nil, blockTime: blockTime, inputs: inputs, outputs: outputs)
     }
 
+    func rawTransaction(txid: String) async throws -> Data {
+        try await client.rawTransaction(txid: txid)
+    }
+
     func estimateFeeRate(blocks: Int) async throws -> Double {
         try await client.estimateFee(blocks: blocks)
     }

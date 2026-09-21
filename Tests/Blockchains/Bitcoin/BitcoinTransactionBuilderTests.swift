@@ -17,11 +17,16 @@ import WalletKitRust
 
 private actor MockBitcoinBackend: BitcoinBackend {
     private var utxosByScript: [Data: [BitcoinUTXO]] = [:]
+    private var rawTransactionsByTxid: [String: Data] = [:]
     private(set) var broadcastedTransactions: [Data] = []
     var feeRateSatPerVByte: Double = 5
 
     func seed(scriptPubkey: Data, utxos: [BitcoinUTXO]) {
         utxosByScript[scriptPubkey] = utxos
+    }
+
+    func seedRawTransaction(txid: String, raw: Data) {
+        rawTransactionsByTxid[txid] = raw
     }
 
     func balance(of address: BitcoinAddressFfi) async throws -> (confirmed: UInt64, unconfirmed: Int64) {
@@ -40,6 +45,13 @@ private actor MockBitcoinBackend: BitcoinBackend {
 
     func transaction(txid: String) async throws -> BitcoinBackendTransaction {
         throw BlockchainClientError.invalidResponse(reason: "not exercised by this test")
+    }
+
+    func rawTransaction(txid: String) async throws -> Data {
+        guard let raw = rawTransactionsByTxid[txid] else {
+            throw BlockchainClientError.invalidResponse(reason: "no raw transaction seeded for \(txid)")
+        }
+        return raw
     }
 
     func estimateFeeRate(blocks: Int) async throws -> Double {
@@ -95,10 +107,11 @@ struct BitcoinTransactionBuilderTests {
         let (recipient, _, _) = try makeAccount(network: .regtest, scriptType: .p2wpkh)
 
         let fundingAddress = try sender.deriveAddress(chain: 0, index: 0)
+        let funding = makeFundingTransaction(scriptPubkey: fundingAddress.scriptPubkey(), valueSats: 100_000, nonce: 0xC0)
         let backend = MockBitcoinBackend()
         await backend.seed(scriptPubkey: fundingAddress.scriptPubkey(), utxos: [
             BitcoinUTXO(
-                txid: String(repeating: "c", count: 64),
+                txid: funding.txid,
                 vout: 0,
                 valueSats: 100_000,
                 scriptPubkey: fundingAddress.scriptPubkey(),
@@ -107,6 +120,7 @@ struct BitcoinTransactionBuilderTests {
                 confirmed: true
             ),
         ])
+        await backend.seedRawTransaction(txid: funding.txid, raw: funding.raw)
 
         let client = BitcoinClient(backend: backend)
         let builder = BitcoinTransactionBuilder(client: client)
@@ -136,10 +150,11 @@ struct BitcoinTransactionBuilderTests {
         let (recipient, _, _) = try makeAccount(network: .regtest, scriptType: .p2tr)
 
         let fundingAddress = try sender.deriveAddress(chain: 0, index: 0)
+        let funding = makeFundingTransaction(scriptPubkey: fundingAddress.scriptPubkey(), valueSats: 100_000, nonce: 0xD0)
         let backend = MockBitcoinBackend()
         await backend.seed(scriptPubkey: fundingAddress.scriptPubkey(), utxos: [
             BitcoinUTXO(
-                txid: String(repeating: "d", count: 64),
+                txid: funding.txid,
                 vout: 1,
                 valueSats: 100_000,
                 scriptPubkey: fundingAddress.scriptPubkey(),
@@ -148,6 +163,7 @@ struct BitcoinTransactionBuilderTests {
                 confirmed: true
             ),
         ])
+        await backend.seedRawTransaction(txid: funding.txid, raw: funding.raw)
 
         let client = BitcoinClient(backend: backend)
         let builder = BitcoinTransactionBuilder(client: client)

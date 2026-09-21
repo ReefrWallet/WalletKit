@@ -90,11 +90,7 @@ impl HardwareDeviceTrait for TrezorDevice {
         Err(unavailable())
     }
 
-    async fn bitcoin_xpub(
-        &self,
-        _path: Vec<HardwarePathSegment>,
-        _network: HardwareBitcoinNetwork,
-    ) -> Result<String, HardwareError> {
+    async fn bitcoin_xpub(&self, _path: Vec<HardwarePathSegment>) -> Result<String, HardwareError> {
         Err(unavailable())
     }
 

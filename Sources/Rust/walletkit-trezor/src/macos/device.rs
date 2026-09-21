@@ -85,12 +85,8 @@ impl HardwareDeviceTrait for TrezorDevice {
         self.worker.ethereum_sign_tx_eip1559(path, fields).await
     }
 
-    async fn bitcoin_xpub(
-        &self,
-        path: Vec<HardwarePathSegment>,
-        network: HardwareBitcoinNetwork,
-    ) -> Result<String, HardwareError> {
-        self.worker.bitcoin_xpub(path, network).await
+    async fn bitcoin_xpub(&self, path: Vec<HardwarePathSegment>) -> Result<String, HardwareError> {
+        self.worker.bitcoin_xpub(path).await
     }
 
     async fn bitcoin_sign_psbt(
@@ -307,16 +303,21 @@ pub(super) fn bitcoin_sign_psbt(
 /// discarding its chain code down to the raw key, since a Bitcoin
 /// descriptor needs to derive child addresses from it later without
 /// going back to the device.
+///
+/// Always requests mainnet (`bitcoin::Network::Bitcoin`) serialization,
+/// regardless of which Bitcoin network `path` is actually for — same as
+/// `get_public_key` below, and for the same reason: `walletkit-ffi`'s
+/// `ExtendedKeyFfi::from_serialized` only recognizes `xpub`/`xprv`
+/// version bytes.
 pub(super) fn bitcoin_xpub(
     trezor: &mut Trezor,
     path: &[HardwarePathSegment],
-    network: HardwareBitcoinNetwork,
     delegate: &Arc<dyn HardwareDeviceDelegate>,
     runtime: &tokio::runtime::Handle,
 ) -> Result<String, HardwareError> {
     let derivation_path = to_bip32_path(path);
     let xpub = drive_interaction(
-        trezor.get_public_key(&derivation_path, to_bitcoin_network(network), false),
+        trezor.get_public_key(&derivation_path, bitcoin::Network::Bitcoin, false),
         delegate,
         runtime,
         &HardwareButtonRequest::ConfirmPublicKey,

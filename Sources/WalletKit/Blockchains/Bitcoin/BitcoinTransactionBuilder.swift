@@ -93,16 +93,27 @@ public struct BitcoinTransactionBuilder: BlockchainTransactionBuilderProtocol {
             outputs.append(BitcoinPsbtOutputFfi(scriptPubkey: change.address.scriptPubkey(), valueSats: selection.changeSats))
         }
 
-        let inputs = try selection.inputs.map { utxo in
-            try BitcoinPsbtInputFfi(
-                txid: utxo.txid,
-                vout: utxo.vout,
-                valueSats: utxo.valueSats,
-                scriptPubkey: utxo.scriptPubkey,
-                publicKey: sender.derivePublicKey(chain: utxo.chain, index: utxo.index),
-                masterFingerprint: sender.masterFingerprint,
-                derivationPath: "\(sender.accountPath)/\(utxo.chain)/\(utxo.index)",
-                isTaproot: inputKind == .p2tr
+        var inputs: [BitcoinPsbtInputFfi] = []
+        for utxo in selection.inputs {
+            // A Trezor's `SignTx` flow requires each input's full funding
+            // transaction (`non_witness_utxo`) to independently verify the
+            // spent amount — `witness_utxo` alone isn't enough for it,
+            // even though it would be for `BitcoinPKeySigner`'s software
+            // signing. Fetched here, eagerly, since the builder doesn't
+            // know ahead of time which signer will consume its output.
+            let rawFundingTransaction = try await client.backend.rawTransaction(txid: utxo.txid)
+            inputs.append(
+                try BitcoinPsbtInputFfi(
+                    txid: utxo.txid,
+                    vout: utxo.vout,
+                    valueSats: utxo.valueSats,
+                    scriptPubkey: utxo.scriptPubkey,
+                    publicKey: sender.derivePublicKey(chain: utxo.chain, index: utxo.index),
+                    masterFingerprint: sender.masterFingerprint,
+                    derivationPath: "\(sender.accountPath)/\(utxo.chain)/\(utxo.index)",
+                    isTaproot: inputKind == .p2tr,
+                    nonWitnessUtxo: rawFundingTransaction
+                )
             )
         }
 

@@ -87,17 +87,17 @@ impl HardwareDeviceFfi {
     }
 
     /// Reads the account-level extended public key (xpub, with its chain
-    /// code) at `path` from the device, Base58Check-encoded — enough to
-    /// build a `BitcoinDescriptorFfi` that derives every external/change
-    /// address under `path` without a further device round-trip. `network`
-    /// only affects the serialization's version bytes (`xpub` vs `tpub`),
-    /// not which key is derived.
+    /// code) at `path` from the device, Base58Check-encoded with mainnet
+    /// (`xpub`) version bytes regardless of which Bitcoin network `path`
+    /// is actually for — enough to build a `BitcoinDescriptorFfi` that
+    /// derives every external/change address under `path` without a
+    /// further device round-trip.
     ///
     /// Throws `.userCancelled`/`.userRejectedOnDevice` if the user backs
     /// out, or `.deviceDisconnected` if the device goes away mid-request.
-    pub async fn bitcoin_xpub(&self, path: DerivationPath, network: BitcoinNetworkFfi) -> Result<String, WalletKitErrorFfi> {
+    pub async fn bitcoin_xpub(&self, path: DerivationPath) -> Result<String, WalletKitErrorFfi> {
         let segments = to_hardware_segments(&path);
-        let xpub = self.inner.bitcoin_xpub(segments, to_hardware_bitcoin_network(network)).await?;
+        let xpub = self.inner.bitcoin_xpub(segments).await?;
         Ok(xpub)
     }
 

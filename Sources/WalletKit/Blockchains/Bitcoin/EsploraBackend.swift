@@ -83,6 +83,10 @@ struct EsploraBackend: BitcoinBackend {
         )
     }
 
+    func rawTransaction(txid: String) async throws -> Data {
+        try await client.rawTransaction(txid)
+    }
+
     /// `/fee-estimates` doesn't guarantee an entry for every block-count
     /// key, so this falls back to the smallest available target at or
     /// above `blocks`, then to the single lowest target available at all.

@@ -18,7 +18,7 @@ import WalletKitRust
 ///    same way ``BitcoinPKeySigner`` hashes a software seed's master key;
 ///  - the account-level xpub at
 ///    ``DerivationPath/bitcoinAccount(network:scriptType:accountIndex:)``
-///    (`device.raw.bitcoinXpub(path:network:)`), which — unlike the raw
+///    (`device.raw.bitcoinXpub(path:)`), which — unlike the raw
 ///    ``HardwareDevice/publicKey(path:curve:)`` read — keeps its chain
 ///    code, so ``BitcoinDescriptor`` can derive every external/change
 ///    address locally without a further device round-trip.
@@ -62,7 +62,7 @@ public final class BitcoinTrezorSigner: Signer {
         let accountPathText = String(accountDerivationPath.string.dropFirst(2)) // drop the leading "m/".
 
         let xpub = try await remappingWalletKitError {
-            try await device.raw.bitcoinXpub(path: accountDerivationPath, network: network.raw)
+            try await device.raw.bitcoinXpub(path: accountDerivationPath)
         }
 
         let descriptor = try BitcoinDescriptor(

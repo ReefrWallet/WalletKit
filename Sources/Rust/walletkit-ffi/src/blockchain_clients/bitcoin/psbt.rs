@@ -38,6 +38,14 @@ pub struct BitcoinPsbtInputFfi {
     /// `84'/0'/0'/0/5`.
     pub derivation_path: String,
     pub is_taproot: bool,
+    /// The consensus-serialized funding transaction referenced by
+    /// `txid`/`vout`, when known — populated as the PSBT's
+    /// `non_witness_utxo`, which hardware signers (Trezor's `SignTx` flow
+    /// in particular) require to independently verify the spent amount,
+    /// even for a SegWit/Taproot input where `witness_utxo` alone would
+    /// otherwise be sufficient. `None` for software-only signing (see
+    /// `BitcoinPKeySigner`), which doesn't need it.
+    pub non_witness_utxo: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -112,12 +120,16 @@ fn fixed_bytes<const N: usize>(bytes: &[u8], what: &str) -> Result<[u8; N], Wall
 
 /// Builds unsigned PSBT bytes for a transfer spending `inputs` into
 /// `outputs`. Every input's `witness_utxo` and BIP-32 origin info are
-/// populated so the PSBT is ready for `BitcoinSignerFfi::sign_psbt` (or a
-/// Trezor's own PSBT signing flow) with no further enrichment.
+/// populated so the PSBT is ready for `BitcoinSignerFfi::sign_psbt` with no
+/// further enrichment; an input's `non_witness_utxo` is populated too when
+/// supplied, which a Trezor's own PSBT signing flow requires (`witness_utxo`
+/// alone isn't enough for it to independently verify the spent amount).
 ///
 /// - Throws `.invalidAddress` if `inputs` is empty, a `txid` doesn't parse,
-///   a `public_key`/`master_fingerprint` isn't the expected byte length, or
-///   a `derivation_path` isn't a well-formed `/`-separated path.
+///   a `public_key`/`master_fingerprint` isn't the expected byte length, a
+///   `derivation_path` isn't a well-formed `/`-separated path, or a
+///   supplied `non_witness_utxo` doesn't deserialize or doesn't hash to
+///   the input's own `txid`.
 #[uniffi::export]
 pub fn bitcoin_build_unsigned_psbt(
     inputs: Vec<BitcoinPsbtInputFfi>,
@@ -164,6 +176,15 @@ pub fn bitcoin_build_unsigned_psbt(
             value: Amount::from_sat(input.value_sats),
             script_pubkey: ScriptBuf::from_bytes(input.script_pubkey.clone()),
         });
+
+        if let Some(raw) = &input.non_witness_utxo {
+            let previous_tx: Transaction =
+                bitcoin::consensus::deserialize(raw).map_err(|err| invalid(err.to_string()))?;
+            if previous_tx.compute_txid() != psbt.unsigned_tx.input[i].previous_output.txid {
+                return Err(invalid("non_witness_utxo does not match the input's txid"));
+            }
+            psbt.inputs[i].non_witness_utxo = Some(previous_tx);
+        }
 
         let fingerprint = fixed_bytes::<4>(&input.master_fingerprint, "fingerprint")?;
         let path = parse_account_path(&input.derivation_path)?;
@@ -251,6 +272,7 @@ mod tests {
             master_fingerprint: vec![0x1a, 0x2b, 0x3c, 0x4d],
             derivation_path: "84'/0'/0'/0/5".to_string(),
             is_taproot: false,
+            non_witness_utxo: None,
         }
     }
 
@@ -314,6 +336,42 @@ mod tests {
             bitcoin_build_unsigned_psbt(vec![wpkh_input(&test_txid())], vec![output(90_000)], 0).unwrap();
         let psbt = Psbt::deserialize(&bytes).unwrap();
         assert_eq!(psbt.inputs[0].witness_utxo.as_ref().unwrap().value, Amount::from_sat(100_000));
+    }
+
+    /// A self-consistent funding transaction: its own computed txid, used
+    /// as the spending input's `txid` below, so `non_witness_utxo`'s
+    /// consistency check passes without needing real chain data.
+    fn funding_transaction(value_sats: u64) -> Transaction {
+        Transaction {
+            version: Version::TWO,
+            lock_time: LockTime::ZERO,
+            input: vec![],
+            output: vec![TxOut { value: Amount::from_sat(value_sats), script_pubkey: ScriptBuf::new() }],
+        }
+    }
+
+    #[test]
+    fn build_unsigned_psbt_records_a_provided_non_witness_utxo() {
+        let funding = funding_transaction(100_000);
+        let mut input = wpkh_input(&funding.compute_txid().to_string());
+        input.non_witness_utxo = Some(bitcoin::consensus::serialize(&funding));
+
+        let bytes = bitcoin_build_unsigned_psbt(vec![input], vec![output(90_000)], 0).unwrap();
+        let psbt = Psbt::deserialize(&bytes).unwrap();
+        assert_eq!(psbt.inputs[0].non_witness_utxo.as_ref().unwrap().compute_txid(), funding.compute_txid());
+    }
+
+    #[test]
+    fn build_unsigned_psbt_rejects_a_non_witness_utxo_that_does_not_match_the_txid() {
+        let funding = funding_transaction(100_000);
+        // `wpkh_input`'s own txid, not `funding`'s — deliberately inconsistent.
+        let mut input = wpkh_input(&test_txid());
+        input.non_witness_utxo = Some(bitcoin::consensus::serialize(&funding));
+
+        assert!(matches!(
+            bitcoin_build_unsigned_psbt(vec![input], vec![output(90_000)], 0),
+            Err(WalletKitErrorFfi::InvalidAddress { .. })
+        ));
     }
 
     #[test]

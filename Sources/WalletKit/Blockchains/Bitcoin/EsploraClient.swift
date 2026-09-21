@@ -104,6 +104,18 @@ struct EsploraClient: Sendable {
         try await get("tx/\(txid)")
     }
 
+    /// `GET /tx/:txid/hex` — the raw consensus-serialized transaction,
+    /// hex-encoded plain text (not JSON).
+    func rawTransaction(_ txid: String) async throws -> Data {
+        let request = URLRequest(url: endpoint.appendingPathComponent("tx/\(txid)/hex"))
+        let (data, response) = try await perform(request)
+        try Self.validate(response, data: data)
+        guard let hex = String(data: data, encoding: .utf8) else {
+            throw BlockchainClientError.decodingFailed(reason: "raw transaction response is not UTF-8 text")
+        }
+        return try Data(hexString: hex.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     /// `GET /fee-estimates` — a `{"1": 87.882, "2": 45.2, ...}` map from
     /// confirmation-target block count to fee rate in sat/vB.
     func feeEstimates() async throws -> [String: Double] {

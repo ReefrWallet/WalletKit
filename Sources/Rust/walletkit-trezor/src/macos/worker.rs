@@ -35,7 +35,6 @@ enum Command {
     },
     BitcoinXpub {
         path: Vec<HardwarePathSegment>,
-        network: HardwareBitcoinNetwork,
         reply: oneshot::Sender<Result<String, HardwareError>>,
     },
     BitcoinSignPsbt {
@@ -133,8 +132,8 @@ impl DeviceWorker {
                         );
                         let _ = reply.send(result);
                     }
-                    Command::BitcoinXpub { path, network, reply } => {
-                        let result = super::device::bitcoin_xpub(&mut trezor, &path, network, &delegate, &runtime);
+                    Command::BitcoinXpub { path, reply } => {
+                        let result = super::device::bitcoin_xpub(&mut trezor, &path, &delegate, &runtime);
                         let _ = reply.send(result);
                     }
                     Command::BitcoinSignPsbt { psbt, network, reply } => {
@@ -189,14 +188,10 @@ impl DeviceWorker {
         reply_rx.await.map_err(|_| HardwareError::Disconnected)?
     }
 
-    pub(super) async fn bitcoin_xpub(
-        &self,
-        path: Vec<HardwarePathSegment>,
-        network: HardwareBitcoinNetwork,
-    ) -> Result<String, HardwareError> {
+    pub(super) async fn bitcoin_xpub(&self, path: Vec<HardwarePathSegment>) -> Result<String, HardwareError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
-            .send(Command::BitcoinXpub { path, network, reply: reply_tx })
+            .send(Command::BitcoinXpub { path, reply: reply_tx })
             .map_err(|_| HardwareError::Disconnected)?;
         reply_rx.await.map_err(|_| HardwareError::Disconnected)?
     }

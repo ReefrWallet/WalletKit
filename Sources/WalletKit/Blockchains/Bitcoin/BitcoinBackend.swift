@@ -102,6 +102,12 @@ protocol BitcoinBackend: Sendable {
     /// Full detail for `txid`.
     func transaction(txid: String) async throws -> BitcoinBackendTransaction
 
+    /// The consensus-serialized raw bytes of `txid`'s transaction — the
+    /// PSBT input's `non_witness_utxo` a Trezor's `SignTx` flow requires
+    /// to independently verify a spent amount (see
+    /// ``BitcoinTransactionBuilder``).
+    func rawTransaction(txid: String) async throws -> Data
+
     /// The current network fee rate, in sat/vB, targeting confirmation
     /// within `blocks` blocks.
     func estimateFeeRate(blocks: Int) async throws -> Double

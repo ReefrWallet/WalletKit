@@ -135,6 +135,16 @@ struct ElectrumClient: Sendable {
         )
     }
 
+    /// `blockchain.transaction.get` with `verbose: false` — the raw
+    /// consensus-serialized transaction, hex-encoded.
+    func rawTransaction(txid: String) async throws -> Data {
+        let result = try await connection.call(method: "blockchain.transaction.get", params: [txid, false])
+        guard let hex = result as? String else {
+            throw BlockchainClientError.decodingFailed(reason: "malformed transaction.get response")
+        }
+        return try Data(hexString: hex)
+    }
+
     /// `blockchain.transaction.broadcast`.
     func broadcast(rawTransactionHex: String) async throws -> String {
         let result = try await connection.call(method: "blockchain.transaction.broadcast", params: [rawTransactionHex])
