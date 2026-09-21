@@ -63,6 +63,10 @@ private actor MockBitcoinBackend: BitcoinBackend {
         return String(repeating: "b", count: 64)
     }
 
+    func currentHeight() async throws -> UInt64 {
+        100
+    }
+
     nonisolated func headsStream() -> AsyncThrowingStream<BlockchainTransactionHead, any Swift.Error> {
         AsyncThrowingStream { continuation in
             continuation.finish(throwing: WalletKitError.unsupportedFeature)

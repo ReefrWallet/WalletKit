@@ -23,6 +23,22 @@ extension BitcoinClient {
         _ owner: BitcoinDescriptor,
         request: BlockchainTransactionHistoryRequest
     ) async throws -> BlockchainTransactionPage {
+        // Captured before querying history so a block that arrives between
+        // the two calls can't be skipped: without this, its transaction
+        // would be absent from `entries` yet its height would become
+        // `head`, and the next forward-sync page (`lowerBound: head + 1`)
+        // would then permanently skip it. Bounding this page's entries by
+        // `head` below defers any such transaction to the next sync instead.
+        //
+        // `request.upperBound`, once set, is the durable head snapshotted by
+        // the first descending backfill page — every subsequent page must
+        // keep returning that same value (mirroring Sui's `savedCursor?
+        // .upperBound ?? request.upperBound ?? head`), or a block arriving
+        // mid-backfill would advance `currentHead` past it on `commit` and
+        // forward sync would permanently skip that block's transactions.
+        let head = try await backend.currentHeight()
+        let pageHead = request.upperBound ?? head
+
         let resolver = resolver(for: owner)
         let usedAddresses = try await resolver.allAddresses().filter(\.isUsed)
 
@@ -32,6 +48,34 @@ extension BitcoinClient {
             for entry in try await backend.history(of: derived.address) where seenTxids.insert(entry.txid).inserted {
                 entries.append(entry)
             }
+        }
+
+        // `lowerBound`/`upperBound` are inclusive block-height bounds — the
+        // ascending forward-sync track sets `lowerBound: currentHead + 1`
+        // precisely so it never re-considers already-synced history; without
+        // filtering here, every call would re-union entries all the way back
+        // to genesis and rely on the cursor alone to skip them. An
+        // unconfirmed entry (`height == nil`) has no height to compare, so
+        // it always passes — same as how the sort below treats it as the
+        // newest entry, since it's still pending activity either track
+        // should surface. `pageHead` additionally caps every branch so a
+        // block mined after the snapshot above (or after the initial
+        // backfill snapshot, for later descending pages) is deferred rather
+        // than included.
+        entries = entries.filter { entry in
+            guard let height = entry.height else {
+                return true
+            }
+
+            if height > pageHead {
+                return false
+            }
+
+            if let lowerBound = request.lowerBound, height < lowerBound {
+                return false
+            }
+
+            return true
         }
 
         let ascending = request.direction == .ascending
@@ -66,10 +110,15 @@ extension BitcoinClient {
         let reachedBoundary = startIndex + page.count >= entries.count
         let nextCursor = page.last.flatMap { Data(Self.cursorPosition(for: $0).utf8) }
 
+        // `TransactionSyncService` needs `head` to establish `currentHead`
+        // and start forward polling — the same role `eth_blockNumber`/
+        // `GetServiceInfo.checkpointHeight` play for Ethereum/Sui. Without
+        // it, Bitcoin's forward sync stays stalled forever after backfill.
         return BlockchainTransactionPage(
             transactions: transactions,
             nextCursor: reachedBoundary ? nil : nextCursor,
-            reachedBoundary: reachedBoundary
+            reachedBoundary: reachedBoundary,
+            head: pageHead
         )
     }
 

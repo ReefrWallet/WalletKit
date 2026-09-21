@@ -84,6 +84,16 @@ struct BitcoinRegtestTests {
         )
         #expect(!history.transactions.isEmpty)
 
+        // `TransactionSyncService` needs `head` to establish
+        // `currentHead` and start forward polling — without it, forward
+        // sync stays stalled forever after backfill (regression guard).
+        let head = try #require(history.head)
+        #expect(head > 0)
+
+        let fundingTxid = try #require(history.transactions.first).identifier
+        let fundingHeight = try #require(history.transactions.first?.blockHeight)
+        try await expectNoHistoryBeforeFunding(client: client, sender: sender, fundingHeight: fundingHeight)
+
         let recipientAddress = try recipient.deriveAddress(chain: 0, index: 0)
         let recipientDestination = try BitcoinDescriptor(address: recipientAddress.string(), network: .regtest)
 
@@ -120,5 +130,37 @@ struct BitcoinRegtestTests {
         let changeAddress = try sender.deriveAddress(chain: 1, index: 0)
         let changeDescriptor = try BitcoinDescriptor(address: changeAddress.string(), network: .regtest)
         #expect(try await client.isActiveAccount(changeDescriptor))
+
+        try await expectForwardSyncExcludesFundingEntry(
+            client: client, sender: sender, fundingHeight: fundingHeight, fundingTxid: fundingTxid
+        )
+    }
+}
+
+private extension BitcoinRegtestTests {
+    /// `upperBound` excludes the funding block entirely when set below
+    /// it — sender has no activity before its own first deposit.
+    func expectNoHistoryBeforeFunding(
+        client: BitcoinClient, sender: BitcoinDescriptor, fundingHeight: UInt64
+    ) async throws {
+        let historyBeforeFunding = try await client.transactionHistory(
+            sender, request: BlockchainTransactionHistoryRequest(direction: .descending, upperBound: fundingHeight - 1)
+        )
+        #expect(historyBeforeFunding.transactions.isEmpty)
+    }
+
+    /// `lowerBound` set just past the funding block — as forward sync
+    /// would after backfill established `currentHead` there — must
+    /// exclude the already-synced funding entry while still surfacing
+    /// the newly-mined send, or forward sync would re-read/re-save old
+    /// history forever (regression guard).
+    func expectForwardSyncExcludesFundingEntry(
+        client: BitcoinClient, sender: BitcoinDescriptor, fundingHeight: UInt64, fundingTxid: String
+    ) async throws {
+        let forwardSyncHistory = try await client.transactionHistory(
+            sender, request: BlockchainTransactionHistoryRequest(direction: .ascending, lowerBound: fundingHeight + 1)
+        )
+        #expect(!forwardSyncHistory.transactions.contains { $0.identifier == fundingTxid })
+        #expect(!forwardSyncHistory.transactions.isEmpty)
     }
 }

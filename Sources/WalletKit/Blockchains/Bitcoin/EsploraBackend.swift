@@ -108,6 +108,10 @@ struct EsploraBackend: BitcoinBackend {
         try await client.broadcast(rawTransactionHex: rawTransaction.bitcoinHexEncoded)
     }
 
+    func currentHeight() async throws -> UInt64 {
+        try await client.tipHeight()
+    }
+
     func headsStream() -> AsyncThrowingStream<BlockchainTransactionHead, any Swift.Error> {
         AsyncThrowingStream { continuation in
             continuation.finish(throwing: WalletKitError.unsupportedFeature)

@@ -129,6 +129,15 @@ protocol BitcoinBackend: Sendable {
     /// transaction) and returns its txid.
     func broadcast(rawTransaction: Data) async throws -> String
 
+    /// The current chain tip height — what
+    /// ``BitcoinClient/transactionHistory(_:request:)`` reports as
+    /// ``BlockchainTransactionPage/head``, the same role
+    /// `eth_blockNumber`/`GetServiceInfo.checkpointHeight` play for
+    /// Ethereum/Sui: it's what `TransactionSyncService` needs to
+    /// establish `currentHead` and start forward polling once the
+    /// descending backfill has run at least once.
+    func currentHeight() async throws -> UInt64
+
     /// Streams newly observed chain heads. Resolves immediately with
     /// ``WalletKitError/unsupportedFeature`` for a backend with no push
     /// transport (``EsploraBackend``).

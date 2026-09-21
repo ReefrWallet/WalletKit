@@ -56,14 +56,36 @@ public enum BitcoinNetwork: Codable, Equatable, Hashable, Sendable {
         defaultEndpoint(for: .electrum)
     }
 
-    /// The default endpoint for `backend` on this network. A placeholder
-    /// today, like every other chain's `rpcURL` in this file — real
-    /// public Electrum/Esplora endpoints need curating (and load-testing
-    /// before defaulting production traffic to them) before this ships;
-    /// until then every Bitcoin account should set a custom endpoint via
-    /// `AddAccountView`'s existing override field.
+    /// The default public endpoint for `backend` on this network — verified
+    /// reachable, not just a placeholder, but still a third party: privacy-
+    /// and reliability-sensitive users should still override it via
+    /// `AddAccountView`'s existing override field. Sourced from
+    /// `electrum/chains/{mainnet,testnet}/servers.json` in spesmilo/electrum
+    /// for `.electrum` (Blockstream's own public server; `signet-electrumx
+    /// .wakiyamap.dev` for signet, since Blockstream doesn't run one) and
+    /// Blockstream's public Esplora instances for `.esplora`.
+    ///
+    /// Regtest has no public network to point at — it's always local,
+    /// spun up by ``WalletKitTesting/BitcoinNode`` with its own explicit
+    /// endpoint — so it falls back to `localhost` here as a non-functional
+    /// placeholder that's never actually dialed.
     public func defaultEndpoint(for backend: BitcoinBackendKind) -> URL {
-        URL(string: "https://localhost")! // TODO
+        switch (self, backend) {
+        case (.mainnet, .electrum):
+            URL(string: "ssl://electrum.blockstream.info:50002")!
+        case (.mainnet, .esplora):
+            URL(string: "https://blockstream.info/api")!
+        case (.testnet, .electrum):
+            URL(string: "ssl://electrum.blockstream.info:60002")!
+        case (.testnet, .esplora):
+            URL(string: "https://blockstream.info/testnet/api")!
+        case (.signet, .electrum):
+            URL(string: "ssl://signet-electrumx.wakiyamap.dev:50002")!
+        case (.signet, .esplora):
+            URL(string: "https://blockstream.info/signet/api")!
+        case (.regtest, _):
+            URL(string: "https://localhost")!
+        }
     }
 }
 

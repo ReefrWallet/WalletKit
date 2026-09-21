@@ -122,6 +122,19 @@ struct EsploraClient: Sendable {
         try await get("fee-estimates")
     }
 
+    /// `GET /blocks/tip/height` — the current chain tip height, plain
+    /// text (not JSON).
+    func tipHeight() async throws -> UInt64 {
+        let request = URLRequest(url: endpoint.appendingPathComponent("blocks/tip/height"))
+        let (data, response) = try await perform(request)
+        try Self.validate(response, data: data)
+        guard let text = String(data: data, encoding: .utf8),
+              let height = UInt64(text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw BlockchainClientError.decodingFailed(reason: "malformed /blocks/tip/height response")
+        }
+        return height
+    }
+
     /// `POST /tx` — broadcasts `rawTransactionHex` (lowercase hex) and
     /// returns the resulting txid.
     func broadcast(rawTransactionHex: String) async throws -> String {

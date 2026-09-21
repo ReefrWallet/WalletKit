@@ -217,11 +217,21 @@ $(ELECTRS_STAMP):
 	@cp $(BITCOIN_TESTING_DIR)/electrs-src/target/release/electrs $(BITCOIN_TESTING_BIN_DIR)/electrs
 	@touch $(ELECTRS_STAMP)
 
-# --- test: Rust test suite, host target only --------------------------------
+# --- rust-test: Rust test suite, host target only ----------------------------
 
-test:
-	@echo "==> Running Rust tests (walletkit-ffi)"
+rust-tests:
+	@echo "==> Running Rust tests"
 	@cd $(CRATE_DIR) && $(CARGO) test
+	@cd
+
+# --- swift-tests: Swift test suite (Package.swift), host target only --------
+
+swift-tests:
+	@echo "==> Running Swift tests"
+	@swift test
+	@cd
+
+test: rust-tests swift-tests
 
 # --- clean -------------------------------------------------------------------
 

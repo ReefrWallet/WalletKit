@@ -14,10 +14,10 @@ and exposed through an idiomatic Swift API using UniFFI.
 | Area | Current capabilities |
 | --- | --- |
 | Keys | BIP-39 mnemonic generation and import; BIP-39 seed derivation; BIP-32 secp256k1 and SLIP-0010 ed25519 derivation; extended-key serialization; arbitrary-precision integers. |
+| Hardware wallets | Trezor discovery, connection, public-key retrieval, and Ethereum and Bitcoin transaction signing over USB on macOS. |
+| Bitcoin | Experimental descriptor wallets: BIP-84 native SegWit and BIP-86 Taproot derivation; single-address watch-only accounts; gap-limit discovery; balances, transaction history, fee estimation, PSBT construction, local or Trezor signing, and broadcast through Electrum or Esplora. |
 | Ethereum | Address derivation and validation, legacy EIP-155 and EIP-1559 transaction signing, transaction construction, JSON-RPC access, and ERC-20 support. |
 | Sui | Address derivation and validation, BCS transaction construction and signing, and a gRPC client. |
-| Hardware wallets | Trezor discovery, connection, public-key retrieval, and Ethereum signing over USB on macOS. |
-| Bitcoin | Experimental descriptors, BIP-84 native SegWit and BIP-86 Taproot address derivation, plus Electrum and Esplora backend components. |
 
 The Swift façade lives in `Sources/WalletKit`; the Rust implementation and
 UniFFI export layer live in `Sources/Rust`.
@@ -42,9 +42,14 @@ Use a local package dependency while developing WalletKit:
 Publishing it as a URL dependency additionally requires shipping the generated
 XCFramework and Swift sources as part of the release artifact.
 
-Bitcoin support is still being built out: callers must provide and operate a
-Bitcoin backend endpoint. Other listed network types—Cardano, Solana, and
-Tron—are extension points only, not functional chain clients.
+Bitcoin supports mainnet, testnet, signet, and regtest. `BitcoinClient` can be
+initialized with an Electrum host/port or an Esplora endpoint. Default public
+endpoints are available through `BitcoinNetwork`, but self-hosted endpoints are
+recommended when privacy or reliability matters; regtest always needs a local
+endpoint. Electrum supports header subscriptions, while Esplora uses polling.
+
+Other listed network types—Cardano, Solana, and Tron—are extension points
+only, not functional chain clients.
 
 ## Requirements
 
@@ -64,10 +69,10 @@ git clone --recurse-submodules https://github.com/kervich/WalletKit.git
 cd WalletKit
 ```
 
-Run the Rust test suite on the host:
+Build the source-generated inputs:
 
 ```sh
-make test
+make walletkit-ffi sui-grpc
 ```
 
 Build the Apple XCFramework and Swift bindings when working with the Swift
@@ -83,8 +88,10 @@ Generate the Sui gRPC Swift sources when they need to be refreshed:
 make sui-grpc
 ```
 
-`make all` runs both generation pipelines and the Rust tests. For quicker
-Rust-only iteration, see [Sources/Rust/README.md](Sources/Rust/README.md).
+`make rust-tests` runs only the host Rust suite. `make all` runs both
+generation pipelines and both test suites, after the Bitcoin integration-test
+prerequisites below are available. See
+[Sources/Rust/README.md](Sources/Rust/README.md) for more details.
 
 ## Testing
 
@@ -93,6 +100,16 @@ cover BIP-39, Ethereum addresses and transactions, and Sui addresses and
 transactions; they keep the Rust and Swift layers aligned on the same expected
 results. Swift tests live in `Tests/` and include unit coverage plus local-node
 integration coverage.
+
+The Bitcoin regtest integration suite exercises both Electrum and Esplora
+against a real local `bitcoind` and Blockstream `electrs` instance. Provision
+the binaries once before running that suite; the initial `electrs` build takes
+several minutes:
+
+```sh
+make bitcoin-testing
+make test
+```
 
 ## Project layout
 

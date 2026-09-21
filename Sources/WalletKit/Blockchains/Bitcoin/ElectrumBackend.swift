@@ -88,6 +88,13 @@ struct ElectrumBackend: BitcoinBackend {
         try await client.broadcast(rawTransactionHex: rawTransaction.bitcoinHexEncoded)
     }
 
+    /// `blockchain.headers.subscribe` — idempotent to call repeatedly (it
+    /// just reports the server's current tip each time), so reusing it
+    /// here doesn't interfere with ``headsStream()``'s own subscription.
+    func currentHeight() async throws -> UInt64 {
+        try await client.subscribeHeaders()
+    }
+
     func headsStream() -> AsyncThrowingStream<BlockchainTransactionHead, any Swift.Error> {
         AsyncThrowingStream { continuation in
             Task {
