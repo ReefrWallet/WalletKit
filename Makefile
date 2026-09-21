@@ -14,6 +14,19 @@
 #                        walletkit-ffi — a second, protoc-based codegen
 #                        pipeline alongside the Rust/UniFFI one.
 #
+#   make bitcoin-testing Provisions `bitcoind`/`bitcoin-cli` (downloaded)
+#                        and `electrs` (Blockstream's `new-index` fork,
+#                        built from source — the one with an Esplora-
+#                        compatible `--http-addr`, unlike upstream
+#                        `romanz/electrs`) into .build/bitcoin-testing/bin/,
+#                        consumed by WalletKitTesting's `BitcoinNode` for
+#                        the regtest end-to-end suite
+#                        (Tests/Blockchains/Bitcoin/BitcoinRegtestTests.swift).
+#                        Not part of `make all` — opt in explicitly, since
+#                        the electrs build alone takes a few minutes the
+#                        first time. Idempotent: re-running does nothing
+#                        once .build/bitcoin-testing/bin/ is populated.
+#
 #   make test            Run the Rust test suite (cargo test), host target
 #                        only — independent of walletkit-ffi.
 #
@@ -32,6 +45,8 @@
 #   - protoc, protoc-gen-swift, and protoc-gen-grpc-swift (v2, binary name
 #     `protoc-gen-grpc-swift-2`) for `make sui-grpc` — e.g.
 #     `brew install protobuf swift-protobuf protoc-gen-grpc-swift`
+#   - `git`, `curl`, `tar`, and `cargo` (already required above) for
+#     `make bitcoin-testing`
 #   - `git submodule update --init --recursive` once after cloning, to
 #     fetch Sources/gRPC/sui-rpc-api-v2's .proto files
 #
@@ -68,6 +83,22 @@ SUI_PROTO_SUBMODULE := $(SOURCES_DIR)/gRPC/sui-rpc-api-v2
 SUI_PROTO_DIR := $(SUI_PROTO_SUBMODULE)/proto
 GENERATED_GRPC_SOURCES_DIR := $(SOURCES_DIR)/Generated/gRPC
 
+# --- bitcoin-testing: bitcoind + electrs, for BitcoinNode ------------------
+
+BITCOIN_CORE_VERSION := 29.0
+UNAME_ARCH := $(shell uname -m)
+ifeq ($(UNAME_ARCH),arm64)
+BITCOIN_CORE_PLATFORM := arm64-apple-darwin
+else
+BITCOIN_CORE_PLATFORM := x86_64-apple-darwin
+endif
+
+BITCOIN_TESTING_DIR := $(BUILD_DIR)/bitcoin-testing
+BITCOIN_TESTING_BIN_DIR := $(BITCOIN_TESTING_DIR)/bin
+BITCOIN_CORE_STAMP := $(BITCOIN_TESTING_DIR)/.bitcoin-core-stamp
+ELECTRS_STAMP := $(BITCOIN_TESTING_DIR)/.electrs-stamp
+ELECTRS_REPO := https://github.com/Blockstream/electrs.git
+
 # Apple Silicon + Intel Mac, fused into one macOS slice.
 MACOS_TARGETS := aarch64-apple-darwin x86_64-apple-darwin
 # Apple Silicon + Intel simulator, fused into one iOS-simulator slice.
@@ -87,7 +118,7 @@ IOS_DEVICE_LIB := $(TARGET_DIR)/$(IOS_DEVICE_TARGET)/release/$(LIB_NAME)
 BINDGEN_SOURCE_LIB := $(TARGET_DIR)/aarch64-apple-darwin/release/$(LIB_NAME)
 
 .DEFAULT_GOAL := all
-.PHONY: all walletkit-ffi sui-grpc test clean rust-targets
+.PHONY: all walletkit-ffi sui-grpc bitcoin-testing test clean rust-targets
 
 all: walletkit-ffi sui-grpc test
 
@@ -153,6 +184,38 @@ sui-grpc:
 		$(SUI_PROTO_DIR)/sui/rpc/v2/*.proto \
 		$(SUI_PROTO_DIR)/google/rpc/*.proto
 	@echo "    Swift bindings: $(GENERATED_GRPC_SOURCES_DIR)/sui/rpc/v2/*.swift"
+
+bitcoin-testing: $(BITCOIN_CORE_STAMP) $(ELECTRS_STAMP)
+
+# Downloads the official prebuilt bitcoind/bitcoin-cli binaries. A single
+# stamp file (rather than making $(BITCOIN_TESTING_BIN_DIR)/bitcoind and
+# .../bitcoin-cli both targets of one recipe) avoids Make's classic
+# multiple-targets-one-recipe pitfall, where invoking the two names
+# separately can run the recipe twice.
+$(BITCOIN_CORE_STAMP):
+	@echo "==> Downloading bitcoind/bitcoin-cli $(BITCOIN_CORE_VERSION) ($(BITCOIN_CORE_PLATFORM))"
+	@mkdir -p $(BITCOIN_TESTING_BIN_DIR)
+	@curl -sL -o $(BITCOIN_TESTING_DIR)/bitcoin-core.tar.gz \
+		https://bitcoincore.org/bin/bitcoin-core-$(BITCOIN_CORE_VERSION)/bitcoin-$(BITCOIN_CORE_VERSION)-$(BITCOIN_CORE_PLATFORM).tar.gz
+	@tar -xzf $(BITCOIN_TESTING_DIR)/bitcoin-core.tar.gz -C $(BITCOIN_TESTING_DIR)
+	@cp $(BITCOIN_TESTING_DIR)/bitcoin-$(BITCOIN_CORE_VERSION)/bin/bitcoind $(BITCOIN_TESTING_BIN_DIR)/bitcoind
+	@cp $(BITCOIN_TESTING_DIR)/bitcoin-$(BITCOIN_CORE_VERSION)/bin/bitcoin-cli $(BITCOIN_TESTING_BIN_DIR)/bitcoin-cli
+	@rm -rf $(BITCOIN_TESTING_DIR)/bitcoin-$(BITCOIN_CORE_VERSION) $(BITCOIN_TESTING_DIR)/bitcoin-core.tar.gz
+	@touch $(BITCOIN_CORE_STAMP)
+
+# Clones and builds Blockstream's electrs fork (`new-index` branch) — the
+# one with `--http-addr` Esplora REST support, unlike upstream
+# `romanz/electrs`, which is Electrum-only. No prebuilt binary exists for
+# it, so this is a from-source `cargo build --release`, taking a few
+# minutes the first time (rocksdb + jemalloc; no cmake required).
+$(ELECTRS_STAMP):
+	@echo "==> Cloning + building electrs (Blockstream fork, new-index branch)"
+	@rm -rf $(BITCOIN_TESTING_DIR)/electrs-src
+	@git clone --branch new-index --depth 1 $(ELECTRS_REPO) $(BITCOIN_TESTING_DIR)/electrs-src
+	@cd $(BITCOIN_TESTING_DIR)/electrs-src && $(CARGO) build --release --bin electrs
+	@mkdir -p $(BITCOIN_TESTING_BIN_DIR)
+	@cp $(BITCOIN_TESTING_DIR)/electrs-src/target/release/electrs $(BITCOIN_TESTING_BIN_DIR)/electrs
+	@touch $(ELECTRS_STAMP)
 
 # --- test: Rust test suite, host target only --------------------------------
 

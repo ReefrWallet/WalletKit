@@ -40,16 +40,29 @@ actor BitcoinAddressResolver {
 
     /// Every address discovered so far for `chain` (`0` external, `1`
     /// change), extending discovery first if this chain hasn't been
-    /// scanned yet.
+    /// scanned yet, or re-checking previously-unused addresses for new
+    /// activity otherwise (see ``refreshTrailingUnused(chain:)``).
     func addresses(chain: UInt32) async throws -> [DerivedAddress] {
         if discovered[chain] == nil {
             try await extend(chain: chain)
+        } else {
+            try await refreshTrailingUnused(chain: chain)
         }
         return discovered[chain] ?? []
     }
 
-    /// Every discovered address across both chains.
+    /// Every discovered address across both chains — just chain `0`'s one
+    /// entry for a ``BitcoinScriptType/singleAddress`` descriptor, since
+    /// `deriveAddress(chain:index:)` returns the same address regardless
+    /// of `chain` for one of those: concatenating chain `0` and chain `1`
+    /// unconditionally, the way a normal xpub-rooted descriptor needs,
+    /// would double-count that one address's balance/UTXOs instead of
+    /// just listing it twice.
     func allAddresses() async throws -> [DerivedAddress] {
+        guard descriptor.scriptType != .singleAddress else {
+            return try await addresses(chain: 0)
+        }
+
         let external = try await addresses(chain: 0)
         let change = try await addresses(chain: 1)
         return external + change
@@ -90,6 +103,45 @@ actor BitcoinAddressResolver {
     }
 
     // MARK: - Private
+
+    /// Re-queries the backend for every address on `chain` still cached
+    /// as unused — "used" is monotonic (history only ever grows, so a
+    /// used address never needs re-checking), but a first-unused address
+    /// this same resolver handed out earlier (e.g. as a change address)
+    /// can gain history between calls, and the cache populated once by
+    /// ``extend(chain:)`` never notices that on its own. Extends the
+    /// gap-limit window further if any of them turned out to have
+    /// become used, so the window's still `gapLimit` consecutive unused
+    /// past the new last-used index.
+    private func refreshTrailingUnused(chain: UInt32) async throws {
+        guard descriptor.scriptType != .singleAddress else {
+            // The one wrapped address can only go unused → used, and
+            // `firstUnused`/`allAddresses` don't care about staleness
+            // in the used → used direction, so nothing to refresh once
+            // it's already marked used; if still unused, re-check it in
+            // case it was funded since the last call.
+            guard let only = discovered[chain]?.first, !only.isUsed else { return }
+            let history = try await backend.history(of: only.address)
+            guard !history.isEmpty else { return }
+            discovered[chain] = [DerivedAddress(address: only.address, chain: chain, index: 0, isUsed: true)]
+            return
+        }
+
+        guard var addresses = discovered[chain] else { return }
+        var becameUsed = false
+
+        for i in addresses.indices where !addresses[i].isUsed {
+            let history = try await backend.history(of: addresses[i].address)
+            guard !history.isEmpty else { continue }
+            addresses[i] = DerivedAddress(address: addresses[i].address, chain: chain, index: addresses[i].index, isUsed: true)
+            becameUsed = true
+        }
+
+        discovered[chain] = addresses
+        if becameUsed {
+            try await extend(chain: chain)
+        }
+    }
 
     /// Derives and checks addresses starting at the next undiscovered
     /// index for `chain`, continuing until `gapLimit` consecutive unused

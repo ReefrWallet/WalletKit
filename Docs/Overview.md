@@ -6,7 +6,10 @@ via UniFFI. This document covers mnemonic-based key management plus
 hardware wallets (Trezor first) as a second, first-class key source, plus
 Ethereum address derivation and transaction signing, and Sui address
 derivation, as the first concrete chain clients (Sui transaction signing
-isn't speced yet). Other chain clients (Bitcoin, Tron, Solana, Cardano)
+isn't speced yet). Bitcoin (address/descriptor encoding, PSBT assembly,
+signing, Electrum/Esplora clients, Trezor `SignTx`) has since shipped as a
+third — see `Docs/Decisions/ADR-010.md` for its design decisions rather
+than duplicating them here. Other chain clients (Tron, Solana, Cardano)
 are a later phase and are called out below only as extension points.
 
 

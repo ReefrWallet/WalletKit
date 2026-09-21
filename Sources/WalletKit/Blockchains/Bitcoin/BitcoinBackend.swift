@@ -6,6 +6,19 @@
 import Foundation
 import WalletKitRust
 
+extension Data {
+    /// Plain (non-`0x`-prefixed) lowercase hex — what Bitcoin's wire
+    /// protocols expect (Electrum's `blockchain.transaction.broadcast`,
+    /// Esplora's `POST /tx`), unlike Ethereum's `0x`-prefixed convention
+    /// (``hexEncoded``, in `HexCoding.swift`). Mixing the two up here
+    /// isn't just cosmetic — bitcoind's raw-transaction decoder reads the
+    /// leading `"0x"` as if it were transaction bytes and misparses the
+    /// whole stream, rather than cleanly rejecting it.
+    var bitcoinHexEncoded: String {
+        map { String(format: "%02x", $0) }.joined()
+    }
+}
+
 /// One unspent output at an address this account controls.
 public struct BitcoinUTXO: Sendable, Equatable {
     public let txid: String

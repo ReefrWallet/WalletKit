@@ -105,7 +105,7 @@ struct EsploraBackend: BitcoinBackend {
     }
 
     func broadcast(rawTransaction: Data) async throws -> String {
-        try await client.broadcast(rawTransactionHex: rawTransaction.hexEncoded)
+        try await client.broadcast(rawTransactionHex: rawTransaction.bitcoinHexEncoded)
     }
 
     func headsStream() -> AsyncThrowingStream<BlockchainTransactionHead, any Swift.Error> {

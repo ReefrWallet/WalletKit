@@ -5,6 +5,7 @@
 
 import Foundation
 import CryptoKit
+import WalletKitRust
 
 /// Typed wrappers over ``ElectrumConnection``'s raw JSON-RPC calls, for
 /// the subset of the Electrum protocol this crate needs.
@@ -46,8 +47,6 @@ struct ElectrumClient: Sendable {
 
     struct DecodedTransaction {
         let txid: String
-        let confirmations: UInt64?
-        let blockTime: UInt64?
         let inputs: [DecodedInput]
         let outputs: [DecodedOutput]
     }
@@ -95,43 +94,25 @@ struct ElectrumClient: Sendable {
         }
     }
 
-    /// `blockchain.transaction.get` with `verbose: true` — a bitcoind-style
-    /// decoded transaction. Unlike Esplora, this gives each input's own
-    /// `(txid, vout)` but not the value/scriptPubkey it spent — callers
-    /// needing that must look up the referenced previous transaction
-    /// themselves (see ``ElectrumBackend/transaction(txid:)``).
+    /// Decodes `txid`'s transaction ourselves from `rawTransaction(txid:)`'s
+    /// raw bytes, via `bitcoinDecodeTransaction`, rather than trusting the
+    /// server's own verbose JSON decoding (`blockchain.transaction.get`
+    /// with `verbose: true`) — Blockstream's `electrs` never implemented
+    /// that mode (`// FIXME: implement verbose support` in its own
+    /// source), so relying on it breaks against a very common real
+    /// Electrum server. The cost: no confirmation count or block time,
+    /// which verbose mode used to report — callers needing a
+    /// transaction's height should prefer `history(scripthash:)`'s own
+    /// entry instead (see ``ElectrumBackend/transaction(txid:)``), and
+    /// callers needing an input's spent value/scriptPubkey must look up
+    /// the referenced previous transaction themselves, same as before.
     func transaction(txid: String) async throws -> DecodedTransaction {
-        let result = try await connection.call(method: "blockchain.transaction.get", params: [txid, true])
-        guard let dictionary = result as? [String: Any] else {
-            throw BlockchainClientError.decodingFailed(reason: "malformed transaction.get response")
-        }
-
-        let vin = dictionary["vin"] as? [[String: Any]] ?? []
-        let inputs: [DecodedInput] = vin.compactMap { entry in
-            guard let inputTxid = entry["txid"] as? String, let vout = (entry["vout"] as? NSNumber)?.uint32Value else {
-                return nil // coinbase input — no `txid`/`vout` to reference.
-            }
-            return DecodedInput(txid: inputTxid, vout: vout)
-        }
-
-        let vout = dictionary["vout"] as? [[String: Any]] ?? []
-        let outputs: [DecodedOutput] = try vout.map { entry in
-            guard let scriptPubkey = entry["scriptPubKey"] as? [String: Any],
-                  let scriptHex = scriptPubkey["hex"] as? String,
-                  let value = entry["value"] as? NSNumber else {
-                throw BlockchainClientError.decodingFailed(reason: "malformed transaction.get output")
-            }
-            // Electrum reports `value` in whole BTC (a decimal), not sats.
-            let valueSats = (value.doubleValue * 100_000_000).rounded()
-            return DecodedOutput(scriptPubkeyHex: scriptHex, valueSats: UInt64(valueSats))
-        }
+        let decoded = try bitcoinDecodeTransaction(raw: try await rawTransaction(txid: txid))
 
         return DecodedTransaction(
-            txid: dictionary["txid"] as? String ?? txid,
-            confirmations: (dictionary["confirmations"] as? NSNumber)?.uint64Value,
-            blockTime: (dictionary["blocktime"] as? NSNumber)?.uint64Value,
-            inputs: inputs,
-            outputs: outputs
+            txid: decoded.txid,
+            inputs: decoded.inputs.map { DecodedInput(txid: $0.txid, vout: $0.vout) },
+            outputs: decoded.outputs.map { DecodedOutput(scriptPubkeyHex: $0.scriptPubkey.bitcoinHexEncoded, valueSats: $0.valueSats) }
         )
     }
 

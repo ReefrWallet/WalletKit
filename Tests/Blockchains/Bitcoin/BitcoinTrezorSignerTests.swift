@@ -57,7 +57,9 @@ struct BitcoinTrezorSignerTests {
             let ownAddress = try descriptor.deriveAddress(chain: 0, index: 0)
             let ownPublicKey = try descriptor.derivePublicKey(chain: 0, index: 0)
             let recipient = try descriptor.deriveAddress(chain: 0, index: 1)
-            let funding = makeFundingTransaction(scriptPubkey: ownAddress.scriptPubkey(), valueSats: 100_000, nonce: 0xF0)
+            let funding = makeFundingTransaction(
+                scriptPubkey: ownAddress.scriptPubkey(), valueSats: 100_000, nonce: 0xF0
+            )
 
             let input = BitcoinPsbtInputFfi(
                 txid: funding.txid,

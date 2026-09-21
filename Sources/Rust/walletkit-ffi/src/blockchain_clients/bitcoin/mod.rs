@@ -7,12 +7,14 @@
 //! (encoding, sighash math, the taproot key tweak).
 
 mod address;
+mod decode;
 mod descriptor;
 mod network;
 mod psbt;
 mod signer;
 
 pub use address::BitcoinAddressFfi;
+pub use decode::{bitcoin_decode_transaction, BitcoinDecodedInputFfi, BitcoinDecodedOutputFfi, BitcoinDecodedTransactionFfi};
 pub use descriptor::{bitcoin_fingerprint, BitcoinDescriptorFfi, BitcoinScriptTypeFfi};
 pub use network::BitcoinNetworkFfi;
 pub use psbt::{

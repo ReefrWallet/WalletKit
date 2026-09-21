@@ -43,12 +43,12 @@ struct ElectrumBackend: BitcoinBackend {
     }
 
     /// Hydrates each input's spent value/scriptPubkey by looking up its
-    /// own previous transaction — Electrum's `verbose` transaction
-    /// decoding gives each input's `(txid, vout)` but not what it spent,
-    /// unlike Esplora's `vin[].prevout`. This costs one extra round trip
-    /// per input; a persistent cache of the account's own previously seen
-    /// outputs would avoid it for our own UTXOs, but isn't implemented
-    /// yet.
+    /// own previous transaction — decoding a raw transaction ourselves
+    /// (see ``ElectrumClient/transaction(txid:)``) gives each input's
+    /// `(txid, vout)` but not what it spent, unlike Esplora's
+    /// `vin[].prevout`. This costs one extra round trip per input; a
+    /// persistent cache of the account's own previously seen outputs
+    /// would avoid it for our own UTXOs, but isn't implemented yet.
     func transaction(txid: String) async throws -> BitcoinBackendTransaction {
         let decoded = try await client.transaction(txid: txid)
 
@@ -66,14 +66,14 @@ struct ElectrumBackend: BitcoinBackend {
             (scriptPubkey: try Data(hexString: output.scriptPubkeyHex), valueSats: output.valueSats)
         }
 
-        // `confirmations == nil` (key absent) and `confirmations == 0`
-        // both mean unconfirmed; Electrum gives no block height directly
-        // here, only a confirmation count, so height is left `nil` for
-        // any transaction not yet confirmed — callers needing the exact
-        // height for a confirmed transaction should prefer the
-        // `blockchain.scripthash.get_history` entry's height instead.
-        let blockTime = decoded.blockTime.map { Date(timeIntervalSince1970: TimeInterval($0)) }
-        return BitcoinBackendTransaction(txid: decoded.txid, height: nil, blockTime: blockTime, inputs: inputs, outputs: outputs)
+        // Decoding the raw transaction ourselves (rather than trusting
+        // the server's verbose JSON — see ``ElectrumClient/transaction(txid:)``
+        // for why) gives no confirmation count or block time at all —
+        // callers needing either should prefer
+        // `blockchain.scripthash.get_history`'s own entry (for height) or
+        // do without (Electrum has no timestamp source outside a block
+        // header fetch, not implemented here).
+        return BitcoinBackendTransaction(txid: decoded.txid, height: nil, blockTime: nil, inputs: inputs, outputs: outputs)
     }
 
     func rawTransaction(txid: String) async throws -> Data {
@@ -85,7 +85,7 @@ struct ElectrumBackend: BitcoinBackend {
     }
 
     func broadcast(rawTransaction: Data) async throws -> String {
-        try await client.broadcast(rawTransactionHex: rawTransaction.hexEncoded)
+        try await client.broadcast(rawTransactionHex: rawTransaction.bitcoinHexEncoded)
     }
 
     func headsStream() -> AsyncThrowingStream<BlockchainTransactionHead, any Swift.Error> {

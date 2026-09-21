@@ -107,7 +107,9 @@ struct BitcoinTransactionBuilderTests {
         let (recipient, _, _) = try makeAccount(network: .regtest, scriptType: .p2wpkh)
 
         let fundingAddress = try sender.deriveAddress(chain: 0, index: 0)
-        let funding = makeFundingTransaction(scriptPubkey: fundingAddress.scriptPubkey(), valueSats: 100_000, nonce: 0xC0)
+        let funding = makeFundingTransaction(
+            scriptPubkey: fundingAddress.scriptPubkey(), valueSats: 100_000, nonce: 0xC0
+        )
         let backend = MockBitcoinBackend()
         await backend.seed(scriptPubkey: fundingAddress.scriptPubkey(), utxos: [
             BitcoinUTXO(
@@ -118,7 +120,7 @@ struct BitcoinTransactionBuilderTests {
                 chain: 0,
                 index: 0,
                 confirmed: true
-            ),
+            )
         ])
         await backend.seedRawTransaction(txid: funding.txid, raw: funding.raw)
 
@@ -150,7 +152,9 @@ struct BitcoinTransactionBuilderTests {
         let (recipient, _, _) = try makeAccount(network: .regtest, scriptType: .p2tr)
 
         let fundingAddress = try sender.deriveAddress(chain: 0, index: 0)
-        let funding = makeFundingTransaction(scriptPubkey: fundingAddress.scriptPubkey(), valueSats: 100_000, nonce: 0xD0)
+        let funding = makeFundingTransaction(
+            scriptPubkey: fundingAddress.scriptPubkey(), valueSats: 100_000, nonce: 0xD0
+        )
         let backend = MockBitcoinBackend()
         await backend.seed(scriptPubkey: fundingAddress.scriptPubkey(), utxos: [
             BitcoinUTXO(
@@ -161,7 +165,7 @@ struct BitcoinTransactionBuilderTests {
                 chain: 0,
                 index: 0,
                 confirmed: true
-            ),
+            )
         ])
         await backend.seedRawTransaction(txid: funding.txid, raw: funding.raw)
 
@@ -208,10 +212,9 @@ struct BitcoinTransactionBuilderTests {
 
     @Test func signerInitRejectsASingleAddressDescriptor() throws {
         let seed = Mnemonic.generate().toSeed()
-        let watchOnly = try BitcoinDescriptor(
-            address: try makeAccount(network: .regtest, scriptType: .p2wpkh).descriptor.deriveAddress(chain: 0, index: 0).string(),
-            network: .regtest
-        )
+        let fundingAddress = try makeAccount(network: .regtest, scriptType: .p2wpkh)
+            .descriptor.deriveAddress(chain: 0, index: 0)
+        let watchOnly = try BitcoinDescriptor(address: fundingAddress.string(), network: .regtest)
         let path = try DerivationPath.bitcoinAccount(network: .regtest, scriptType: .p2wpkh, accountIndex: 0)
 
         #expect(throws: WalletKitError.self) {
