@@ -142,6 +142,7 @@ let project = Project(
     targets: [walletKitRust, walletKitGRPC, walletKit, walletKitTesting, walletKitTestsMac],
     schemes: schemes,
     additionalFiles: [
+        ".github/**/*",
         "*.md",
         "Docs/**/*",
         "Sources/Rust/walletkit-ffi/**/*",

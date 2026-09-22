@@ -77,6 +77,13 @@ public final class Mnemonic: MnemonicProtocol {
         }
     }
 
+    /// Reconstructs a mnemonic from the original BIP-39 entropy.
+    public static func fromEntropy(_ entropy: Data, wordlist: Wordlist = .english) throws -> Mnemonic {
+        try remappingWalletKitError {
+            Mnemonic(raw: try MnemonicFfi.fromEntropy(entropy: entropy, wordlist: wordlist))
+        }
+    }
+
     /// The space-separated recovery phrase, e.g. `"abandon abandon ... art"`.
     ///
     /// - Warning: This is as sensitive as the wallet's private keys —
@@ -90,6 +97,9 @@ public final class Mnemonic: MnemonicProtocol {
     /// The BIP39 wordlist ``phrase``'s words were drawn from.
     public var wordlist: Wordlist { raw.wordlist() }
 
+    /// The original BIP-39 entropy used for Cardano's Icarus derivation.
+    public var entropy: Data { raw.entropy() }
+
     /// Derives the 64-byte BIP39 seed for this mnemonic.
     ///
     /// - Parameter passphrase: The optional BIP39 "25th word". Different
@@ -98,6 +108,39 @@ public final class Mnemonic: MnemonicProtocol {
     /// - Returns: The derived ``Seed``, ready for master-key derivation.
     public func toSeed(passphrase: String = "") -> Seed {
         Seed(raw: raw.toSeed(passphrase: passphrase))
+    }
+}
+
+public extension Wordlist {
+    init?(storageIdentifier: String) {
+        switch storageIdentifier {
+        case "chineseSimplified": self = .chineseSimplified
+        case "chineseTraditional": self = .chineseTraditional
+        case "czech": self = .czech
+        case "english": self = .english
+        case "french": self = .french
+        case "italian": self = .italian
+        case "japanese": self = .japanese
+        case "korean": self = .korean
+        case "portuguese": self = .portuguese
+        case "spanish": self = .spanish
+        default: return nil
+        }
+    }
+
+    var storageIdentifier: String {
+        switch self {
+        case .chineseSimplified: "chineseSimplified"
+        case .chineseTraditional: "chineseTraditional"
+        case .czech: "czech"
+        case .english: "english"
+        case .french: "french"
+        case .italian: "italian"
+        case .japanese: "japanese"
+        case .korean: "korean"
+        case .portuguese: "portuguese"
+        case .spanish: "spanish"
+        }
     }
 }
 

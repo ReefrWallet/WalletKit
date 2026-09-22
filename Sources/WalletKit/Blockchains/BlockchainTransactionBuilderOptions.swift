@@ -47,6 +47,11 @@ public enum BlockchainTransactionBuilderOptions: Sendable {
     /// Only meaningful for Bitcoin — other chains ignore this.
     case bitcoinFeeOverride(feeRateSatPerVByte: UInt64?)
 
+    /// Sets the lovelace carried by a Cardano native-asset recipient output.
+    /// ADA transfers ignore this value; token outputs must satisfy the ledger's
+    /// minimum-ADA requirement.
+    case cardanoRecipientLovelace(UInt64?)
+
     /// Caps the SUN a TRC-20 smart-contract call may consume for Energy and
     /// Bandwidth. This is a spending limit, not a validator priority fee.
     case tronFeeLimit(UInt64?)

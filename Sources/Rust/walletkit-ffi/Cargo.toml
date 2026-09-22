@@ -61,6 +61,7 @@ bip39 = { version = "2", features = [
     "spanish",
 ] }
 bs58 = { version = "0.5", features = ["check"] }
+cardano-serialization-lib = "17.0.0"
 ed25519-dalek = "2"
 hex = "0.4"
 hmac = "0.12"

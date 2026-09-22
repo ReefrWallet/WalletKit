@@ -6,7 +6,7 @@ use std::sync::{
 use tokio::sync::oneshot;
 use trezor_client::{protos, AvailableDevice};
 use walletkit_hardware::{
-    EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
+    CardanoTxFields, CardanoWitness, EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     HardwareBitcoinNetwork, HardwareButtonRequest, HardwareDeviceDelegate, HardwareError, HardwarePathSegment,
     SolanaTxFields, TronTxFields,
 };
@@ -45,6 +45,8 @@ enum Command {
         fields: SolanaTxFields,
         reply: oneshot::Sender<Result<Vec<u8>, HardwareError>>,
     },
+    CardanoXpub { path: Vec<HardwarePathSegment>, reply: oneshot::Sender<Result<String, HardwareError>> },
+    CardanoSignTx { fields: CardanoTxFields, reply: oneshot::Sender<Result<Vec<CardanoWitness>, HardwareError>> },
     BitcoinXpub {
         path: Vec<HardwarePathSegment>,
         reply: oneshot::Sender<Result<String, HardwareError>>,
@@ -156,6 +158,14 @@ impl DeviceWorker {
                         let result = super::device::solana_sign_tx(&mut trezor, &path, fields, &delegate, &runtime);
                         let _ = reply.send(result);
                     }
+                    Command::CardanoXpub { path, reply } => {
+                        let result = super::device::cardano_xpub(&mut trezor, &path, &delegate, &runtime);
+                        let _ = reply.send(result);
+                    }
+                    Command::CardanoSignTx { fields, reply } => {
+                        let result = super::device::cardano_sign_tx(&mut trezor, fields, &delegate, &runtime);
+                        let _ = reply.send(result);
+                    }
                     Command::BitcoinXpub { path, reply } => {
                         let result = super::device::bitcoin_xpub(&mut trezor, &path, &delegate, &runtime);
                         let _ = reply.send(result);
@@ -241,6 +251,18 @@ impl DeviceWorker {
         self.command_tx
             .send(Command::SolanaSignTx { path, fields, reply: reply_tx })
             .map_err(|_| HardwareError::Disconnected)?;
+        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+    }
+
+    pub(super) async fn cardano_xpub(&self, path: Vec<HardwarePathSegment>) -> Result<String, HardwareError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx.send(Command::CardanoXpub { path, reply: reply_tx }).map_err(|_| HardwareError::Disconnected)?;
+        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+    }
+
+    pub(super) async fn cardano_sign_tx(&self, fields: CardanoTxFields) -> Result<Vec<CardanoWitness>, HardwareError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx.send(Command::CardanoSignTx { fields, reply: reply_tx }).map_err(|_| HardwareError::Disconnected)?;
         reply_rx.await.map_err(|_| HardwareError::Disconnected)?
     }
 

@@ -1,54 +1,3 @@
-# WalletKit — top-level Makefile
-#
-# Targets:
-#   make walletkit-ffi   Build the walletkit-ffi Rust crate for macOS,
-#                        iOS device, and iOS simulator, and package the
-#                        result as an XCFramework (Frameworks/) + Swift
-#                        bindings (Sources/Generated/), consumed by the
-#                        WalletKitRust target.
-#
-#   make sui-grpc        Generate Swift bindings (Sources/Generated/gRPC/)
-#                        for Sui's gRPC API from the Sources/gRPC/
-#                        sui-rpc-api-v2 submodule's .proto files, consumed
-#                        by the WalletKitGRPC target. Independent of
-#                        walletkit-ffi — a second, protoc-based codegen
-#                        pipeline alongside the Rust/UniFFI one.
-#
-#   make bitcoin-testing Provisions `bitcoind`/`bitcoin-cli` (downloaded)
-#                        and `electrs` (Blockstream's `new-index` fork,
-#                        built from source — the one with an Esplora-
-#                        compatible `--http-addr`, unlike upstream
-#                        `romanz/electrs`) into .build/bitcoin-testing/bin/,
-#                        consumed by WalletKitTesting's `BitcoinNode` for
-#                        the regtest end-to-end suite
-#                        (Tests/Blockchains/Bitcoin/BitcoinRegtestTests.swift).
-#                        Not part of `make all` — opt in explicitly, since
-#                        the electrs build alone takes a few minutes the
-#                        first time. Idempotent: re-running does nothing
-#                        once .build/bitcoin-testing/bin/ is populated.
-#
-#   make solana-testing  Downloads the Agave release tarball (bundles
-#                        `solana-test-validator`/`solana`/`solana-keygen`/
-#                        `spl-token`) into .build/solana-testing/bin/,
-#                        consumed by WalletKitTesting's `SolanaNode` for
-#                        the localnet end-to-end suite
-#                        (Tests/Blockchains/Solana/SolanaLocalnetTests.swift).
-#                        Not part of `make all`. Idempotent: re-running
-#                        does nothing once .build/solana-testing/bin/ is
-#                        populated.
-#
-#   make test            Run the Rust test suite (cargo test), host target
-#                        only — independent of walletkit-ffi.
-#
-#   make all             walletkit-ffi, sui-grpc, then test. (default target)
-#
-#   make clean           Remove all build output (.build/, Frameworks/,
-#                        generated Sources/Generated/*.swift and
-#                        Sources/Generated/gRPC/*.swift, and
-#                        Rust/target/) plus Tuist-generated Xcode artifacts
-#                        (Derived/, *.xcodeproj, *.xcworkspace) — preserves
-#                        the hand-written sources under Sources/Static/.
-#
 # Requires on the host machine:
 #   - Rust via rustup (this drives `rustup target add` for you)
 #   - Xcode command line tools (xcodebuild, lipo)
@@ -59,16 +8,15 @@
 #     `make bitcoin-testing`
 #   - `git submodule update --init --recursive` once after cloning, to
 #     fetch Sources/gRPC/sui-rpc-api-v2's .proto files
-#
-# See Rust/README.md for the crate this wraps and Docs/Overview.md for the
-# overall architecture.
 
 RUST_BIN_DIR := $(HOME)/.cargo/bin
 export PATH := $(RUST_BIN_DIR):$(PATH)
 
 CARGO ?= $(shell command -v cargo 2>/dev/null || echo $(RUST_BIN_DIR)/cargo)
 RUSTUP ?= $(shell command -v rustup 2>/dev/null || echo $(RUST_BIN_DIR)/rustup)
-RUST_DIR := Sources/Rust
+
+SOURCES_DIR := Sources
+RUST_DIR := $(SOURCES_DIR)/Rust
 CRATE_DIR := $(RUST_DIR)/walletkit-ffi
 TARGET_DIR := $(RUST_DIR)/target
 LIB_NAME := libwalletkit_ffi.a
@@ -80,21 +28,18 @@ LIB_NAME := libwalletkit_ffi.a
 BUILD_DIR := .build
 BINDINGS_DIR := $(BUILD_DIR)/bindings
 HEADERS_DIR := $(BUILD_DIR)/headers
-SOURCES_DIR := Sources
 
 # Deliverables: what the rest of the project (Xcode/SPM) actually consumes.
 FRAMEWORKS_DIR := Frameworks
 GENERATED_SOURCES_DIR := $(SOURCES_DIR)/Generated/Bindings
 XCFRAMEWORK := $(FRAMEWORKS_DIR)/WalletKit.xcframework
 
-# --- sui-grpc: Sui gRPC API .proto -> Swift ---------------------------------
-
+# Sui gRPC API
 SUI_PROTO_SUBMODULE := $(SOURCES_DIR)/gRPC/sui-rpc-api-v2
 SUI_PROTO_DIR := $(SUI_PROTO_SUBMODULE)/proto
 GENERATED_GRPC_SOURCES_DIR := $(SOURCES_DIR)/Generated/gRPC
 
-# --- bitcoin-testing: bitcoind + electrs, for BitcoinNode ------------------
-
+# bitcoin-testing: bitcoind + electrs, for BitcoinNode
 BITCOIN_CORE_VERSION := 29.0
 UNAME_ARCH := $(shell uname -m)
 ifeq ($(UNAME_ARCH),arm64)
@@ -108,8 +53,6 @@ BITCOIN_TESTING_BIN_DIR := $(BITCOIN_TESTING_DIR)/bin
 BITCOIN_CORE_STAMP := $(BITCOIN_TESTING_DIR)/.bitcoin-core-stamp
 ELECTRS_STAMP := $(BITCOIN_TESTING_DIR)/.electrs-stamp
 ELECTRS_REPO := https://github.com/Blockstream/electrs.git
-
-# --- solana-testing: solana-test-validator + CLI, for SolanaNode ----------
 
 # Agave (the maintained Solana validator fork) release used for
 # `solana-test-validator`/`solana`/`solana-keygen`/`spl-token` — no `mise`
@@ -145,13 +88,15 @@ IOS_DEVICE_LIB := $(TARGET_DIR)/$(IOS_DEVICE_TARGET)/release/$(LIB_NAME)
 # generated once, from whichever build finished first.
 BINDGEN_SOURCE_LIB := $(TARGET_DIR)/aarch64-apple-darwin/release/$(LIB_NAME)
 
-.DEFAULT_GOAL := all
+.DEFAULT_GOAL := spm
 .PHONY: all walletkit-ffi sui-grpc bitcoin-testing solana-testing test clean rust-targets
 
-all: spm test
+all: $(XCFRAMEWORK) test
 
 spm: walletkit-ffi sui-grpc
 	@swift build
+
+$(XCFRAMEWORK): spm
 
 # Internal helper, not one of the four requested targets: makes sure the
 # Apple cross-compilation targets are installed before building. Cheap and
@@ -160,6 +105,8 @@ rust-targets:
 	@for target in $(ALL_TARGETS); do \
 		$(RUSTUP) target add $$target >/dev/null 2>&1 || true; \
 	done
+
+test: rust-tests swift-tests
 
 walletkit-ffi: rust-targets
 	@echo "==> Building walletkit-ffi (release) for macOS + iOS device + iOS simulator"
@@ -267,23 +214,17 @@ $(SOLANA_RELEASE_STAMP):
 	@rm -rf $(SOLANA_TESTING_DIR)/solana-release $(SOLANA_TESTING_DIR)/solana-release.tar.bz2
 	@touch $(SOLANA_RELEASE_STAMP)
 
-# --- rust-test: Rust test suite, host target only ----------------------------
-
+# Rust test suite (from Cargo)
 rust-tests:
 	@echo "==> Running Rust tests"
 	@cd $(CRATE_DIR) && $(CARGO) test
 	@cd
 
-# --- swift-tests: Swift test suite (Package.swift), host target only --------
-
-swift-tests:
+# Swift test suite (from Package.swift)
+swift-tests: $(XCFRAMEWORK) bitcoin-testing solana-testing
 	@echo "==> Running Swift tests"
 	@swift test
 	@cd
-
-test: rust-tests swift-tests
-
-# --- clean -------------------------------------------------------------------
 
 clean:
 	@rm -rf $(BUILD_DIR) $(FRAMEWORKS_DIR) $(GENERATED_SOURCES_DIR) $(GENERATED_GRPC_SOURCES_DIR)

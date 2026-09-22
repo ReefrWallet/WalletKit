@@ -68,6 +68,20 @@ impl MnemonicFfi {
         })
     }
 
+    /// Reconstructs a mnemonic from its original BIP-39 entropy.
+    #[uniffi::constructor]
+    pub fn from_entropy(entropy: Vec<u8>, wordlist: Wordlist) -> Result<MnemonicFfi, WalletKitErrorFfi> {
+        let inner = Bip39Mnemonic::from_entropy_in(language(wordlist), &entropy)
+            .map_err(|_| WalletKitErrorFfi::InvalidEntropy)?;
+        let word_count = MnemonicWordCount::from_word_count(inner.word_count())
+            .expect("BIP39 mnemonics always have a supported word count");
+        Ok(MnemonicFfi {
+            inner,
+            word_count,
+            wordlist,
+        })
+    }
+
     pub fn phrase(&self) -> String {
         self.inner.to_string()
     }
@@ -78,6 +92,12 @@ impl MnemonicFfi {
 
     pub fn wordlist(&self) -> Wordlist {
         self.wordlist
+    }
+
+    /// The original BIP-39 entropy. Cardano's Icarus key hierarchy needs
+    /// this value rather than the derived 64-byte BIP-39 seed.
+    pub fn entropy(&self) -> Vec<u8> {
+        self.inner.to_entropy()
     }
 
     /// Derives the 64-byte BIP39 seed from this mnemonic + optional
@@ -105,6 +125,16 @@ mod tests {
             let master = seed.master_key(crate::common::CurveFfi::Secp256k1);
             assert_eq!(master.serialized_private().unwrap(), master_xprv, "entropy {entropy_hex}");
         }
+    }
+
+    #[test]
+    fn from_entropy_recreates_the_same_seed() {
+        let (entropy_hex, phrase, seed_hex, _) = english_vectors().into_iter().next().unwrap();
+        let entropy = hex::decode(entropy_hex).unwrap();
+        let mnemonic = MnemonicFfi::from_entropy(entropy, Wordlist::English).unwrap();
+
+        assert_eq!(mnemonic.phrase(), phrase);
+        assert_eq!(hex::encode(mnemonic.to_seed("TREZOR".to_string()).export_raw()), seed_hex);
     }
 
     #[test]

@@ -15,6 +15,7 @@ mod path;
 
 pub use delegate::{HardwareButtonRequest, HardwareDeviceDelegate, HardwareInputRequest};
 pub use device::{
+    CardanoAsset, CardanoTxFields, CardanoTxInput, CardanoTxOutput, CardanoWitness,
     EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     HardwareBitcoinNetwork, HardwareCurve, HardwareDevice, SolanaTokenAccountInfo, SolanaTxFields, TronContract,
     TronTxFields,

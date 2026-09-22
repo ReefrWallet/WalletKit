@@ -18,6 +18,7 @@
 //! chain client remains design-only.
 
 pub mod bitcoin;
+pub mod cardano;
 mod ethereum_abi;
 mod ethereum_address;
 mod ethereum_signer;
@@ -31,6 +32,13 @@ pub use bitcoin::{
     BitcoinDecodedOutputFfi, BitcoinDecodedTransactionFfi, BitcoinDescriptorFfi, BitcoinInputKindFfi,
     BitcoinNetworkFfi, BitcoinPsbtInputDerivationFfi, BitcoinPsbtInputFfi, BitcoinPsbtOutputFfi, BitcoinScriptTypeFfi,
     BitcoinSignerFfi,
+};
+pub use cardano::{
+    cardano_account_xpub_from_entropy, cardano_assemble_transaction, cardano_base_address, cardano_build_transfer,
+    cardano_sign_transaction, cardano_stake_address, cardano_validate_address, CardanoAssetFfi,
+    cardano_transaction_body_hash, CardanoWitnessFfi,
+    CardanoProtocolParametersFfi, CardanoSigningPathFfi, CardanoTransactionInputFfi,
+    CardanoTransactionOutputFfi, CardanoUnsignedTransactionFfi, CardanoUtxoFfi,
 };
 pub use ethereum_abi::{ethereum_function_selector, ethereum_keccak256};
 pub use ethereum_address::EthereumAddressFfi;

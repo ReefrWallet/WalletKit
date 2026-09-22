@@ -14,6 +14,25 @@ use crate::{
 
 use super::types::HardwareDeviceInfoFfi;
 
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CardanoSignTxFfi {
+    pub body_hash: Vec<u8>,
+    pub fee: u64,
+    pub inputs: Vec<CardanoInputFfi>,
+    pub network_id: u8,
+    pub outputs: Vec<CardanoOutputFfi>,
+    pub protocol_magic: u32,
+    pub ttl: Option<u64>,
+    pub witness_paths: Vec<DerivationPath>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CardanoInputFfi { pub output_index: u32, pub tx_hash: Vec<u8> }
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CardanoOutputFfi { pub address: String, pub assets: Vec<HardwareCardanoAssetFfi>, pub lovelace: u64 }
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct HardwareCardanoAssetFfi { pub name: Vec<u8>, pub policy_id: Vec<u8>, pub quantity: u64 }
+
 /// A connected hardware wallet — a source of public keys and signatures,
 /// read from / produced by the device rather than derived or computed
 /// in-process. Obtained from `HardwareDeviceManagerFfi::connect`.
@@ -111,6 +130,46 @@ impl HardwareDeviceFfi {
     ) -> Result<Vec<u8>, WalletKitErrorFfi> {
         let fields = to_solana_tx_fields(&transaction)?;
         self.inner.solana_sign_tx(to_hardware_segments(&path), fields).await.map_err(Into::into)
+    }
+
+    /// Reads the Cardano Icarus/CIP-1852 account xpub at `path`.
+    pub async fn cardano_xpub(&self, path: DerivationPath) -> Result<String, WalletKitErrorFfi> {
+        let xpub = self.inner.cardano_xpub(to_hardware_segments(&path)).await?;
+        crate::blockchain_clients::cardano::normalize_account_xpub(&xpub)
+    }
+
+    /// Signs a Cardano transaction through Trezor's structured transaction
+    /// protocol. The device's reconstructed body hash is verified before any
+    /// returned witnesses are accepted.
+    pub async fn cardano_sign_tx(
+        &self,
+        tx: CardanoSignTxFfi,
+    ) -> Result<Vec<crate::blockchain_clients::CardanoWitnessFfi>, WalletKitErrorFfi> {
+        let fields = hw::CardanoTxFields {
+            body_hash: tx.body_hash,
+            fee: tx.fee,
+            inputs: tx.inputs.into_iter().map(|input| hw::CardanoTxInput {
+                output_index: input.output_index,
+                tx_hash: input.tx_hash,
+            }).collect(),
+            network_id: tx.network_id,
+            outputs: tx.outputs.into_iter().map(|output| hw::CardanoTxOutput {
+                address: output.address,
+                assets: output.assets.into_iter().map(|asset| hw::CardanoAsset {
+                    name: asset.name,
+                    policy_id: asset.policy_id,
+                    quantity: asset.quantity,
+                }).collect(),
+                lovelace: output.lovelace,
+            }).collect(),
+            protocol_magic: tx.protocol_magic,
+            ttl: tx.ttl,
+            witness_paths: tx.witness_paths.iter().map(to_hardware_segments).collect(),
+        };
+        Ok(self.inner.cardano_sign_tx(fields).await?.into_iter().map(|witness| crate::blockchain_clients::CardanoWitnessFfi {
+            public_key: witness.public_key,
+            signature: witness.signature,
+        }).collect())
     }
 
     /// Reads the account-level extended public key (xpub, with its chain

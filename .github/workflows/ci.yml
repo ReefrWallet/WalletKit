@@ -28,18 +28,15 @@ jobs:
           brew install grpc-swift libusb pkg-config protobuf swift-protobuf
           protoc --version
 
-      - name: Install mise and local-node tools
-        run: |
-          curl https://mise.run | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.local/share/mise/shims" >> "$GITHUB_PATH"
-          "$HOME/.local/bin/mise" install
+      - name: Setup mise
+        uses: jdx/mise-action@v2
+        env:
+          MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate Swift inputs
-        run: make walletkit-ffi sui-grpc
+      - name: Install tools
+        run: mise install
+        env:
+          MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Run Rust tests
+      - name: Run tests
         run: make test
-
-      - name: Run Swift tests
-        run: swift test

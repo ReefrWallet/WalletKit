@@ -13,6 +13,7 @@ walletkit-hardware = { path = "../walletkit-hardware" }
 [target.'cfg(target_os = "macos")'.dependencies]
 trezor-client = { version = "0.1", default-features = false, features = [
     "bitcoin",
+    "cardano",
     "ethereum",
     "solana",
     "tron",

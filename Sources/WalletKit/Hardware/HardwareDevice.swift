@@ -47,6 +47,11 @@ public final class HardwareDevice: HardwareDeviceProtocol {
         try await remappingWalletKitError { PublicKey(raw: try await raw.publicKey(path: path, curve: curve.raw)) }
     }
 
+    /// Reads the Cardano Icarus/CIP-1852 account extended public key.
+    public func cardanoXpub(path: DerivationPath) async throws -> String {
+        try await remappingWalletKitError { try await raw.cardanoXpub(path: path) }
+    }
+
     /// Builds the ``Account`` for `blockchain` at index `account` from the
     /// device.
     ///

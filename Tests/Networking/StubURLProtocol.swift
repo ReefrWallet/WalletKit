@@ -31,6 +31,7 @@ final class StubURLProtocol: URLProtocol {
 
     private struct State {
         let response: StubResponse
+        let responsesByPath: [String: StubResponse]?
         var request: URLRequest?
         var body: Data?
     }
@@ -45,13 +46,33 @@ final class StubURLProtocol: URLProtocol {
     /// observe each other's stubbed response.
     static func makeSession(response: StubResponse) -> Session {
         let id = UUID()
-        lock.withLock { statesByID[id] = State(response: response) }
+        lock.withLock { statesByID[id] = State(response: response, responsesByPath: nil) }
 
+        let configuration = makeConfiguration(id: id)
+        return Session(urlSession: URLSession(configuration: configuration), id: id)
+    }
+
+    /// A session that selects a canned response by the request URL path.
+    /// Useful for clients whose single operation depends on several HTTP
+    /// endpoints, while retaining the per-session isolation of `makeSession`.
+    static func makeSession(responsesByPath: [String: StubResponse]) -> Session {
+        let id = UUID()
+        lock.withLock {
+            statesByID[id] = State(
+                response: .failure(.unknown),
+                responsesByPath: responsesByPath
+            )
+        }
+
+        let configuration = makeConfiguration(id: id)
+        return Session(urlSession: URLSession(configuration: configuration), id: id)
+    }
+
+    private static func makeConfiguration(id: UUID) -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
         configuration.httpAdditionalHeaders = [sessionIDHeader: id.uuidString]
-
-        return Session(urlSession: URLSession(configuration: configuration), id: id)
+        return configuration
     }
 
     private static func state(for id: UUID) -> State? {
@@ -65,11 +86,13 @@ final class StubURLProtocol: URLProtocol {
         guard
             let idString = request.value(forHTTPHeaderField: Self.sessionIDHeader),
             let id = UUID(uuidString: idString),
-            let response = Self.state(for: id)?.response
+            let state = Self.state(for: id)
         else {
             client?.urlProtocol(self, didFailWithError: URLError(.unknown))
             return
         }
+
+        let response = state.responsesByPath?[request.url?.path ?? ""] ?? state.response
 
         let body = Self.bodyData(of: request)
         let capturedRequest = request

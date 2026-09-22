@@ -91,26 +91,45 @@ public enum BitcoinNetwork: Codable, Equatable, Hashable, Sendable {
 
 public enum CardanoNetwork: Codable, Equatable, Hashable, Sendable {
     case mainnet
-    case testnet(UInt64)
+    case preprod
 
     public static var allNetworks: [WKBlockchain] {
-        [.cardano(.mainnet), .cardano(.testnet(0))]
+        [.cardano(.mainnet), .cardano(.preprod)]
     }
 
     public var name: String {
         switch self {
         case .mainnet: "Mainnet"
-        case let .testnet(magic):
-            switch magic {
-            case 1: "Preprod"
-            case 2: "Preview"
-            default: "Testnet (magic: \(magic))"
-            }
+        case .preprod: "Preprod"
         }
     }
 
+    var addressNetworkId: UInt8 {
+        self == .mainnet ? 1 : 0
+    }
+
     public var rpcURL: URL {
-        URL(string: "https://localhost")! // TODO
+        switch self {
+        case .mainnet:
+            URL(string: "https://cardano-mainnet.blockfrost.io/api/v0")!
+        case .preprod:
+            URL(string: "https://cardano-preprod.blockfrost.io/api/v0")!
+        }
+    }
+
+    public var storageIdentifier: String {
+        switch self {
+        case .mainnet: "mainnet"
+        case .preprod: "preprod"
+        }
+    }
+
+    init?(storageIdentifier: String) {
+        switch storageIdentifier {
+        case "mainnet": self = .mainnet
+        case "preprod": self = .preprod
+        default: return nil
+        }
     }
 }
 

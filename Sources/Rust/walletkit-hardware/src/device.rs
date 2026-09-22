@@ -104,6 +104,47 @@ pub struct SolanaTxFields {
     pub token_accounts: Vec<SolanaTokenAccountInfo>,
 }
 
+/// A Cardano transaction as Trezor's streamed signing protocol presents it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CardanoTxFields {
+    /// Blake2b-256 hash of the canonical transaction body the host built.
+    /// The device returns the same hash after its streamed reconstruction.
+    pub body_hash: Vec<u8>,
+    pub fee: u64,
+    pub inputs: Vec<CardanoTxInput>,
+    pub network_id: u8,
+    pub outputs: Vec<CardanoTxOutput>,
+    pub protocol_magic: u32,
+    pub ttl: Option<u64>,
+    pub witness_paths: Vec<Vec<HardwarePathSegment>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CardanoTxInput {
+    pub output_index: u32,
+    pub tx_hash: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CardanoTxOutput {
+    pub address: String,
+    pub assets: Vec<CardanoAsset>,
+    pub lovelace: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CardanoAsset {
+    pub name: Vec<u8>,
+    pub policy_id: Vec<u8>,
+    pub quantity: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CardanoWitness {
+    pub public_key: Vec<u8>,
+    pub signature: Vec<u8>,
+}
+
 /// Which Bitcoin network a `bitcoin_sign_psbt` call targets — mirrors
 /// `walletkit-ffi`'s `blockchain_clients::bitcoin::BitcoinNetworkFfi` so
 /// this crate doesn't need to depend on it (same reasoning as
@@ -167,6 +208,12 @@ pub trait HardwareDevice: Send + Sync {
         path: Vec<HardwarePathSegment>,
         fields: SolanaTxFields,
     ) -> Result<Vec<u8>, HardwareError>;
+
+    /// Reads the Cardano Icarus/CIP-1852 account extended public key.
+    async fn cardano_xpub(&self, path: Vec<HardwarePathSegment>) -> Result<String, HardwareError>;
+
+    /// Signs a structured Cardano transaction and returns verification-key witnesses.
+    async fn cardano_sign_tx(&self, fields: CardanoTxFields) -> Result<Vec<CardanoWitness>, HardwareError>;
 
     /// Reads the account-level extended public key (xpub, including its
     /// chain code) at `path` from the device, Base58Check-encoded with

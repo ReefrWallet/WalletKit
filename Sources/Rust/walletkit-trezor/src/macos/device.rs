@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use protobuf::MessageField;
 use trezor_client::{protos, Trezor};
 use walletkit_hardware::{
-    EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
+    CardanoTxFields, CardanoWitness, EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     HardwareBitcoinNetwork, HardwareButtonRequest, HardwareCurve, HardwareDevice as HardwareDeviceTrait,
     HardwareDeviceDelegate, HardwareDeviceInfo, HardwareError, HardwarePathSegment, SolanaTxFields,
     TronTxFields,
@@ -101,6 +101,14 @@ impl HardwareDeviceTrait for TrezorDevice {
         self.worker.solana_sign_tx(path, fields).await
     }
 
+    async fn cardano_xpub(&self, path: Vec<HardwarePathSegment>) -> Result<String, HardwareError> {
+        self.worker.cardano_xpub(path).await
+    }
+
+    async fn cardano_sign_tx(&self, fields: CardanoTxFields) -> Result<Vec<CardanoWitness>, HardwareError> {
+        self.worker.cardano_sign_tx(fields).await
+    }
+
     async fn bitcoin_xpub(&self, path: Vec<HardwarePathSegment>) -> Result<String, HardwareError> {
         self.worker.bitcoin_xpub(path).await
     }
@@ -137,6 +145,107 @@ pub(super) fn get_public_key(
         &HardwareButtonRequest::ConfirmPublicKey,
     )?;
     Ok(xpub.public_key.serialize().to_vec())
+}
+
+/// Reads Cardano's extended account key through the chain-specific request so
+/// the device applies Icarus derivation instead of SLIP-0010 Ed25519.
+pub(super) fn cardano_xpub(
+    trezor: &mut Trezor,
+    path: &[HardwarePathSegment],
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<String, HardwareError> {
+    let mut request = protos::CardanoGetPublicKey::new();
+    request.address_n = path.iter().map(HardwarePathSegment::to_address_n).collect();
+    request.set_derivation_type(protos::CardanoDerivationType::ICARUS);
+    let response = drive_interaction(
+        trezor.call(request, Box::new(|_, response: protos::CardanoPublicKey| Ok(response))),
+        delegate,
+        runtime,
+        &HardwareButtonRequest::ConfirmPublicKey,
+    )?;
+    response.xpub.ok_or_else(|| HardwareError::SigningFailed { reason: "Trezor returned an empty Cardano xpub".to_string() })
+}
+
+pub(super) fn cardano_sign_tx(
+    trezor: &mut Trezor,
+    fields: CardanoTxFields,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<Vec<CardanoWitness>, HardwareError> {
+    let mut init = protos::CardanoSignTxInit::new();
+    init.set_signing_mode(protos::CardanoTxSigningMode::ORDINARY_TRANSACTION);
+    init.set_inputs_count(fields.inputs.len() as u32);
+    init.set_outputs_count(fields.outputs.len() as u32);
+    init.set_fee(fields.fee);
+    init.set_network_id(fields.network_id as u32);
+    init.set_protocol_magic(fields.protocol_magic);
+    init.set_certificates_count(0);
+    init.set_withdrawals_count(0);
+    init.set_has_auxiliary_data(false);
+    init.set_witness_requests_count(fields.witness_paths.len() as u32);
+    init.set_minting_asset_groups_count(0);
+    init.set_collateral_inputs_count(0);
+    init.set_required_signers_count(0);
+    init.set_include_network_id(false);
+    init.set_tag_cbor_sets(true);
+    init.set_derivation_type(protos::CardanoDerivationType::ICARUS);
+    if let Some(ttl) = fields.ttl { init.set_ttl(ttl); }
+    drive_interaction(trezor.call(init, Box::new(|_, response: protos::CardanoTxItemAck| Ok(response))), delegate, runtime, &HardwareButtonRequest::ConfirmTransaction)?;
+    for input in fields.inputs {
+        let mut message = protos::CardanoTxInput::new();
+        message.set_prev_hash(input.tx_hash);
+        message.set_prev_index(input.output_index);
+        drive_interaction(trezor.call(message, Box::new(|_, response: protos::CardanoTxItemAck| Ok(response))), delegate, runtime, &HardwareButtonRequest::ConfirmTransaction)?;
+    }
+    for output in fields.outputs {
+        let mut asset_groups: Vec<(Vec<u8>, Vec<_>)> = Vec::new();
+        for asset in output.assets {
+            if let Some((_, tokens)) = asset_groups.iter_mut().find(|(policy_id, _)| *policy_id == asset.policy_id) {
+                tokens.push(asset);
+            } else {
+                asset_groups.push((asset.policy_id.clone(), vec![asset]));
+            }
+        }
+        let mut message = protos::CardanoTxOutput::new();
+        message.set_address(output.address);
+        message.set_amount(output.lovelace);
+        message.set_asset_groups_count(asset_groups.len() as u32);
+        drive_interaction(trezor.call(message, Box::new(|_, response: protos::CardanoTxItemAck| Ok(response))), delegate, runtime, &HardwareButtonRequest::ConfirmTransaction)?;
+        for (policy_id, assets) in asset_groups {
+            let mut group = protos::CardanoAssetGroup::new();
+            group.set_policy_id(policy_id);
+            group.set_tokens_count(assets.len() as u32);
+            drive_interaction(trezor.call(group, Box::new(|_, response: protos::CardanoTxItemAck| Ok(response))), delegate, runtime, &HardwareButtonRequest::ConfirmTransaction)?;
+            for asset in assets {
+                let mut token = protos::CardanoToken::new();
+                token.set_asset_name_bytes(asset.name);
+                token.set_amount(asset.quantity);
+                drive_interaction(trezor.call(token, Box::new(|_, response: protos::CardanoTxItemAck| Ok(response))), delegate, runtime, &HardwareButtonRequest::ConfirmTransaction)?;
+            }
+        }
+    }
+    let mut witnesses = Vec::with_capacity(fields.witness_paths.len());
+    for path in fields.witness_paths {
+        let mut request = protos::CardanoTxWitnessRequest::new();
+        request.path = path.iter().map(HardwarePathSegment::to_address_n).collect();
+        let response = drive_interaction(trezor.call(request, Box::new(|_, response: protos::CardanoTxWitnessResponse| Ok(response))), delegate, runtime, &HardwareButtonRequest::ConfirmTransaction)?;
+        let public_key = response.pub_key.ok_or_else(|| HardwareError::SigningFailed { reason: "Trezor returned an empty Cardano witness public key".to_string() })?;
+        let signature = response.signature.ok_or_else(|| HardwareError::SigningFailed { reason: "Trezor returned an empty Cardano witness signature".to_string() })?;
+        witnesses.push(CardanoWitness { public_key, signature });
+    }
+    let body_hash = drive_interaction(trezor.call(protos::CardanoTxHostAck::new(), Box::new(|_, response: protos::CardanoTxBodyHash| Ok(response))), delegate, runtime, &HardwareButtonRequest::ConfirmTransaction)?;
+    if body_hash.tx_hash != Some(fields.body_hash.clone()) {
+        return Err(HardwareError::SigningFailed {
+            reason: format!(
+                "Trezor reconstructed a different Cardano transaction body (expected {}, got {})",
+                hex::encode(fields.body_hash),
+                body_hash.tx_hash.map(hex::encode).unwrap_or_else(|| "none".to_string())
+            ),
+        });
+    }
+    drive_interaction(trezor.call(protos::CardanoTxHostAck::new(), Box::new(|_, response: protos::CardanoSignTxFinished| Ok(response))), delegate, runtime, &HardwareButtonRequest::ConfirmTransaction)?;
+    Ok(witnesses)
 }
 
 /// Runs on the device's worker thread. Hand-rolls the `EthereumSignTx`
