@@ -152,6 +152,11 @@ public enum TronNetwork: Codable, Equatable, Hashable, Sendable {
     }
 
     public var rpcURL: URL {
-        URL(string: "https://localhost")! // TODO
+        switch self {
+        case .mainnet:
+            URL(string: "https://api.trongrid.io")!
+        case .testnet:
+            URL(string: "https://nile.trongrid.io")!
+        }
     }
 }

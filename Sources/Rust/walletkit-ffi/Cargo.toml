@@ -62,12 +62,10 @@ hex = "0.4"
 hmac = "0.12"
 ripemd = "0.1"
 secp256k1 = { version = "0.31", features = ["recovery"] }
+serde_json = "1"
 sha2 = "0.10"
 thiserror = "2"
 zeroize = "1"
-
-[dev-dependencies]
-serde_json = "1"
 
 # Generates Swift (and other foreign-language) bindings from the built
 # library. Run with `cargo run --features cli --bin uniffi-bindgen --

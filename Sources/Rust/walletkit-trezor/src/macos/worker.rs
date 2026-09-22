@@ -8,6 +8,7 @@ use trezor_client::{protos, AvailableDevice};
 use walletkit_hardware::{
     EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     HardwareBitcoinNetwork, HardwareButtonRequest, HardwareDeviceDelegate, HardwareError, HardwarePathSegment,
+    TronTxFields,
 };
 
 use super::{error::map_trezor_error, interaction::drive_interaction};
@@ -32,6 +33,11 @@ enum Command {
         path: Vec<HardwarePathSegment>,
         fields: EthereumEIP1559TxFields,
         reply: oneshot::Sender<Result<EthereumEIP1559Signature, HardwareError>>,
+    },
+    TronSignTx {
+        path: Vec<HardwarePathSegment>,
+        fields: TronTxFields,
+        reply: oneshot::Sender<Result<Vec<u8>, HardwareError>>,
     },
     BitcoinXpub {
         path: Vec<HardwarePathSegment>,
@@ -132,6 +138,10 @@ impl DeviceWorker {
                         );
                         let _ = reply.send(result);
                     }
+                    Command::TronSignTx { path, fields, reply } => {
+                        let result = super::device::tron_sign_tx(&mut trezor, &path, fields, &delegate, &runtime);
+                        let _ = reply.send(result);
+                    }
                     Command::BitcoinXpub { path, reply } => {
                         let result = super::device::bitcoin_xpub(&mut trezor, &path, &delegate, &runtime);
                         let _ = reply.send(result);
@@ -184,6 +194,18 @@ impl DeviceWorker {
         let (reply_tx, reply_rx) = oneshot::channel::<Result<EthereumEIP1559Signature, HardwareError>>();
         self.command_tx
             .send(Command::EthereumSignTxEip1559 { path, fields, reply: reply_tx })
+            .map_err(|_| HardwareError::Disconnected)?;
+        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+    }
+
+    pub(super) async fn tron_sign_tx(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        fields: TronTxFields,
+    ) -> Result<Vec<u8>, HardwareError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx
+            .send(Command::TronSignTx { path, fields, reply: reply_tx })
             .map_err(|_| HardwareError::Disconnected)?;
         reply_rx.await.map_err(|_| HardwareError::Disconnected)?
     }

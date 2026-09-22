@@ -49,4 +49,28 @@ enum Base58 {
         let significant = Data(bytes.reversed().map { UInt8($0) })
         return Data(repeating: 0, count: leadingZeros) + significant
     }
+
+    static func encode(_ data: Data) -> String {
+        guard !data.isEmpty else {
+            return ""
+        }
+
+        var digits: [Int] = [0]
+        for byte in data {
+            var carry = Int(byte)
+            for index in 0..<digits.count {
+                let value = digits[index] * 256 + carry
+                digits[index] = value % 58
+                carry = value / 58
+            }
+            while carry > 0 {
+                digits.append(carry % 58)
+                carry /= 58
+            }
+        }
+
+        let leadingZeros = data.prefix(while: { $0 == 0 }).count
+        let encoded = digits.reversed().map { alphabet[$0] }
+        return String(repeating: "1", count: leadingZeros) + String(encoded)
+    }
 }

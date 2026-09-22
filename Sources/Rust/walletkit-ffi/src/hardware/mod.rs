@@ -12,7 +12,7 @@ mod manager;
 mod types;
 
 pub use delegate::HardwareDeviceDelegateFfi;
-pub use device::HardwareDeviceFfi;
+pub use device::{tron_raw_data, HardwareDeviceFfi};
 pub use manager::HardwareDeviceManagerFfi;
 pub use types::{
     HardwareButtonRequest, HardwareDeviceInfoFfi, HardwareInputRequest, HardwareTransportKindFfi, HardwareVendorFfi,

@@ -86,6 +86,17 @@ impl HardwareDeviceFfi {
         Ok(EthereumEIP1559SignatureFfi { y_parity: signature.y_parity, r: signature.r, s: signature.s })
     }
 
+    /// Signs the raw TronGrid transaction response on the device. WalletKit
+    /// currently constructs `TransferContract` and `TriggerSmartContract`.
+    pub async fn tron_sign_tx(
+        &self,
+        path: DerivationPath,
+        transaction: String,
+    ) -> Result<Vec<u8>, WalletKitErrorFfi> {
+        let fields = to_tron_tx_fields(&transaction)?;
+        self.inner.tron_sign_tx(to_hardware_segments(&path), fields).await.map_err(Into::into)
+    }
+
     /// Reads the account-level extended public key (xpub, with its chain
     /// code) at `path` from the device, Base58Check-encoded with mainnet
     /// (`xpub`) version bytes regardless of which Bitcoin network `path`
@@ -167,6 +178,124 @@ fn to_ethereum_eip1559_tx_fields(tx: EthereumEIP1559SignTxFfi) -> Result<hw::Eth
         data: tx.data,
         chain_id: tx.chain_id,
     })
+}
+
+fn to_tron_tx_fields(transaction: &str) -> Result<hw::TronTxFields, WalletKitErrorFfi> {
+    let value: serde_json::Value = serde_json::from_str(transaction).map_err(|error| WalletKitErrorFfi::SigningFailed {
+        reason: format!("invalid Tron transaction JSON: {error}"),
+    })?;
+    let raw = value.get("raw_data").unwrap_or(&value);
+    let bytes = |name: &str| -> Result<Vec<u8>, WalletKitErrorFfi> {
+        let value = raw.get(name).and_then(serde_json::Value::as_str).ok_or_else(|| WalletKitErrorFfi::SigningFailed {
+            reason: format!("Tron transaction is missing {name}"),
+        })?;
+        hex::decode(value).map_err(|_| WalletKitErrorFfi::SigningFailed { reason: format!("invalid Tron {name} hex") })
+    };
+    let number = |name: &str| -> Result<u64, WalletKitErrorFfi> {
+        raw.get(name).and_then(serde_json::Value::as_u64).ok_or_else(|| WalletKitErrorFfi::SigningFailed {
+            reason: format!("Tron transaction is missing {name}"),
+        })
+    };
+    let contract = raw.get("contract").and_then(serde_json::Value::as_array).and_then(|contracts| contracts.first())
+        .ok_or_else(|| WalletKitErrorFfi::SigningFailed { reason: "Tron transaction has no contract".to_string() })?;
+    let payload = contract.pointer("/parameter/value").ok_or_else(|| WalletKitErrorFfi::SigningFailed {
+        reason: "Tron transaction contract has no value".to_string(),
+    })?;
+    let address = |value: &serde_json::Value, name: &str| -> Result<Vec<u8>, WalletKitErrorFfi> {
+        let text = value.get(name).and_then(serde_json::Value::as_str).ok_or_else(|| WalletKitErrorFfi::SigningFailed {
+            reason: format!("Tron contract is missing {name}"),
+        })?;
+        hex::decode(text).map_err(|_| WalletKitErrorFfi::SigningFailed { reason: format!("invalid Tron {name} hex") })
+    };
+    let owner_address = address(payload, "owner_address")?;
+    let contract = match contract.get("type").and_then(serde_json::Value::as_str) {
+        Some("TransferContract") => hw::TronContract::Transfer {
+            owner_address,
+            to_address: address(payload, "to_address")?,
+            amount: payload.get("amount").and_then(serde_json::Value::as_u64).ok_or_else(|| WalletKitErrorFfi::SigningFailed {
+                reason: "Tron transfer has an invalid amount".to_string(),
+            })?,
+        },
+        Some("TriggerSmartContract") => hw::TronContract::TriggerSmartContract {
+            owner_address,
+            contract_address: address(payload, "contract_address")?,
+            data: address(payload, "data")?,
+        },
+        _ => return Err(WalletKitErrorFfi::UnsupportedDevice { reason: "Trezor Tron signing supports only transfer and smart-contract calls".to_string() }),
+    };
+    Ok(hw::TronTxFields {
+        ref_block_bytes: bytes("ref_block_bytes")?,
+        ref_block_hash: bytes("ref_block_hash")?,
+        expiration: number("expiration")?,
+        timestamp: number("timestamp")?,
+        fee_limit: raw.get("fee_limit").and_then(serde_json::Value::as_u64),
+        data: raw.get("data").and_then(serde_json::Value::as_str).map(hex::decode).transpose().map_err(|_| WalletKitErrorFfi::SigningFailed { reason: "invalid Tron memo hex".to_string() })?,
+        contract,
+    })
+}
+
+/// Encodes the `raw_data` protobuf bytes that a Tron node and Trezor sign.
+/// Kept beside the hardware parser so the signed message can be verified
+/// against the device public key without a second JSON interpretation.
+#[uniffi::export]
+pub fn tron_raw_data(transaction: String) -> Result<Vec<u8>, WalletKitErrorFfi> {
+    let fields = to_tron_tx_fields(&transaction)?;
+    let mut output = Vec::new();
+    let contract = match fields.contract {
+        hw::TronContract::Transfer { owner_address, to_address, amount } => {
+            let mut transfer = Vec::new();
+            wire_bytes(&mut transfer, 1, &owner_address);
+            wire_bytes(&mut transfer, 2, &to_address);
+            wire_varint(&mut transfer, 3, amount);
+            (1, "type.googleapis.com/protocol.TransferContract", transfer)
+        }
+        hw::TronContract::TriggerSmartContract { owner_address, contract_address, data } => {
+            let mut trigger = Vec::new();
+            wire_bytes(&mut trigger, 1, &owner_address);
+            wire_bytes(&mut trigger, 2, &contract_address);
+            wire_bytes(&mut trigger, 4, &data);
+            (31, "type.googleapis.com/protocol.TriggerSmartContract", trigger)
+        }
+    };
+    let mut any = Vec::new();
+    wire_bytes(&mut any, 1, contract.1.as_bytes());
+    wire_bytes(&mut any, 2, &contract.2);
+    let mut encoded_contract = Vec::new();
+    wire_varint(&mut encoded_contract, 1, contract.0);
+    wire_bytes(&mut encoded_contract, 2, &any);
+
+    wire_bytes(&mut output, 1, &fields.ref_block_bytes);
+    wire_bytes(&mut output, 4, &fields.ref_block_hash);
+    wire_varint(&mut output, 8, fields.expiration);
+    if let Some(data) = fields.data {
+        wire_bytes(&mut output, 10, &data);
+    }
+    wire_bytes(&mut output, 11, &encoded_contract);
+    wire_varint(&mut output, 14, fields.timestamp);
+    if let Some(fee_limit) = fields.fee_limit {
+        wire_varint(&mut output, 18, fee_limit);
+    }
+    Ok(output)
+}
+
+fn wire_bytes(output: &mut Vec<u8>, field: u64, value: &[u8]) {
+    encode_varint(output, field << 3 | 2);
+    encode_varint(output, value.len() as u64);
+    output.extend_from_slice(value);
+}
+
+fn wire_varint(output: &mut Vec<u8>, field: u64, value: u64) {
+    encode_varint(output, field << 3);
+    encode_varint(output, value);
+}
+
+fn encode_varint(output: &mut Vec<u8>, value: u64) {
+    let mut value = value;
+    while value >= 0x80 {
+        output.push((value as u8 & 0x7f) | 0x80);
+        value >>= 7;
+    }
+    output.push(value as u8);
 }
 
 /// `BigIntFfi::magnitude_be_bytes` is already the minimal big-endian
@@ -267,5 +396,29 @@ mod tests {
         assert_eq!(fields.value, vec![5]);
         assert_eq!(fields.data, vec![0xde, 0xad]);
         assert_eq!(fields.chain_id, 11_155_111);
+    }
+
+    #[test]
+    fn to_tron_tx_fields_parses_a_native_transfer() {
+        let transaction = r#"{
+            "raw_data": {
+                "ref_block_bytes": "e942",
+                "ref_block_hash": "6394747da9fee421",
+                "expiration": 1752562632000,
+                "timestamp": 1752562572000,
+                "contract": [{
+                    "type": "TransferContract",
+                    "parameter": { "value": {
+                        "owner_address": "41f2cd810c48c401d392ead3c6e1e1cb9f57750a58",
+                        "to_address": "4141f82674a30ae1328745d08afe2d1a0a24195283",
+                        "amount": 18123456
+                    }}
+                }]
+            }
+        }"#;
+        let fields = to_tron_tx_fields(transaction).unwrap();
+        assert_eq!(fields.ref_block_bytes, vec![0xe9, 0x42]);
+        assert_eq!(fields.ref_block_hash, hex::decode("6394747da9fee421").unwrap());
+        assert!(matches!(fields.contract, hw::TronContract::Transfer { amount: 18_123_456, .. }));
     }
 }

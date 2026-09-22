@@ -6,6 +6,7 @@ use walletkit_hardware::{
     EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     HardwareBitcoinNetwork, HardwareButtonRequest, HardwareCurve, HardwareDevice as HardwareDeviceTrait,
     HardwareDeviceDelegate, HardwareDeviceInfo, HardwareError, HardwarePathSegment,
+    TronTxFields,
 };
 
 use super::{interaction::drive_interaction, worker::DeviceWorker};
@@ -83,6 +84,14 @@ impl HardwareDeviceTrait for TrezorDevice {
         fields: EthereumEIP1559TxFields,
     ) -> Result<EthereumEIP1559Signature, HardwareError> {
         self.worker.ethereum_sign_tx_eip1559(path, fields).await
+    }
+
+    async fn tron_sign_tx(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        fields: TronTxFields,
+    ) -> Result<Vec<u8>, HardwareError> {
+        self.worker.tron_sign_tx(path, fields).await
     }
 
     async fn bitcoin_xpub(&self, path: Vec<HardwarePathSegment>) -> Result<String, HardwareError> {
@@ -243,6 +252,71 @@ pub(super) fn ethereum_sign_tx_eip1559(
         r: resp.signature_r().to_vec(),
         s: resp.signature_s().to_vec(),
     })
+}
+
+/// Drives Trezor's `TronSignTx` → contract → `TronSignature` exchange for
+/// the two contract types WalletKit can build: native transfers and TRC-20
+/// calls. The device displays these structured fields before signing.
+pub(super) fn tron_sign_tx(
+    trezor: &mut Trezor,
+    path: &[HardwarePathSegment],
+    fields: TronTxFields,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<Vec<u8>, HardwareError> {
+    let TronTxFields { ref_block_bytes, ref_block_hash, expiration, timestamp, fee_limit, data, contract } = fields;
+    let mut request = protos::TronSignTx::new();
+    request.address_n = path.iter().map(HardwarePathSegment::to_address_n).collect();
+    request.set_ref_block_bytes(ref_block_bytes);
+    request.set_ref_block_hash(ref_block_hash);
+    request.set_expiration(expiration);
+    request.set_timestamp(timestamp);
+    if let Some(fee_limit) = fee_limit {
+        request.set_fee_limit(fee_limit);
+    }
+    if let Some(data) = data {
+        request.set_data(data);
+    }
+
+    let contract_request = drive_interaction(
+        trezor.call(request, Box::new(|_, message: protos::TronContractRequest| Ok(message))),
+        delegate,
+        runtime,
+        &HardwareButtonRequest::ConfirmTransaction,
+    )?;
+    let _ = contract_request;
+
+    let signature = match contract {
+        walletkit_hardware::TronContract::Transfer { owner_address, to_address, amount } => {
+            let mut contract = protos::TronTransferContract::new();
+            contract.set_owner_address(owner_address);
+            contract.set_to_address(to_address);
+            contract.set_amount(amount);
+            drive_interaction(
+                trezor.call(contract, Box::new(|_, message: protos::TronSignature| Ok(message))),
+                delegate,
+                runtime,
+                &HardwareButtonRequest::ConfirmTransaction,
+            )?
+        }
+        walletkit_hardware::TronContract::TriggerSmartContract { owner_address, contract_address, data } => {
+            let mut contract = protos::TronTriggerSmartContract::new();
+            contract.set_owner_address(owner_address);
+            contract.set_contract_address(contract_address);
+            contract.set_data(data);
+            drive_interaction(
+                trezor.call(contract, Box::new(|_, message: protos::TronSignature| Ok(message))),
+                delegate,
+                runtime,
+                &HardwareButtonRequest::ConfirmTransaction,
+            )?
+        }
+    };
+
+    if !signature.has_signature() {
+        return Err(HardwareError::SigningFailed { reason: "Trezor returned an empty Tron signature".to_string() });
+    }
+    Ok(signature.signature().to_vec())
 }
 
 /// Runs on the device's worker thread. Drives `trezor-client`'s own

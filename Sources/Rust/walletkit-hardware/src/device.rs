@@ -60,6 +60,25 @@ pub struct EthereumEIP1559Signature {
     pub s: Vec<u8>,
 }
 
+/// A Tron transfer or smart-contract call displayed and signed by a hardware
+/// device. Addresses include Tron's `0x41` network byte.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TronTxFields {
+    pub ref_block_bytes: Vec<u8>,
+    pub ref_block_hash: Vec<u8>,
+    pub expiration: u64,
+    pub timestamp: u64,
+    pub fee_limit: Option<u64>,
+    pub data: Option<Vec<u8>>,
+    pub contract: TronContract,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TronContract {
+    Transfer { owner_address: Vec<u8>, to_address: Vec<u8>, amount: u64 },
+    TriggerSmartContract { owner_address: Vec<u8>, contract_address: Vec<u8>, data: Vec<u8> },
+}
+
 /// Which Bitcoin network a `bitcoin_sign_psbt` call targets — mirrors
 /// `walletkit-ffi`'s `blockchain_clients::bitcoin::BitcoinNetworkFfi` so
 /// this crate doesn't need to depend on it (same reasoning as
@@ -108,6 +127,13 @@ pub trait HardwareDevice: Send + Sync {
         path: Vec<HardwarePathSegment>,
         fields: EthereumEIP1559TxFields,
     ) -> Result<EthereumEIP1559Signature, HardwareError>;
+
+    /// Signs a Tron `TransferContract` or `TriggerSmartContract` on-device.
+    async fn tron_sign_tx(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        fields: TronTxFields,
+    ) -> Result<Vec<u8>, HardwareError>;
 
     /// Reads the account-level extended public key (xpub, including its
     /// chain code) at `path` from the device, Base58Check-encoded with

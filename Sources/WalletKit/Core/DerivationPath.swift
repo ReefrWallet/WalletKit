@@ -14,6 +14,8 @@ extension DerivationPath {
         switch blockchain {
         case .evm:
             try self.init(string: "m/44'/60'/0'/0/\(accountIndex)")
+        case .tron:
+            try self.init(string: "m/44'/195'/0'/0/\(accountIndex)")
         case .sui:
             // Sui wallet standard: purpose 44' for Ed25519, 54' for secp256k1.
             let purpose: UInt32

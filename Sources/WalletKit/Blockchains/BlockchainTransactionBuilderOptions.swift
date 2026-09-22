@@ -46,4 +46,8 @@ public enum BlockchainTransactionBuilderOptions: Sendable {
     /// `nil` falls back to the rate fetched from the configured backend.
     /// Only meaningful for Bitcoin — other chains ignore this.
     case bitcoinFeeOverride(feeRateSatPerVByte: UInt64?)
+
+    /// Caps the SUN a TRC-20 smart-contract call may consume for Energy and
+    /// Bandwidth. This is a spending limit, not a validator priority fee.
+    case tronFeeLimit(UInt64?)
 }

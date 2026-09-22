@@ -2,6 +2,14 @@ import Foundation
 import ProjectDescription
 import ProjectDescriptionHelpers
 
+private let testEnvironmentVariables: [String: EnvironmentVariable] = {
+    guard let apiKey = ProcessInfo.processInfo.environment["TRONGRID_API_KEY"], !apiKey.isEmpty else {
+        return [:]
+    }
+
+    return ["TRONGRID_API_KEY": .environmentVariable(value: apiKey, isEnabled: true)]
+}()
+
 private let walletKitGRPC: Target = .target(
     name: "WalletKitGRPC",
     destinations: [.mac, .iPhone, .iPad],
@@ -108,6 +116,7 @@ private let schemes: [Scheme] = [
         buildAction: .buildAction(targets: ["\(walletKit.name)"]),
         testAction: .targets(
             ["\(walletKitTestsMac.name)"],
+            arguments: .arguments(environmentVariables: testEnvironmentVariables),
             options: .options(coverage: true, codeCoverageTargets: ["\(walletKit.name)"])
         )
     )

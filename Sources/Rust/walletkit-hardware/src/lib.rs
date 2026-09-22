@@ -16,7 +16,7 @@ mod path;
 pub use delegate::{HardwareButtonRequest, HardwareDeviceDelegate, HardwareInputRequest};
 pub use device::{
     EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
-    HardwareBitcoinNetwork, HardwareCurve, HardwareDevice,
+    HardwareBitcoinNetwork, HardwareCurve, HardwareDevice, TronContract, TronTxFields,
 };
 pub use error::HardwareError;
 pub use info::{HardwareDeviceInfo, HardwareTransportKind, HardwareVendor};
