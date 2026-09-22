@@ -8,7 +8,7 @@ use trezor_client::{protos, AvailableDevice};
 use walletkit_hardware::{
     EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     HardwareBitcoinNetwork, HardwareButtonRequest, HardwareDeviceDelegate, HardwareError, HardwarePathSegment,
-    TronTxFields,
+    SolanaTxFields, TronTxFields,
 };
 
 use super::{error::map_trezor_error, interaction::drive_interaction};
@@ -37,6 +37,12 @@ enum Command {
     TronSignTx {
         path: Vec<HardwarePathSegment>,
         fields: TronTxFields,
+        reply: oneshot::Sender<Result<Vec<u8>, HardwareError>>,
+    },
+    SolanaPublicKey { path: Vec<HardwarePathSegment>, reply: oneshot::Sender<Result<Vec<u8>, HardwareError>> },
+    SolanaSignTx {
+        path: Vec<HardwarePathSegment>,
+        fields: SolanaTxFields,
         reply: oneshot::Sender<Result<Vec<u8>, HardwareError>>,
     },
     BitcoinXpub {
@@ -142,6 +148,14 @@ impl DeviceWorker {
                         let result = super::device::tron_sign_tx(&mut trezor, &path, fields, &delegate, &runtime);
                         let _ = reply.send(result);
                     }
+                    Command::SolanaPublicKey { path, reply } => {
+                        let result = super::device::solana_get_public_key(&mut trezor, &path, &delegate, &runtime);
+                        let _ = reply.send(result);
+                    }
+                    Command::SolanaSignTx { path, fields, reply } => {
+                        let result = super::device::solana_sign_tx(&mut trezor, &path, fields, &delegate, &runtime);
+                        let _ = reply.send(result);
+                    }
                     Command::BitcoinXpub { path, reply } => {
                         let result = super::device::bitcoin_xpub(&mut trezor, &path, &delegate, &runtime);
                         let _ = reply.send(result);
@@ -206,6 +220,26 @@ impl DeviceWorker {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
             .send(Command::TronSignTx { path, fields, reply: reply_tx })
+            .map_err(|_| HardwareError::Disconnected)?;
+        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+    }
+
+    pub(super) async fn solana_public_key(&self, path: Vec<HardwarePathSegment>) -> Result<Vec<u8>, HardwareError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx
+            .send(Command::SolanaPublicKey { path, reply: reply_tx })
+            .map_err(|_| HardwareError::Disconnected)?;
+        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+    }
+
+    pub(super) async fn solana_sign_tx(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        fields: SolanaTxFields,
+    ) -> Result<Vec<u8>, HardwareError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx
+            .send(Command::SolanaSignTx { path, fields, reply: reply_tx })
             .map_err(|_| HardwareError::Disconnected)?;
         reply_rx.await.map_err(|_| HardwareError::Disconnected)?
     }

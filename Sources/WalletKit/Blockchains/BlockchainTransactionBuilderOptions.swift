@@ -50,4 +50,14 @@ public enum BlockchainTransactionBuilderOptions: Sendable {
     /// Caps the SUN a TRC-20 smart-contract call may consume for Energy and
     /// Bandwidth. This is a spending limit, not a validator priority fee.
     case tronFeeLimit(UInt64?)
+
+    /// Overrides the compute-unit price (the priority fee, in
+    /// micro-lamports per compute unit validators are paid on top of the
+    /// base fee) and/or compute-unit limit for a Solana transaction.
+    ///
+    /// `microLamportsPerComputeUnit` defaults to the cluster's recent
+    /// median priority fee when `nil`. `computeUnitLimit` is left
+    /// unset (the runtime's default per-instruction budget applies) when
+    /// `nil`. Only meaningful for Solana — other chains ignore this.
+    case solanaPriorityFee(microLamportsPerComputeUnit: UInt64?, computeUnitLimit: UInt32?)
 }

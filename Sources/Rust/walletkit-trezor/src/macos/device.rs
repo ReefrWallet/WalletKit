@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use protobuf::MessageField;
 use trezor_client::{protos, Trezor};
 use walletkit_hardware::{
     EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     HardwareBitcoinNetwork, HardwareButtonRequest, HardwareCurve, HardwareDevice as HardwareDeviceTrait,
-    HardwareDeviceDelegate, HardwareDeviceInfo, HardwareError, HardwarePathSegment,
+    HardwareDeviceDelegate, HardwareDeviceInfo, HardwareError, HardwarePathSegment, SolanaTxFields,
     TronTxFields,
 };
 
@@ -62,12 +63,10 @@ impl HardwareDeviceTrait for TrezorDevice {
         path: Vec<HardwarePathSegment>,
         curve: HardwareCurve,
     ) -> Result<Vec<u8>, HardwareError> {
-        if curve != HardwareCurve::Secp256k1 {
-            return Err(HardwareError::UnsupportedDevice {
-                reason: "Trezor does not support retrieving ed25519 public keys yet".to_string(),
-            });
+        match curve {
+            HardwareCurve::Secp256k1 => self.worker.public_key(path).await,
+            HardwareCurve::Ed25519 => self.worker.solana_public_key(path).await,
         }
-        self.worker.public_key(path).await
     }
 
     async fn ethereum_sign_tx(
@@ -92,6 +91,14 @@ impl HardwareDeviceTrait for TrezorDevice {
         fields: TronTxFields,
     ) -> Result<Vec<u8>, HardwareError> {
         self.worker.tron_sign_tx(path, fields).await
+    }
+
+    async fn solana_sign_tx(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        fields: SolanaTxFields,
+    ) -> Result<Vec<u8>, HardwareError> {
+        self.worker.solana_sign_tx(path, fields).await
     }
 
     async fn bitcoin_xpub(&self, path: Vec<HardwarePathSegment>) -> Result<String, HardwareError> {
@@ -317,6 +324,83 @@ pub(super) fn tron_sign_tx(
         return Err(HardwareError::SigningFailed { reason: "Trezor returned an empty Tron signature".to_string() });
     }
     Ok(signature.signature().to_vec())
+}
+
+/// Runs on the device's worker thread. Reads the ed25519 public key at
+/// `path` via `SolanaGetPublicKey`/`SolanaPublicKey` — Trezor has no
+/// generic ed25519 equivalent of the secp256k1-only `GetPublicKey`
+/// message `get_public_key` above uses, so this is Solana-specific even
+/// though the raw key material it returns isn't.
+pub(super) fn solana_get_public_key(
+    trezor: &mut Trezor,
+    path: &[HardwarePathSegment],
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<Vec<u8>, HardwareError> {
+    let mut req = protos::SolanaGetPublicKey::new();
+    req.address_n = path.iter().map(HardwarePathSegment::to_address_n).collect();
+    req.set_show_display(false);
+
+    let resp = drive_interaction(
+        trezor.call(req, Box::new(|_, m: protos::SolanaPublicKey| Ok(m))),
+        delegate,
+        runtime,
+        &HardwareButtonRequest::ConfirmPublicKey,
+    )?;
+
+    if !resp.has_public_key() {
+        return Err(HardwareError::SigningFailed {
+            reason: "Trezor returned an empty Solana public key".to_string(),
+        });
+    }
+    Ok(resp.public_key().to_vec())
+}
+
+/// Runs on the device's worker thread. Sends `SolanaSignTx` with the
+/// already-serialized wire-format message plus the token-account
+/// metadata the trusted screen needs to show mint/owner instead of the
+/// opaque token-account address, and returns the raw ed25519 signature.
+/// Unlike the Ethereum/Tron flows, Solana has no streaming chunk protocol
+/// — the whole message goes in one request and one `SolanaTxSignature`
+/// comes back.
+pub(super) fn solana_sign_tx(
+    trezor: &mut Trezor,
+    path: &[HardwarePathSegment],
+    fields: SolanaTxFields,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<Vec<u8>, HardwareError> {
+    let SolanaTxFields { serialized_message, token_accounts } = fields;
+
+    let mut additional_info = protos::SolanaTxAdditionalInfo::new();
+    additional_info.token_accounts_infos = token_accounts
+        .into_iter()
+        .map(|account| {
+            let mut info = protos::SolanaTxTokenAccountInfo::new();
+            info.set_base_address(account.base_address);
+            info.set_token_program(account.token_program);
+            info.set_token_mint(account.token_mint);
+            info.set_token_account(account.token_account);
+            info
+        })
+        .collect();
+
+    let mut req = protos::SolanaSignTx::new();
+    req.address_n = path.iter().map(HardwarePathSegment::to_address_n).collect();
+    req.set_serialized_tx(serialized_message);
+    req.additional_info = MessageField::some(additional_info);
+
+    let resp = drive_interaction(
+        trezor.call(req, Box::new(|_, m: protos::SolanaTxSignature| Ok(m))),
+        delegate,
+        runtime,
+        &HardwareButtonRequest::ConfirmTransaction,
+    )?;
+
+    if !resp.has_signature() {
+        return Err(HardwareError::SigningFailed { reason: "Trezor returned an empty Solana signature".to_string() });
+    }
+    Ok(resp.signature().to_vec())
 }
 
 /// Runs on the device's worker thread. Drives `trezor-client`'s own

@@ -28,8 +28,10 @@ enum RegtestBackendKind: String, CustomTestStringConvertible {
 
 /// Derives a fresh, real (never hand-typed) BIP-84 regtest account —
 /// mirrors `BitcoinTransactionBuilderTests`' own `makeAccount` helper.
-private func makeRegtestAccount() throws -> (
-    descriptor: BitcoinDescriptor, seed: Seed, derivationPath: DerivationPath
+private func makeRegtestAccount() throws -> ( // swiftlint:disable:this large_tuple
+    descriptor: BitcoinDescriptor,
+    seed: Seed,
+    derivationPath: DerivationPath
 ) {
     let seed = Mnemonic.generate().toSeed()
     let masterKey = try seed.masterKey(curve: .secp256k1)

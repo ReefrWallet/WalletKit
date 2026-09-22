@@ -16,6 +16,10 @@ extension DerivationPath {
             try self.init(string: "m/44'/60'/0'/0/\(accountIndex)")
         case .tron:
             try self.init(string: "m/44'/195'/0'/0/\(accountIndex)")
+        case .solana:
+            // SLIP-44 coin type 501, SLIP-10 ed25519 — every segment must
+            // be hardened, matching Phantom/Trezor Suite's convention.
+            try self.init(string: "m/44'/501'/\(accountIndex)'/0'")
         case .sui:
             // Sui wallet standard: purpose 44' for Ed25519, 54' for secp256k1.
             let purpose: UInt32

@@ -97,6 +97,22 @@ impl HardwareDeviceFfi {
         self.inner.tron_sign_tx(to_hardware_segments(&path), fields).await.map_err(Into::into)
     }
 
+    /// Signs a Solana transaction message on the device. `transaction` is
+    /// the same JSON envelope `SolanaTransactionBuilder`/`SolanaPKeySigner`
+    /// use on the software path — a base64 `message` field plus a
+    /// `tokenAccounts` array describing any SPL accounts the message
+    /// touches, so the device's trusted screen can show mint/owner rather
+    /// than opaque token-account addresses. Returns the raw 64-byte
+    /// ed25519 signature over the decoded message.
+    pub async fn solana_sign_tx(
+        &self,
+        path: DerivationPath,
+        transaction: String,
+    ) -> Result<Vec<u8>, WalletKitErrorFfi> {
+        let fields = to_solana_tx_fields(&transaction)?;
+        self.inner.solana_sign_tx(to_hardware_segments(&path), fields).await.map_err(Into::into)
+    }
+
     /// Reads the account-level extended public key (xpub, with its chain
     /// code) at `path` from the device, Base58Check-encoded with mainnet
     /// (`xpub`) version bytes regardless of which Bitcoin network `path`
@@ -232,6 +248,43 @@ fn to_tron_tx_fields(transaction: &str) -> Result<hw::TronTxFields, WalletKitErr
         data: raw.get("data").and_then(serde_json::Value::as_str).map(hex::decode).transpose().map_err(|_| WalletKitErrorFfi::SigningFailed { reason: "invalid Tron memo hex".to_string() })?,
         contract,
     })
+}
+
+fn to_solana_tx_fields(transaction: &str) -> Result<hw::SolanaTxFields, WalletKitErrorFfi> {
+    use base64::Engine;
+
+    let value: serde_json::Value = serde_json::from_str(transaction).map_err(|error| WalletKitErrorFfi::SigningFailed {
+        reason: format!("invalid Solana transaction JSON: {error}"),
+    })?;
+    let message_b64 = value.get("message").and_then(serde_json::Value::as_str).ok_or_else(|| WalletKitErrorFfi::SigningFailed {
+        reason: "Solana transaction is missing message".to_string(),
+    })?;
+    let serialized_message = base64::engine::general_purpose::STANDARD.decode(message_b64).map_err(|error| {
+        WalletKitErrorFfi::SigningFailed { reason: format!("invalid Solana message base64: {error}") }
+    })?;
+
+    let text = |account: &serde_json::Value, name: &str| -> Result<String, WalletKitErrorFfi> {
+        account.get(name).and_then(serde_json::Value::as_str).map(str::to_string).ok_or_else(|| {
+            WalletKitErrorFfi::SigningFailed { reason: format!("Solana token account entry is missing {name}") }
+        })
+    };
+    let token_accounts = value
+        .get("tokenAccounts")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|account| {
+            Ok(hw::SolanaTokenAccountInfo {
+                base_address: text(&account, "baseAddress")?,
+                token_program: text(&account, "tokenProgram")?,
+                token_mint: text(&account, "tokenMint")?,
+                token_account: text(&account, "tokenAccount")?,
+            })
+        })
+        .collect::<Result<Vec<_>, WalletKitErrorFfi>>()?;
+
+    Ok(hw::SolanaTxFields { serialized_message, token_accounts })
 }
 
 /// Encodes the `raw_data` protobuf bytes that a Tron node and Trezor sign.
@@ -420,5 +473,37 @@ mod tests {
         assert_eq!(fields.ref_block_bytes, vec![0xe9, 0x42]);
         assert_eq!(fields.ref_block_hash, hex::decode("6394747da9fee421").unwrap());
         assert!(matches!(fields.contract, hw::TronContract::Transfer { amount: 18_123_456, .. }));
+    }
+
+    #[test]
+    fn to_solana_tx_fields_decodes_the_message_and_token_accounts() {
+        let transaction = r#"{
+            "message": "AQID",
+            "tokenAccounts": [{
+                "baseAddress": "owner",
+                "tokenProgram": "program",
+                "tokenMint": "mint",
+                "tokenAccount": "account"
+            }]
+        }"#;
+        let fields = to_solana_tx_fields(transaction).unwrap();
+        assert_eq!(fields.serialized_message, vec![1, 2, 3]);
+        assert_eq!(fields.token_accounts.len(), 1);
+        assert_eq!(fields.token_accounts[0].base_address, "owner");
+        assert_eq!(fields.token_accounts[0].token_mint, "mint");
+    }
+
+    #[test]
+    fn to_solana_tx_fields_defaults_to_no_token_accounts() {
+        let fields = to_solana_tx_fields(r#"{"message": "AQID"}"#).unwrap();
+        assert!(fields.token_accounts.is_empty());
+    }
+
+    #[test]
+    fn to_solana_tx_fields_rejects_invalid_base64() {
+        assert!(matches!(
+            to_solana_tx_fields(r#"{"message": "not-base64!"}"#),
+            Err(WalletKitErrorFfi::SigningFailed { .. })
+        ));
     }
 }

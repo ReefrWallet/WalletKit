@@ -80,7 +80,7 @@ enum TestAccountFactory {
         try makeAccount(
             blockchain: .solana(network),
             curve: .ed25519,
-            derivationPath: slip10Path(coinType: 501, account: account)
+            derivationPath: try DerivationPath(string: "m/44'/501'/\(account)'/0'")
         )
     }
 

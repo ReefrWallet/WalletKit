@@ -21,6 +21,7 @@ pub mod bitcoin;
 mod ethereum_abi;
 mod ethereum_address;
 mod ethereum_signer;
+pub mod solana;
 mod sui_address;
 mod sui_signer;
 
@@ -37,5 +38,6 @@ pub use ethereum_signer::{
     EthereumEIP1559SignTxFfi, EthereumEIP1559SignatureFfi,
     EthereumSignTxFfi, EthereumSignatureFfi, EthereumSignerFfi,
 };
+pub use solana::{solana_associated_token_address, solana_find_program_address, solana_metadata_address, SolanaAddressFfi};
 pub use sui_address::SuiAddressFfi;
 pub use sui_signer::SuiSignerFfi;

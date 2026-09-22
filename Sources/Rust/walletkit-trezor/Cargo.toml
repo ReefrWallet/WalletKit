@@ -14,7 +14,9 @@ walletkit-hardware = { path = "../walletkit-hardware" }
 trezor-client = { version = "0.1", default-features = false, features = [
     "bitcoin",
     "ethereum",
+    "solana",
     "tron",
 ] }
 bitcoin = "0.32"
 hex = "0.4"
+protobuf = "=3.7.2"

@@ -8,7 +8,7 @@ use walletkit_hardware::{
     EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     HardwareBitcoinNetwork, HardwareCurve, HardwareDevice as HardwareDeviceTrait, HardwareDeviceDelegate,
     HardwareDeviceInfo, HardwareDeviceManager as HardwareDeviceManagerTrait, HardwareError,
-    HardwarePathSegment, HardwareTransportKind, HardwareVendor, TronTxFields,
+    HardwarePathSegment, HardwareTransportKind, HardwareVendor, SolanaTxFields, TronTxFields,
 };
 
 fn unavailable() -> HardwareError {
@@ -94,6 +94,14 @@ impl HardwareDeviceTrait for TrezorDevice {
         &self,
         _path: Vec<HardwarePathSegment>,
         _fields: TronTxFields,
+    ) -> Result<Vec<u8>, HardwareError> {
+        Err(unavailable())
+    }
+
+    async fn solana_sign_tx(
+        &self,
+        _path: Vec<HardwarePathSegment>,
+        _fields: SolanaTxFields,
     ) -> Result<Vec<u8>, HardwareError> {
         Err(unavailable())
     }

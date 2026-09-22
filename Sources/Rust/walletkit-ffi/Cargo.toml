@@ -33,6 +33,10 @@ walletkit-trezor = { path = "../walletkit-trezor" }
 # `alloy_rlp::Encodable`/`Decodable` for `Address`/`U256`/`Bytes`.
 alloy-primitives = { version = "1", features = ["rlp", "secp256k1"] }
 alloy-rlp = "0.3"
+# Decodes the base64 `message` field of the JSON envelope
+# `blockchain_clients::solana`'s Trezor bridge (`hardware::device::
+# to_solana_tx_fields`) receives from the Swift side.
+base64 = "0.22"
 # Sui's address scheme (flag byte + public key, Blake2b-256) for
 # `blockchain_clients::sui`.
 blake2 = "0.10"

@@ -26,15 +26,14 @@ UniFFI export layer live in `Sources/Rust`.
 
 WalletKit targets iOS, iPadOS, and macOS and includes a Swift Package manifest.
 The native XCFramework, UniFFI bindings, and Sui gRPC sources are generated
-inputs, so build them before using a source checkout as a Swift package:
+inputs, they are built automatically when building a Swift package:
 
 ```sh
-make walletkit-ffi sui-grpc
-swift build
+make spm
 ```
 
-Use a local package dependency while developing WalletKit:
-
+Use a local package dependency while developing with WalletKit:
+ 
 ```swift
 .package(path: "../WalletKit")
 ```

@@ -27,6 +27,16 @@
 #                        first time. Idempotent: re-running does nothing
 #                        once .build/bitcoin-testing/bin/ is populated.
 #
+#   make solana-testing  Downloads the Agave release tarball (bundles
+#                        `solana-test-validator`/`solana`/`solana-keygen`/
+#                        `spl-token`) into .build/solana-testing/bin/,
+#                        consumed by WalletKitTesting's `SolanaNode` for
+#                        the localnet end-to-end suite
+#                        (Tests/Blockchains/Solana/SolanaLocalnetTests.swift).
+#                        Not part of `make all`. Idempotent: re-running
+#                        does nothing once .build/solana-testing/bin/ is
+#                        populated.
+#
 #   make test            Run the Rust test suite (cargo test), host target
 #                        only — independent of walletkit-ffi.
 #
@@ -99,6 +109,24 @@ BITCOIN_CORE_STAMP := $(BITCOIN_TESTING_DIR)/.bitcoin-core-stamp
 ELECTRS_STAMP := $(BITCOIN_TESTING_DIR)/.electrs-stamp
 ELECTRS_REPO := https://github.com/Blockstream/electrs.git
 
+# --- solana-testing: solana-test-validator + CLI, for SolanaNode ----------
+
+# Agave (the maintained Solana validator fork) release used for
+# `solana-test-validator`/`solana`/`solana-keygen`/`spl-token` — no `mise`
+# registry entry exists for any of these (checked: `mise registry` has no
+# `solana` backend), so, like `bitcoin-testing` above, this downloads a
+# prebuilt release tarball rather than provisioning lazily.
+AGAVE_VERSION := v4.3.0
+ifeq ($(UNAME_ARCH),arm64)
+SOLANA_PLATFORM := aarch64-apple-darwin
+else
+SOLANA_PLATFORM := x86_64-apple-darwin
+endif
+
+SOLANA_TESTING_DIR := $(BUILD_DIR)/solana-testing
+SOLANA_TESTING_BIN_DIR := $(SOLANA_TESTING_DIR)/bin
+SOLANA_RELEASE_STAMP := $(SOLANA_TESTING_DIR)/.solana-release-stamp
+
 # Apple Silicon + Intel Mac, fused into one macOS slice.
 MACOS_TARGETS := aarch64-apple-darwin x86_64-apple-darwin
 # Apple Silicon + Intel simulator, fused into one iOS-simulator slice.
@@ -118,9 +146,12 @@ IOS_DEVICE_LIB := $(TARGET_DIR)/$(IOS_DEVICE_TARGET)/release/$(LIB_NAME)
 BINDGEN_SOURCE_LIB := $(TARGET_DIR)/aarch64-apple-darwin/release/$(LIB_NAME)
 
 .DEFAULT_GOAL := all
-.PHONY: all walletkit-ffi sui-grpc bitcoin-testing test clean rust-targets
+.PHONY: all walletkit-ffi sui-grpc bitcoin-testing solana-testing test clean rust-targets
 
-all: walletkit-ffi sui-grpc test
+all: spm test
+
+spm: walletkit-ffi sui-grpc
+	@swift build
 
 # Internal helper, not one of the four requested targets: makes sure the
 # Apple cross-compilation targets are installed before building. Cheap and
@@ -216,6 +247,25 @@ $(ELECTRS_STAMP):
 	@mkdir -p $(BITCOIN_TESTING_BIN_DIR)
 	@cp $(BITCOIN_TESTING_DIR)/electrs-src/target/release/electrs $(BITCOIN_TESTING_BIN_DIR)/electrs
 	@touch $(ELECTRS_STAMP)
+
+solana-testing: $(SOLANA_RELEASE_STAMP)
+
+# Downloads the official prebuilt Agave release tarball, which already
+# bundles `solana-test-validator`, `solana`, `solana-keygen`, and
+# `spl-token` in one archive — unlike Bitcoin's split bitcoind/electrs
+# provisioning above, there's nothing here that needs building from
+# source.
+$(SOLANA_RELEASE_STAMP):
+	@echo "==> Downloading Agave $(AGAVE_VERSION) ($(SOLANA_PLATFORM))"
+	@mkdir -p $(SOLANA_TESTING_BIN_DIR)
+	@curl -sL -o $(SOLANA_TESTING_DIR)/solana-release.tar.bz2 \
+		https://github.com/anza-xyz/agave/releases/download/$(AGAVE_VERSION)/solana-release-$(SOLANA_PLATFORM).tar.bz2
+	@tar -xjf $(SOLANA_TESTING_DIR)/solana-release.tar.bz2 -C $(SOLANA_TESTING_DIR)
+	@for binary in solana-test-validator solana solana-keygen spl-token; do \
+		cp $(SOLANA_TESTING_DIR)/solana-release/bin/$$binary $(SOLANA_TESTING_BIN_DIR)/$$binary; \
+	done
+	@rm -rf $(SOLANA_TESTING_DIR)/solana-release $(SOLANA_TESTING_DIR)/solana-release.tar.bz2
+	@touch $(SOLANA_RELEASE_STAMP)
 
 # --- rust-test: Rust test suite, host target only ----------------------------
 

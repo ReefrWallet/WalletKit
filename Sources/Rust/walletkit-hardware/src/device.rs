@@ -79,6 +79,31 @@ pub enum TronContract {
     TriggerSmartContract { owner_address: Vec<u8>, contract_address: Vec<u8>, data: Vec<u8> },
 }
 
+/// One token account referenced by a Solana transaction's instructions —
+/// the base58 addresses a hardware device's trusted screen needs in order
+/// to display an SPL transfer in terms of the mint/owner it moves, rather
+/// than the opaque token-account address that actually appears on the
+/// wire. Mirrors Trezor's `SolanaTxTokenAccountInfo`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SolanaTokenAccountInfo {
+    pub base_address: String,
+    pub token_program: String,
+    pub token_mint: String,
+    pub token_account: String,
+}
+
+/// A Solana transaction displayed and signed by a hardware device.
+/// `serialized_message` is the wire-format `Message` (header + account
+/// keys + blockhash + compiled instructions) exactly as it will be
+/// broadcast — Solana has no separate signing-hash step, the device signs
+/// these bytes directly. `token_accounts` is empty for a native SOL
+/// transfer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SolanaTxFields {
+    pub serialized_message: Vec<u8>,
+    pub token_accounts: Vec<SolanaTokenAccountInfo>,
+}
+
 /// Which Bitcoin network a `bitcoin_sign_psbt` call targets — mirrors
 /// `walletkit-ffi`'s `blockchain_clients::bitcoin::BitcoinNetworkFfi` so
 /// this crate doesn't need to depend on it (same reasoning as
@@ -133,6 +158,14 @@ pub trait HardwareDevice: Send + Sync {
         &self,
         path: Vec<HardwarePathSegment>,
         fields: TronTxFields,
+    ) -> Result<Vec<u8>, HardwareError>;
+
+    /// Signs a Solana transaction message on-device, returning the raw
+    /// 64-byte ed25519 signature over `fields.serialized_message`.
+    async fn solana_sign_tx(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        fields: SolanaTxFields,
     ) -> Result<Vec<u8>, HardwareError>;
 
     /// Reads the account-level extended public key (xpub, including its

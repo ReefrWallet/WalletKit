@@ -131,8 +131,19 @@ public enum SolanaNetwork: Codable, Equatable, Hashable, Sendable {
         }
     }
 
+    /// The cluster's public RPC endpoint. These are rate-limited shared
+    /// endpoints (as Solana's own docs warn) — privacy- and reliability-
+    /// sensitive users should override via `AddAccountView`'s custom RPC
+    /// field, same as every other chain here.
     public var rpcURL: URL {
-        URL(string: "https://localhost")! // TODO
+        switch self {
+        case .mainnet:
+            URL(string: "https://api.mainnet-beta.solana.com")!
+        case .testnet:
+            URL(string: "https://api.testnet.solana.com")!
+        case .devnet:
+            URL(string: "https://api.devnet.solana.com")!
+        }
     }
 }
 
