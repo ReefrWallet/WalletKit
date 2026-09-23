@@ -54,6 +54,25 @@ struct TronClientTests {
         #expect(TronNetwork.testnet.rpcURL == URL(string: "https://nile.trongrid.io")!)
     }
 
+    @Test func transactionHistoryReportsHeadFromNativeTransactionsSoForwardSyncCanStart() async throws {
+        let nativeBody = Data(#"""
+        {"data":[{"txID":"abc","blockNumber":100,"block_timestamp":1000,"raw_data":{"contract":[]}}]}
+        """#.utf8)
+        let trc20Body = Data(#"{"data":[]}"#.utf8)
+        let stub = StubURLProtocol.makeSession(responsesByPath: [
+            "/v1/accounts/\(owner.string)/transactions": .success(body: nativeBody),
+            "/v1/accounts/\(owner.string)/transactions/trc20": .success(body: trc20Body)
+        ])
+        let client = TronClient(endpoint: endpoint, session: stub.urlSession)
+
+        let page = try await client.transactionHistory(
+            owner,
+            request: BlockchainTransactionHistoryRequest(direction: .descending, limit: 20)
+        )
+
+        #expect(page.head == 100)
+    }
+
     private func requestBody(_ stub: StubURLProtocol.Session) throws -> [String: Any] {
         let body = try #require(stub.capturedBody)
         return try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
