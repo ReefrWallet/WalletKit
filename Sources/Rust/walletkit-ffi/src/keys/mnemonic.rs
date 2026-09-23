@@ -4,26 +4,12 @@
 
 use std::sync::Arc;
 
-use bip39::{Language, Mnemonic as Bip39Mnemonic};
+use bip39::Mnemonic as Bip39Mnemonic;
 
+use crate::common::wordlist::language;
 use crate::common::{MnemonicWordCount, Wordlist};
 use crate::errors::WalletKitErrorFfi;
 use crate::keys::SeedFfi;
-
-fn language(wordlist: Wordlist) -> Language {
-    match wordlist {
-        Wordlist::English => Language::English,
-        Wordlist::ChineseSimplified => Language::SimplifiedChinese,
-        Wordlist::ChineseTraditional => Language::TraditionalChinese,
-        Wordlist::Czech => Language::Czech,
-        Wordlist::French => Language::French,
-        Wordlist::Italian => Language::Italian,
-        Wordlist::Japanese => Language::Japanese,
-        Wordlist::Korean => Language::Korean,
-        Wordlist::Portuguese => Language::Portuguese,
-        Wordlist::Spanish => Language::Spanish,
-    }
-}
 
 #[derive(uniffi::Object)]
 pub struct MnemonicFfi {

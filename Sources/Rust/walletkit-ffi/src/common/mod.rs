@@ -17,7 +17,7 @@ mod derivation_path;
 mod derivation_scheme;
 mod mnemonic_word_count;
 mod segment;
-mod wordlist;
+pub(crate) mod wordlist;
 
 pub use big_int::BigIntFfi;
 pub use blockchain::BlockchainFfi;
