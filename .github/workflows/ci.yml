@@ -1,4 +1,4 @@
-name: WalletKit CI
+name: WalletKit Tests
 
 on:
   push:
