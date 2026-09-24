@@ -37,9 +37,10 @@ struct CardanoTransactionBuilderTests {
         ])
         let builder = CardanoTransactionBuilder(client: CardanoClient(
             endpoint: URL(string: "https://cardano-preprod.blockfrost.io/api/v0")!,
-            projectID: "project-id",
+            projectId: "project-id",
             session: stub.urlSession
         ))
+
         let envelope = try await builder.buildTransfer(
             sender: .account(account),
             recipient: .recipient(try account.address(role: 0, index: 1)),
@@ -47,6 +48,7 @@ struct CardanoTransactionBuilderTests {
             token: "\(policy)54455354",
             options: [.cardanoRecipientLovelace(2_000_000)]
         )
+
         let transaction = try JSONDecoder().decode(CardanoUnsignedTransaction.self, from: envelope)
 
         #expect(transaction.outputs.contains { output in output.assets.contains { $0.quantity == "3" } })
@@ -97,7 +99,7 @@ struct CardanoTransactionBuilderTests {
         let builder = CardanoTransactionBuilder(
             client: CardanoClient(
                 endpoint: URL(string: "https://cardano-preprod.blockfrost.io/api/v0")!,
-                projectID: "project-id",
+                projectId: "project-id",
                 session: stub.urlSession
             )
         )
@@ -123,7 +125,7 @@ struct CardanoTransactionBuilderTests {
 
 private extension CardanoTransactionBuilderTests {
     func client(network: CardanoNetwork) -> CardanoClient {
-        CardanoClient(endpoint: network.rpcURL, projectID: nil)
+        CardanoClient(endpoint: network.rpcURL, projectId: nil)
     }
 
     func descriptor(network: CardanoNetwork) throws -> CardanoAccountDescriptor {

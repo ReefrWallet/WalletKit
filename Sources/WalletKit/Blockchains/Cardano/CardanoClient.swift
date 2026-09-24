@@ -11,12 +11,12 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
     public typealias Address = CardanoAccountDescriptor
 
     private let endpoint: URL
-    private let projectID: String?
+    private let projectId: String?
     private let session: URLSession
 
-    public init(endpoint: URL, projectID: String?, session: URLSession = .shared) {
+    public init(endpoint: URL, projectId: String?, session: URLSession = .shared) {
         self.endpoint = endpoint
-        self.projectID = projectID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.projectId = projectId?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.session = session
     }
 
@@ -24,23 +24,29 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
         guard !signature.isEmpty else {
             throw WalletKitError.signingFailed(reason: "Cardano transaction CBOR is empty.")
         }
-        guard let projectID, !projectID.isEmpty else {
+
+        guard let projectId, !projectId.isEmpty else {
             throw WalletKitError.internalError(message: "Set a Blockfrost project ID before using Cardano.")
         }
 
         var request = URLRequest(url: endpoint.appending(path: "tx/submit"))
+
         request.httpBody = signature
         request.httpMethod = "POST"
         request.setValue("application/cbor", forHTTPHeaderField: "Content-Type")
-        request.setValue(projectID, forHTTPHeaderField: "project_id")
+        request.setValue(projectId, forHTTPHeaderField: "project_id")
+
         let (data, response) = try await session.data(for: request)
+
         guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
             throw WalletKitError.internalError(message: "Blockfrost rejected Cardano transaction submission.")
         }
+
         guard let identifier = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines), !identifier.isEmpty else {
             throw WalletKitError.internalError(message: "Blockfrost returned no Cardano transaction ID.")
         }
+
         return identifier
     }
 
@@ -67,11 +73,12 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
             }
 
             let assets = utxo.amount.compactMap { asset -> CardanoAssetFfi? in
-                guard asset.unit != "lovelace", let parsed = CardanoAssetID(unit: asset.unit) else {
+                guard asset.unit != "lovelace", let parsed = CardanoAssetId(unit: asset.unit) else {
                     return nil
                 }
-                return CardanoAssetFfi(name: parsed.name, policyId: parsed.policyID, quantity: asset.quantity)
+                return CardanoAssetFfi(name: parsed.name, policyId: parsed.policyId, quantity: asset.quantity)
             }
+
             return CardanoUtxoFfi(
                 address: utxo.address,
                 assets: assets,
@@ -80,16 +87,19 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
                 txHash: hash
             )
         }
+
         let parameters: ProtocolParameters = try await get("epochs/latest/parameters")
         let selectedAsset: CardanoAssetFfi?
+
         if let token {
-            guard let asset = CardanoAssetID(unit: token) else {
+            guard let asset = CardanoAssetId(unit: token) else {
                 throw WalletKitError.invalidAddress(reason: "Invalid Cardano asset identifier")
             }
             selectedAsset = asset.ffi(quantity: amount.description)
         } else {
             selectedAsset = nil
         }
+
         let result = try remappingWalletKitError {
             try cardanoBuildTransfer(
                 amount: amount.description,
@@ -101,6 +111,7 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
                 utxos: utxos
             )
         }
+
         return result
     }
 
@@ -110,6 +121,7 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
 
     public func getAllBalances(_ owner: CardanoAccountDescriptor) async throws -> [String: BigUInt] {
         let entries = try await accountUTxOs(owner)
+
         return entries.reduce(into: [:]) { balances, entry in
             for amount in entry.amount {
                 guard let quantity = BigUInt(amount.quantity) else {
@@ -129,6 +141,7 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
         tokens: [String]
     ) async throws -> [String: BigUInt] {
         let allBalances = try await getAllBalances(owner)
+
         return tokens.reduce(into: [:]) { balances, token in
             balances[token] = allBalances[token] ?? 0
         }
@@ -145,6 +158,7 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
 
         let asset: Asset = try await get("assets/\(token)")
         let metadata = asset.onchainMetadata ?? asset.metadata
+
         return TokenInfo(
             decimals: metadata?.decimals ?? 0,
             name: metadata?.name ?? token,
@@ -169,76 +183,34 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
             false
         }
     }
-
-    public func transactionHistory(
-        _ owner: CardanoAccountDescriptor,
-        request: BlockchainTransactionHistoryRequest
-    ) async throws -> BlockchainTransactionPage {
-        let page = max(1, Int(request.cursor.flatMap { Int(String(decoding: $0, as: UTF8.self)) } ?? 1))
-        let count = min(max(Int(request.limit), 1), 100)
-        let order = request.direction == .ascending ? "asc" : "desc"
-        let transactions: [AccountTransaction] = try await get(
-            "accounts/\(owner.stakeAddress)/transactions",
-            query: [
-                URLQueryItem(name: "count", value: "\(count)"),
-                URLQueryItem(name: "order", value: order),
-                URLQueryItem(name: "page", value: "\(page)")
-            ]
-        )
-        let nextCursor = transactions.count == count ? Data("\(page + 1)".utf8) : nil
-        return BlockchainTransactionPage(
-            transactions: transactions.map { transaction in
-                BlockchainTransaction(
-                    identifier: transaction.txHash,
-                    blockHeight: transaction.blockHeight,
-                    blockHash: transaction.block,
-                    timestamp: Date(timeIntervalSince1970: TimeInterval(transaction.blockTime)),
-                    status: .confirmed
-                )
-            },
-            nextCursor: nextCursor,
-            reachedBoundary: nextCursor == nil
-        )
-    }
 }
 
-private struct CardanoAssetID {
+private struct CardanoAssetId {
     let name: Data
-    let policyID: Data
+    let policyId: Data
 
     init?(unit: String) {
         guard unit.count >= 56 else {
             return nil
         }
+
         let policyText = String(unit.prefix(56))
         let nameText = String(unit.dropFirst(56))
+
         guard let policyID = try? Data(hexString: policyText), let name = try? Data(hexString: nameText) else {
             return nil
         }
+
         self.name = name
-        self.policyID = policyID
+        self.policyId = policyID
     }
 
     func ffi(quantity: String) -> CardanoAssetFfi {
-        CardanoAssetFfi(name: name, policyId: policyID, quantity: quantity)
+        CardanoAssetFfi(name: name, policyId: policyId, quantity: quantity)
     }
 }
 
 private extension CardanoClient {
-    struct AccountTransaction: Decodable {
-        let block: String?
-        let blockHeight: UInt64?
-        let blockTime: UInt64
-        let txHash: String
-
-        enum CodingKeys: String, CodingKey {
-            case block
-            case blockHeight = "block_height"
-            case blockTime = "block_time"
-            case txHash = "tx_hash"
-        }
-    }
-
     struct ProtocolParameters: Decodable {
         let coinsPerUtxoSize: UInt64
         let keyDeposit: UInt64
@@ -313,6 +285,7 @@ private extension CardanoClient {
 
         while true {
             let result: [UTxO]
+
             do {
                 result = try await get(
                     "accounts/\(owner.stakeAddress)/utxos",
@@ -324,43 +297,59 @@ private extension CardanoClient {
             } catch HTTPError.notFound {
                 return []
             }
+
             entries.append(contentsOf: result)
+
             guard result.count == count else {
                 return entries
             }
+
             page += 1
         }
     }
 
+}
+
+// Internal rather than private: `CardanoClient+TransactionHistory` reads
+// Blockfrost through the same two helpers.
+extension CardanoClient {
     func get<Response: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> Response {
-        guard let projectID, !projectID.isEmpty else {
+        guard let projectId, !projectId.isEmpty else {
             throw WalletKitError.internalError(message: "Set a Blockfrost project ID before using Cardano.")
         }
+
         guard var components = URLComponents(url: endpoint.appending(path: path), resolvingAgainstBaseURL: false) else {
             throw WalletKitError.internalError(message: "Cannot construct Blockfrost URL.")
         }
+
         components.queryItems = query.isEmpty ? nil : query
+
         guard let url = components.url else {
             throw WalletKitError.internalError(message: "Cannot construct Blockfrost URL.")
         }
 
-        let data = try await responseData(url: url, path: path, projectID: projectID)
+        let data = try await responseData(url: url, path: path, projectId: projectId)
         return try JSONDecoder().decode(Response.self, from: data)
     }
 
-    func responseData(url: URL, path: String, projectID: String) async throws -> Data {
+    func responseData(url: URL, path: String, projectId: String) async throws -> Data {
         var request = URLRequest(url: url)
-        request.setValue(projectID, forHTTPHeaderField: "project_id")
+        request.setValue(projectId, forHTTPHeaderField: "project_id")
+
         let (data, response) = try await session.data(for: request)
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw WalletKitError.internalError(message: "Blockfrost returned an invalid response.")
         }
+
         if httpResponse.statusCode == 404 {
             throw HTTPError.notFound
         }
+
         guard (200..<300).contains(httpResponse.statusCode) else {
             throw WalletKitError.internalError(message: "Blockfrost rejected \(path).")
         }
+
         return data
     }
 }

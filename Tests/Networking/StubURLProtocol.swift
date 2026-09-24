@@ -38,7 +38,7 @@ final class StubURLProtocol: URLProtocol {
 
     private static let sessionIDHeader = "X-StubURLProtocol-Session-ID"
     private static let lock = NSLock()
-    nonisolated(unsafe) private static var statesByID: [UUID: State] = [:]
+    nonisolated(unsafe) private static var statesById: [UUID: State] = [:]
 
     /// A `URLSession` that serves `response` to every request it makes,
     /// recording the last request/body sent — isolated from any other
@@ -46,7 +46,7 @@ final class StubURLProtocol: URLProtocol {
     /// observe each other's stubbed response.
     static func makeSession(response: StubResponse) -> Session {
         let id = UUID()
-        lock.withLock { statesByID[id] = State(response: response, responsesByPath: nil) }
+        lock.withLock { statesById[id] = State(response: response, responsesByPath: nil) }
 
         let configuration = makeConfiguration(id: id)
         return Session(urlSession: URLSession(configuration: configuration), id: id)
@@ -58,7 +58,7 @@ final class StubURLProtocol: URLProtocol {
     static func makeSession(responsesByPath: [String: StubResponse]) -> Session {
         let id = UUID()
         lock.withLock {
-            statesByID[id] = State(
+            statesById[id] = State(
                 response: .failure(.unknown),
                 responsesByPath: responsesByPath
             )
@@ -76,7 +76,7 @@ final class StubURLProtocol: URLProtocol {
     }
 
     private static func state(for id: UUID) -> State? {
-        lock.withLock { statesByID[id] }
+        lock.withLock { statesById[id] }
     }
 
     override static func canInit(with request: URLRequest) -> Bool { true }
@@ -97,8 +97,8 @@ final class StubURLProtocol: URLProtocol {
         let body = Self.bodyData(of: request)
         let capturedRequest = request
         Self.lock.withLock {
-            Self.statesByID[id]?.request = capturedRequest
-            Self.statesByID[id]?.body = body
+            Self.statesById[id]?.request = capturedRequest
+            Self.statesById[id]?.body = body
         }
 
         switch response {

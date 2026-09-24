@@ -17,7 +17,7 @@ struct CardanoClientTests {
         }]
         """
         let stub = StubURLProtocol.makeSession(response: .success(body: Data(response.utf8)))
-        let client = CardanoClient(endpoint: endpoint, projectID: "project-id", session: stub.urlSession)
+        let client = CardanoClient(endpoint: endpoint, projectId: "project-id", session: stub.urlSession)
 
         #expect(try await client.getNativeBalance(owner) == 1_234_567)
         #expect(stub.capturedRequest?.url?.path == "/api/v0/accounts/\(owner.stakeAddress)/utxos")
@@ -26,7 +26,7 @@ struct CardanoClientTests {
 
     @Test func emptyUtxosAreAnInactiveAccount() async throws {
         let stub = StubURLProtocol.makeSession(response: .success(body: Data("[]".utf8)))
-        let client = CardanoClient(endpoint: endpoint, projectID: "project-id", session: stub.urlSession)
+        let client = CardanoClient(endpoint: endpoint, projectId: "project-id", session: stub.urlSession)
 
         #expect(!(try await client.isActiveAccount(descriptor())))
     }
@@ -45,7 +45,7 @@ struct CardanoClientTests {
         }]
         """
         let stub = StubURLProtocol.makeSession(response: .success(body: Data(response.utf8)))
-        let client = CardanoClient(endpoint: endpoint, projectID: "project-id", session: stub.urlSession)
+        let client = CardanoClient(endpoint: endpoint, projectId: "project-id", session: stub.urlSession)
 
         let balances = try await client.getAllBalances(owner)
 
@@ -58,7 +58,7 @@ struct CardanoClientTests {
         {"onchain_metadata":{"decimals":6,"name":"Test Token","ticker":"TST"}}
         """
         let stub = StubURLProtocol.makeSession(response: .success(body: Data(response.utf8)))
-        let client = CardanoClient(endpoint: endpoint, projectID: "project-id", session: stub.urlSession)
+        let client = CardanoClient(endpoint: endpoint, projectId: "project-id", session: stub.urlSession)
 
         let token = try await client.getTokenInfo("asset-policy-token")
 
@@ -70,7 +70,7 @@ struct CardanoClientTests {
 
     @Test func broadcastPostsTheSignedCborAndReturnsTheTransactionID() async throws {
         let stub = StubURLProtocol.makeSession(response: .success(body: Data("submitted-tx-id\n".utf8)))
-        let client = CardanoClient(endpoint: endpoint, projectID: "project-id", session: stub.urlSession)
+        let client = CardanoClient(endpoint: endpoint, projectId: "project-id", session: stub.urlSession)
 
         #expect(try await client.broadcast(transaction: Data(), signature: Data([0xde, 0xad])) == "submitted-tx-id")
         #expect(stub.capturedRequest?.url?.path == "/api/v0/tx/submit")
@@ -89,7 +89,7 @@ struct CardanoClientTests {
         }]
         """
         let stub = StubURLProtocol.makeSession(response: .success(body: Data(response.utf8)))
-        let client = CardanoClient(endpoint: endpoint, projectID: "project-id", session: stub.urlSession)
+        let client = CardanoClient(endpoint: endpoint, projectId: "project-id", session: stub.urlSession)
 
         let page = try await client.transactionHistory(
             descriptor(),
@@ -100,11 +100,120 @@ struct CardanoClientTests {
         #expect(page.transactions.first?.blockHeight == 123)
         #expect(page.transactions.first?.timestamp == Date(timeIntervalSince1970: 456))
         #expect(page.reachedBoundary)
+        // Forward sync never starts polling without a head.
+        #expect(page.head == 123)
+    }
+
+    @Test func transactionHistoryFallsBackToTheChainTipForAHeadlessPage() async throws {
+        let owner = try descriptor()
+        let stub = StubURLProtocol.makeSession(responsesByPath: [
+            "/api/v0/accounts/\(owner.stakeAddress)/transactions": .success(body: Data("[]".utf8)),
+            "/api/v0/blocks/latest": .success(body: Data(#"{"height":9876}"#.utf8))
+        ])
+        let client = CardanoClient(endpoint: endpoint, projectId: "project-id", session: stub.urlSession)
+
+        // Backfill is the caller with no head of its own yet.
+        let page = try await client.transactionHistory(
+            owner,
+            request: BlockchainTransactionHistoryRequest(direction: .descending, lowerBound: 0, limit: 10)
+        )
+
+        #expect(page.transactions.isEmpty)
+        #expect(page.reachedBoundary)
+        #expect(page.head == 9876)
+    }
+
+    @Test func aForwardPassResumesPastTheNewestTransactionItSaw() async throws {
+        let response = """
+        [{
+          "block_height":123,
+          "block_time":456,
+          "tx_hash":"transaction-hash",
+          "tx_index":7
+        }]
+        """
+        let stub = StubURLProtocol.makeSession(response: .success(body: Data(response.utf8)))
+        let client = CardanoClient(endpoint: endpoint, projectId: "project-id", session: stub.urlSession)
+
+        let first = try await client.transactionHistory(
+            descriptor(),
+            request: BlockchainTransactionHistoryRequest(direction: .ascending, lowerBound: 100, limit: 10)
+        )
+
+        var query = try queryItems(of: stub)
+        #expect(query.contains(URLQueryItem(name: "order", value: "asc")))
+        #expect(query.contains(URLQueryItem(name: "page", value: "1")))
+        #expect(query.contains(URLQueryItem(name: "from", value: "100")))
+        #expect(first.reachedBoundary)
+
+        let second = try await client.transactionHistory(
+            descriptor(),
+            request: BlockchainTransactionHistoryRequest(
+                cursor: first.nextCursor,
+                direction: .ascending,
+                lowerBound: 124,
+                limit: 10
+            )
+        )
+
+        // The next pass picks up right after block 123's 7th transaction,
+        // rather than at the account's oldest page.
+        query = try queryItems(of: stub)
+        #expect(query.contains(URLQueryItem(name: "from", value: "123:8")))
+        #expect(query.contains(URLQueryItem(name: "page", value: "1")))
+        #expect(second.reachedBoundary)
+        // An idle poll costs exactly one request: the page carried a block
+        // height, so no `blocks/latest` read followed it.
+        #expect(stub.capturedRequest?.url?.path.hasSuffix("/transactions") == true)
+    }
+
+    @Test func backfillPagesArePinnedToTheHeadItStartedFrom() async throws {
+        let response = """
+        [{
+          "block_height":123,
+          "block_time":456,
+          "tx_hash":"transaction-hash",
+          "tx_index":7
+        }]
+        """
+        let stub = StubURLProtocol.makeSession(response: .success(body: Data(response.utf8)))
+        let client = CardanoClient(endpoint: endpoint, projectId: "project-id", session: stub.urlSession)
+
+        let first = try await client.transactionHistory(
+            descriptor(),
+            request: BlockchainTransactionHistoryRequest(direction: .descending, upperBound: 900, limit: 1)
+        )
+
+        var query = try queryItems(of: stub)
+        #expect(query.contains(URLQueryItem(name: "order", value: "desc")))
+        #expect(query.contains(URLQueryItem(name: "page", value: "1")))
+        #expect(query.contains(URLQueryItem(name: "to", value: "900")))
+        // A full page — the scan continues.
+        #expect(!first.reachedBoundary)
+
+        _ = try await client.transactionHistory(
+            descriptor(),
+            request: BlockchainTransactionHistoryRequest(
+                cursor: first.nextCursor,
+                direction: .descending,
+                upperBound: 900,
+                limit: 1
+            )
+        )
+
+        query = try queryItems(of: stub)
+        #expect(query.contains(URLQueryItem(name: "page", value: "2")))
+        #expect(query.contains(URLQueryItem(name: "to", value: "900")))
     }
 }
 
 private extension CardanoClientTests {
     func descriptor() throws -> CardanoAccountDescriptor {
         try CardanoAccountDescriptor(entropy: entropy, network: .preprod, accountIndex: 0)
+    }
+
+    func queryItems(of stub: StubURLProtocol.Session) throws -> [URLQueryItem] {
+        let url = try #require(stub.capturedRequest?.url)
+        return try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
     }
 }

@@ -117,6 +117,33 @@ struct SolanaLocalnetTests {
         #expect(page.transactions.contains { $0.identifier == signature })
     }
 
+    @Test func transactionHistoryIncludesACreditToAnExistingTokenAccount() async throws {
+        let node = try await SolanaNode.start()
+        defer { node.stop() }
+
+        let client = SolanaRPCClient(endpoint: node.rpcURL)
+        let owner = try makeSigner().address()
+
+        // `spl-token mint`'s credit lands in `owner`'s already-created
+        // associated token account without naming `owner` itself among the
+        // transaction's account keys — the same shape as any incoming SPL
+        // transfer into an account that already exists, and a transaction
+        // `getSignaturesForAddress` never reports for `owner`.
+        let mintedAmount: UInt64 = 1_000_000
+        let mint = try await node.mintSPLToken(decimals: 6, to: owner, amount: mintedAmount)
+
+        let page = try await client.transactionHistory(
+            owner,
+            request: BlockchainTransactionHistoryRequest(direction: .descending, limit: 10)
+        )
+
+        #expect(page.transactions.contains { transaction in
+            transaction.effects.contains {
+                $0.kind == .tokenTransfer && $0.assetIdentifier == mint.string && $0.amount == "\(mintedAmount)"
+            }
+        })
+    }
+
     @Test func splTransferCreatesTheRecipientsAssociatedTokenAccount() async throws {
         let node = try await SolanaNode.start()
         defer { node.stop() }

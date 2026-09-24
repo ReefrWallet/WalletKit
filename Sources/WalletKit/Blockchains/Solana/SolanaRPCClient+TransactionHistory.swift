@@ -13,6 +13,18 @@ extension SolanaRPCClient {
     /// The opaque cursor ``transactionHistory(_:request:)`` persists
     /// between pages.
     ///
+    /// A wallet's history is spread across several signature lists — its
+    /// own, plus one per SPL token account it owns (see
+    /// ``scannedAddresses(of:)``) — and `getSignaturesForAddress`'s
+    /// `before`/`until` only accept signatures drawn from the list they
+    /// are passed with. So every scanned address carries its own
+    /// independent ``AddressCursor``, keyed by base-58 address.
+    private struct Cursor: Codable {
+        let addresses: [String: AddressCursor]
+    }
+
+    /// One scanned address's position within the scan in progress.
+    ///
     /// - `before`: this page's continuation pointer within the current
     ///   scan — `getSignaturesForAddress`'s `before` param.
     /// - `until`: the durable boundary a forward (ascending) scan won't
@@ -25,10 +37,15 @@ extension SolanaRPCClient {
     ///   (an empty page comes back), since `getSignaturesForAddress`
     ///   only ever reports the newest signature on the first page of a
     ///   multi-page gap.
-    private struct Cursor: Codable {
+    /// - `drained`: `true` once this address has come back empty in the
+    ///   current scan. Later pages of the same scan skip it instead of
+    ///   re-requesting an exhausted list while the other addresses page
+    ///   on.
+    private struct AddressCursor: Codable {
         let before: String?
-        let until: String?
+        let drained: Bool
         let pendingUntil: String?
+        let until: String?
     }
 
     private struct SignaturesForAddressParams: Encodable {
@@ -194,70 +211,143 @@ extension SolanaRPCClient {
         )
     }
 
-    /// Returns one page of `owner`'s transaction history.
+    /// Every address whose signature list makes up `owner`'s history:
+    /// `owner` itself, plus each SPL token account it holds under either
+    /// token program.
+    ///
+    /// A transfer *into* a token account that already exists names only
+    /// that token account among the transaction's account keys — never
+    /// `owner` — so scanning `owner`'s own list alone silently drops every
+    /// incoming SPL transfer after the one that created the account (which
+    /// does name `owner`, since creating an ATA passes its owner in). The
+    /// two `getTokenAccountsByOwner` reads this costs per page are the
+    /// price of catching them. A token account closed since it last
+    /// received funds drops out of the scan — the node no longer reports
+    /// it as owned.
+    private func scannedAddresses(of owner: SolanaAddress) async throws -> [SolanaAddress] {
+        var addresses = [owner]
+
+        for program in [SolanaProgram.token, SolanaProgram.token2022] {
+            addresses += try await tokenAccounts(of: owner, tokenProgram: program).map(\.tokenAccount)
+        }
+
+        var seen: Set<String> = []
+        return addresses.filter { seen.insert($0.string).inserted }
+    }
+
+    /// Advances one address's scan state over the page it just returned.
+    private func advance(
+        _ state: AddressCursor?,
+        over page: [SignatureInfo],
+        direction: BlockchainTransactionScanDirection
+    ) -> AddressCursor {
+        // Newest-first, so the last entry is the oldest one this page saw
+        // and becomes the next page's `before`.
+        guard let newest = page.first?.signature, let oldest = page.last?.signature else {
+            return AddressCursor(
+                before: state?.before,
+                drained: true,
+                pendingUntil: state?.pendingUntil,
+                until: state?.until
+            )
+        }
+
+        switch direction {
+        case .ascending:
+            return AddressCursor(
+                before: oldest,
+                drained: false,
+                pendingUntil: state?.pendingUntil ?? newest,
+                until: state?.until
+            )
+        case .descending:
+            return AddressCursor(before: oldest, drained: false, pendingUntil: nil, until: nil)
+        }
+    }
+
+    /// Makes `state` the starting point of the *next* forward pass: its
+    /// pending boundary becomes durable, and the address is re-armed for
+    /// that pass.
+    private func promoted(_ state: AddressCursor) -> AddressCursor {
+        AddressCursor(before: nil, drained: false, pendingUntil: nil, until: state.pendingUntil ?? state.until)
+    }
+
+    /// Requests one page of signatures from every address still live in
+    /// this scan — skipping the ones already drained — and reports the
+    /// state each of them advances to.
+    private func signaturePages(
+        of owner: SolanaAddress,
+        cursor: Cursor?,
+        request: BlockchainTransactionHistoryRequest
+    ) async throws -> (signatures: [SignatureInfo], states: [String: AddressCursor]) {
+        var signatures: [SignatureInfo] = []
+        var states: [String: AddressCursor] = [:]
+
+        for address in try await scannedAddresses(of: owner) {
+            let state = cursor?.addresses[address.string]
+
+            guard !(state?.drained ?? false) else {
+                states[address.string] = state
+                continue
+            }
+
+            let page = try await signaturesForAddress(
+                address,
+                limit: request.limit,
+                before: state?.before,
+                until: request.direction == .ascending ? state?.until : nil
+            )
+
+            states[address.string] = advance(state, over: page, direction: request.direction)
+            signatures += page
+        }
+
+        return (signatures, states)
+    }
+
+    /// Returns one page of `owner`'s transaction history, merged across
+    /// every address in ``scannedAddresses(of:)`` — so a page can carry up
+    /// to `request.limit` signatures *per scanned address*.
     ///
     /// - Descending (backfill): pages backward from the chain tip (or
     ///   `request.cursor`) toward genesis via `before`; `reachedBoundary`
-    ///   is `true` once a page comes back empty.
+    ///   is `true` once every address has come back empty.
     /// - Ascending (forward catch-up): pages toward the tip, bounded
-    ///   below by the durable `until` boundary carried in
+    ///   below by the durable per-address `until` boundary carried in
     ///   `request.cursor`; `reachedBoundary` is `true` once the gap since
-    ///   that boundary is fully drained, at which point the boundary
-    ///   advances to the newest signature seen.
+    ///   those boundaries is fully drained, at which point each boundary
+    ///   advances to the newest signature that address saw.
     public func transactionHistory(
         _ owner: SolanaAddress,
         request: BlockchainTransactionHistoryRequest
     ) async throws -> BlockchainTransactionPage {
         let cursor = request.cursor.flatMap { try? JSONDecoder().decode(Cursor.self, from: $0) }
-        let until = request.direction == .ascending ? cursor?.until : nil
+        let (signatures, states) = try await signaturePages(of: owner, cursor: cursor, request: request)
 
-        let signatures = try await signaturesForAddress(
-            owner, limit: request.limit, before: cursor?.before, until: until
-        )
-
-        guard !signatures.isEmpty else {
-            let nextCursor: Cursor
-            switch request.direction {
-            case .descending:
-                nextCursor = cursor ?? Cursor(before: nil, until: nil, pendingUntil: nil)
-            case .ascending:
-                nextCursor = Cursor(before: nil, until: cursor?.pendingUntil ?? cursor?.until, pendingUntil: nil)
-            }
-            return BlockchainTransactionPage(
-                transactions: [],
-                nextCursor: try JSONEncoder().encode(nextCursor),
-                reachedBoundary: true
-            )
-        }
+        // One transaction usually appears in both the wallet's own list and
+        // its token account's, so the merged lists overlap.
+        var seen: Set<String> = []
+        let merged = signatures
+            .filter { seen.insert($0.signature).inserted }
+            .sorted { $0.slot > $1.slot }
 
         var transactions: [BlockchainTransaction] = []
-        for info in signatures {
+        for info in merged {
             if let transaction = try await transaction(signature: info.signature, owner: owner) {
                 transactions.append(transaction)
             }
         }
 
-        let newestSignature = signatures[0].signature
-        let oldestSignature = signatures[signatures.count - 1].signature
-        let head = signatures.map(\.slot).max()
-
-        let nextCursor: Cursor
-        switch request.direction {
-        case .descending:
-            nextCursor = Cursor(before: oldestSignature, until: nil, pendingUntil: nil)
-        case .ascending:
-            nextCursor = Cursor(
-                before: oldestSignature,
-                until: cursor?.until,
-                pendingUntil: cursor?.pendingUntil ?? newestSignature
-            )
-        }
+        let reachedBoundary = states.values.allSatisfy(\.drained)
+        let nextCursor = reachedBoundary && request.direction == .ascending
+            ? Cursor(addresses: states.mapValues(promoted))
+            : Cursor(addresses: states)
 
         return BlockchainTransactionPage(
             transactions: transactions,
             nextCursor: try JSONEncoder().encode(nextCursor),
-            reachedBoundary: false,
-            head: head
+            reachedBoundary: reachedBoundary,
+            head: merged.map(\.slot).max()
         )
     }
 }

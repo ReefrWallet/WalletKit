@@ -6,7 +6,7 @@ import WalletKitRust
 public struct CardanoUnsignedTransaction: Codable, Sendable {
     public let fee: String
     public let inputs: [CardanoTransactionInputFfi]
-    public let networkID: UInt8
+    public let networkId: UInt8
     public let outputs: [CardanoTransactionOutputFfi]
     public let signingPaths: [CardanoSigningPathFfi]
     public let transactionBody: Data
@@ -15,7 +15,7 @@ public struct CardanoUnsignedTransaction: Codable, Sendable {
     init(_ raw: CardanoUnsignedTransactionFfi) {
         fee = raw.fee
         inputs = raw.inputs
-        networkID = raw.networkId
+        networkId = raw.networkId
         outputs = raw.outputs
         signingPaths = raw.signingPaths
         transactionBody = raw.transactionBody
@@ -68,9 +68,11 @@ public struct CardanoTransactionBuilder: BlockchainTransactionBuilderProtocol, S
         guard case let .account(account) = sender else {
             throw WalletKitError.invalidAddress(reason: "Cardano sender must be an account descriptor.")
         }
+
         guard case let .recipient(address) = recipient else {
             throw WalletKitError.invalidAddress(reason: "Cardano recipient must be a payment address.")
         }
+
         guard account.network == address.network else {
             throw WalletKitError.invalidAddress(reason: "Cardano sender and recipient networks differ.")
         }
@@ -81,12 +83,16 @@ public struct CardanoTransactionBuilder: BlockchainTransactionBuilderProtocol, S
             }
             return value
         }.last
-        return try JSONEncoder().encode(CardanoUnsignedTransaction(try await client.buildTransfer(
-            account,
-            recipientLovelace: recipientLovelace,
-            recipient: address,
-            amount: amount,
-            token: token
-        )))
+
+        return try JSONEncoder()
+            .encode(CardanoUnsignedTransaction(
+                try await client.buildTransfer(
+                    account,
+                    recipientLovelace: recipientLovelace,
+                    recipient: address,
+                    amount: amount,
+                    token: token
+                )
+            ))
     }
 }

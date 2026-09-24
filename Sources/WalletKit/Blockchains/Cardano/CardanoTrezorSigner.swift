@@ -42,7 +42,7 @@ public final class CardanoTrezorSigner {
             bodyHash: try unsigned.transactionBodyHash(),
             fee: try lovelace(unsigned.fee),
             inputs: inputs,
-            networkId: unsigned.networkID,
+            networkId: unsigned.networkId,
             outputs: outputs,
             protocolMagic: network.protocolMagic,
             ttl: unsigned.ttl,
