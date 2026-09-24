@@ -27,6 +27,8 @@ extension CardanoClient {
             query: historyQuery(request: request, count: count, from: from, page: page)
         )
 
+        let addresses = (try? await ownedAddresses(owner)).map { Set($0) } ?? []
+
         let reachedBoundary = transactions.count < count
         let nextCursor: HistoryCursor?
 
@@ -53,20 +55,34 @@ extension CardanoClient {
         // still produces one; a failed tip read must not sink an otherwise-good
         // page, so it degrades to no head and the next poll retries.
         var head = transactions.compactMap(\.blockHeight).max()
+
         if head == nil, (request.lowerBound ?? 0) == 0 {
             head = try? await latestBlockHeight()
         }
 
-        return BlockchainTransactionPage(
-            transactions: transactions.map { transaction in
+        var blockchainTransactions: [BlockchainTransaction] = []
+
+        for transaction in transactions {
+            let effect = try? await nativeTransferEffect(
+                txHash: transaction.txHash,
+                owner: owner,
+                ownedAddresses: addresses
+            )
+
+            blockchainTransactions.append(
                 BlockchainTransaction(
                     identifier: transaction.txHash,
                     blockHeight: transaction.blockHeight,
                     blockHash: transaction.block,
                     timestamp: Date(timeIntervalSince1970: TimeInterval(transaction.blockTime)),
-                    status: .confirmed
+                    status: .confirmed,
+                    effects: effect.map { [$0] } ?? []
                 )
-            },
+            )
+        }
+
+        return BlockchainTransactionPage(
+            transactions: blockchainTransactions,
             nextCursor: try nextCursor.map { try JSONEncoder().encode($0) },
             reachedBoundary: reachedBoundary,
             head: head
@@ -75,6 +91,10 @@ extension CardanoClient {
 }
 
 private extension CardanoClient {
+    struct AddressEntry: Decodable {
+        let address: String
+    }
+
     struct AccountTransaction: Decodable {
         let block: String?
         let blockHeight: UInt64?
@@ -113,6 +133,81 @@ private extension CardanoClient {
     struct Block: Decodable {
         let height: UInt64?
     }
+
+    struct TransactionUTxOs: Decodable {
+        let inputs: [TransactionUTxO]
+        let outputs: [TransactionUTxO]
+    }
+
+    struct TransactionUTxO: Decodable {
+        let address: String
+        let amount: [TransactionAmount]
+    }
+
+    struct TransactionAmount: Decodable {
+        let quantity: String
+        let unit: String
+    }
+
+    func nativeTransferEffect(
+        txHash: String,
+        owner: CardanoAccountDescriptor,
+        ownedAddresses: Set<String>
+    ) async throws -> BlockchainTransactionEffect? {
+        guard !ownedAddresses.isEmpty else {
+            return nil
+        }
+
+        let transaction: TransactionUTxOs = try await get("txs/\(txHash)/utxos")
+        let received = lovelace(in: transaction.outputs, ownedAddresses: ownedAddresses)
+        let sent = lovelace(in: transaction.inputs, ownedAddresses: ownedAddresses)
+        let net = received - sent
+
+        return BlockchainTransactionEffect(
+            index: 0,
+            kind: .nativeTransfer,
+            amount: String(net.magnitude),
+            from: net < 0 ? owner.string : nil,
+            to: net > 0 ? owner.string : nil
+        )
+    }
+
+    func lovelace(in entries: [TransactionUTxO], ownedAddresses: Set<String>) -> Int64 {
+        var total: Int64 = 0
+
+        for entry in entries where ownedAddresses.contains(entry.address) {
+            for amount in entry.amount where amount.unit == "lovelace" {
+                total += Int64(amount.quantity) ?? 0
+            }
+        }
+
+        return total
+    }
+
+    func ownedAddresses(_ owner: CardanoAccountDescriptor) async throws -> [String] {
+        let count = 100
+        var addresses: [String] = []
+        var page = 1
+
+        while true {
+            let entries: [AddressEntry] = try await get(
+                "accounts/\(owner.stakeAddress)/addresses",
+                query: [
+                    URLQueryItem(name: "count", value: "\(count)"),
+                    URLQueryItem(name: "page", value: "\(page)")
+                ]
+            )
+
+            addresses.append(contentsOf: entries.map(\.address))
+
+            guard entries.count == count else {
+                return addresses
+            }
+
+            page += 1
+        }
+    }
+
 
     /// What ``CardanoClient/transactionHistory(_:request:)`` persists between
     /// pages: Blockfrost's ordinal `page` number within the pass in progress,
