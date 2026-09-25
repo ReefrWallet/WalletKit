@@ -15,10 +15,10 @@ import Foundation
 /// ``EthereumTrezorSigner/sign(transaction:)`` expect as their
 /// `transaction` input.
 ///
-/// EIP-1559 typed transactions are not supported here because the
-/// `EthereumSignerFfi` Rust layer only implements the legacy (EIP-155)
-/// signing path. ``EthereumTransactionBuilder`` builds this structure
-/// and returns ``signingData`` ready for the signer.
+/// Use ``UnsignedEIP1559Transaction`` for typed transactions.
+/// ``EthereumTransactionBuilder`` builds this structure when its options
+/// request legacy EIP-155 signing and returns ``signingData`` ready for a
+/// signer.
 ///
 /// Cross-checked against `WalletKit/TestVectors/ethereum-tx.json` vectors
 /// in `LegacyTransactionTests.swift` before ever being trusted against a

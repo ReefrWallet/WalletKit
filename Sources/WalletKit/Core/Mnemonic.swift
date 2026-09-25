@@ -5,8 +5,8 @@
 //  Created by Andrey Yurkevich on 16/08/2026.
 //
 
-@_exported import enum WalletKitRust.MnemonicWordCount
-@_exported import enum WalletKitRust.Wordlist
+@_documentation(visibility: internal) @_exported import enum WalletKitRust.MnemonicWordCount
+@_documentation(visibility: internal) @_exported import enum WalletKitRust.Wordlist
 import class WalletKitRust.MnemonicFfi
 
 /// A BIP39 recovery phrase, and the entry point for deriving the wallet's
@@ -39,9 +39,8 @@ public protocol MnemonicProtocol: AnyObject {
 
 /// A BIP39 mnemonic recovery phrase.
 ///
-/// Backed by ``MnemonicFfi``, which holds the phrase in Rust-managed,
-/// zeroized memory; the phrase is only copied into a Swift `String` (see
-/// ``phrase``) when read explicitly.
+/// Read ``phrase`` only when necessary, and treat the returned string as
+/// sensitive wallet material.
 public final class Mnemonic: MnemonicProtocol {
     let raw: MnemonicFfi
 

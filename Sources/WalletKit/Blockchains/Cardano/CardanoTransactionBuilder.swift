@@ -2,7 +2,7 @@ import BigInt
 import Foundation
 import WalletKitRust
 
-/// The signed-body inputs a ``CardanoPKeySigner`` needs to create witnesses.
+/// The signed-body inputs needed to create Cardano witnesses.
 public struct CardanoUnsignedTransaction: Codable, Sendable {
     public let fee: String
     public let inputs: [CardanoTransactionInputFfi]

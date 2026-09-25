@@ -13,17 +13,7 @@ import GRPCNIOTransportHTTP2Posix
 import SwiftProtobuf
 import WalletKitGRPC
 
-/// A client for Sui's gRPC full-node API — coin balance, owned-coin
-/// enumeration, arbitrary object reads, fee estimation, and broadcasting
-/// an already-signed transaction. Pairs with ``SuiPKeySigner``, which
-/// produces the raw BCS transaction bytes and signature
-/// ``broadcast(transactionData:signature:)`` sends; transaction *building*
-/// lives in ``SuiTransactionBuilder``, not here.
-///
-/// Sui's node API is gRPC (`sui.rpc.v2`, vendored as the
-/// `Sources/gRPC/sui-rpc-api-v2` submodule and compiled by `make sui-grpc`
-/// into `WalletKitGRPC`), unlike Ethereum's plain JSON-RPC over
-/// `URLSession` (``EthereumRPCClient``/``JSONRPCClient``).
+/// A client for Sui's gRPC full-node API.
 public struct SuiGRPCClient: Sendable {
     private let host: String
     private let port: Int
@@ -298,7 +288,7 @@ public struct SuiGRPCClient: Sendable {
     /// Uses `StateService.listOwnedObjects` with an `objectType` filter of
     /// `"0x2::coin::Coin<coinType>"` and reads `objectId`, `version`,
     /// `digest`, and `balance` for each result. Object IDs are decoded from
-    /// `0x`-hex via ``Data/init(hexString:)``; digests from Base58 (the Sui
+    /// `0x`-hex with a local hexadecimal decoder; digests from Base58 (the Sui
     /// gRPC API uses Base58 for digests, unlike `0x`-hex everywhere else).
     ///
     /// - Parameters:

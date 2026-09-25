@@ -6,7 +6,7 @@
 import Foundation
 import WalletKitRust
 
-/// ``BitcoinBackend`` conformance backed by ``ElectrumClient``.
+/// Internal Bitcoin backend backed by an Electrum client.
 struct ElectrumBackend: BitcoinBackend {
     let client: ElectrumClient
 

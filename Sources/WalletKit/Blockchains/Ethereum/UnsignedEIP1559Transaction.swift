@@ -10,8 +10,8 @@ import BigInt
 import Foundation
 
 /// An unsigned EIP-1559 (type-2) Ethereum transaction, serialized as the
-/// `0x02`-prefixed type-envelope the `EthereumSignerFfi` EIP-1559 signing
-/// path and ``EthereumPKeySigner/sign(transaction:)`` expect.
+/// `0x02`-prefixed type envelope accepted by
+/// ``EthereumPKeySigner/sign(transaction:)``.
 ///
 /// The signing preimage is:
 /// ```
@@ -19,7 +19,7 @@ import Foundation
 ///              gasLimit, to, value, data, []])
 /// ```
 /// where `[]` is an empty access list (`0xC0`). Wallet transfers never set
-/// access-list entries; the Rust signing layer rejects a non-empty list.
+/// access-list entries; WalletKit transfer builders use an empty list.
 ///
 /// ``EthereumTransactionBuilder`` builds this structure when the default
 /// options are used (i.e. `options` does not contain `.legacyEip155`).

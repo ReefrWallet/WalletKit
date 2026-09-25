@@ -1,6 +1,6 @@
 //! Plain data mirrors of `walletkit-hardware`'s vendor-agnostic types,
 //! exported as UniFFI Records/Enums. Most carry no `Ffi` suffix, the same
-//! way `common::CurveFfi`/`common::DerivationPath` don't — see
+//! way `common::CurveFfi`/`common::DerivationPathFfi` don't — see
 //! `common/mod.rs`'s doc comment. `HardwareVendorFfi`/
 //! `HardwareDeviceInfoFfi`/`HardwareTransportKindFfi` are the exception:
 //! `WalletKit` hand-wraps them (`HardwareVendor`, `HardwareDeviceInfo`,

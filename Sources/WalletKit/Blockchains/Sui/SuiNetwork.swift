@@ -12,7 +12,7 @@ public enum SuiNetwork: Equatable, Hashable, Codable, Sendable {
     case mainnet
     case testnet
 
-    public static var allNetworks: [WKBlockchain] {
+    public static var allNetworks: [Blockchain] {
         [.sui(.mainnet), .sui(.testnet)]
     }
 

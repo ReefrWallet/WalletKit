@@ -7,8 +7,10 @@ import WalletKit
 /// An error raised when the local `solana-test-validator` node cannot be
 /// provisioned, started, or queried.
 public struct SolanaLaunchError: Error, CustomStringConvertible {
+    /// A description of the failed local-node operation.
     public let description: String
 
+    /// Creates an error with a diagnostic description.
     public init(description: String) {
         self.description = description
     }
@@ -75,6 +77,7 @@ private func freeTCPPorts(_ count: Int) throws -> [UInt16] {
 /// `WalletKit/.build/solana-testing/bin/` once; ``start()`` only resolves
 /// that already-provisioned path.
 public final class SolanaNode {
+    /// The local validator's JSON-RPC endpoint.
     public let rpcURL: URL
     let binDirectory: URL
 
@@ -137,6 +140,7 @@ public final class SolanaNode {
         return node
     }
 
+    /// Stops the validator and removes its temporary ledger.
     public func stop() {
         process.terminate()
         process.waitUntilExit()

@@ -15,10 +15,10 @@ public final class SuiPKeySigner: Signer {
     public typealias Address = SuiAddress
 
     /// The account this signer signs for.
-    public let account: WKAccount
+    public let account: Account
 
     /// Which signature scheme this signer's account uses — the `Curve`
-    /// carried by `WKBlockchain.sui(_:)`.
+    /// carried by `Blockchain.sui(_:)`.
     public let curve: Curve
 
     private let privateKey: PrivateKey
@@ -49,7 +49,7 @@ public final class SuiPKeySigner: Signer {
         self.curve = curve
         self.privateKey = privateKey
         raw = SuiSignerFfi(curve: curve.raw)
-        account = WKAccount(
+        account = Account(
             blockchain: .sui(network),
             derivationPath: derivationPath,
             curve: curve,

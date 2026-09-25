@@ -8,3 +8,5 @@ Sources/Generated/.DS_Store
 /Frameworks/
 /Sources/Generated/
 /.build/
+.swiftpm/
+Docs/

@@ -11,8 +11,8 @@ import WalletKitRust
 /// backed by a ``BitcoinClient``.
 ///
 /// Builds unsigned PSBT bytes (via `bitcoin_build_unsigned_psbt`) ready
-/// for ``BitcoinPKeySigner/sign(transaction:)`` — coin selection
-/// (``BitcoinCoinSelector``) picks the inputs and decides whether a
+/// for ``BitcoinPKeySigner/sign(transaction:)``. Coin selection picks the
+/// inputs and decides whether a
 /// change output is needed; the change address, when one is needed,
 /// comes from the sender's resolver (a fresh, never-before-seen address
 /// on the change chain).

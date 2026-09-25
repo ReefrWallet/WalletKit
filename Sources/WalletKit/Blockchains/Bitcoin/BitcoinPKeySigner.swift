@@ -19,7 +19,7 @@ public final class BitcoinPKeySigner: Signer {
     public typealias Address = BitcoinDescriptor
 
     /// The account this signer signs for.
-    public let account: WKAccount
+    public let account: Account
 
     private let descriptor: BitcoinDescriptor
     private let seed: Seed
@@ -46,7 +46,7 @@ public final class BitcoinPKeySigner: Signer {
         self.seed = seed
 
         let accountPublicKey = try seed.masterKey(curve: .secp256k1).derive(derivationPath).publicKey
-        account = WKAccount(
+        account = Account(
             blockchain: .bitcoin(descriptor.network),
             derivationPath: derivationPath,
             curve: .secp256k1,
@@ -55,7 +55,7 @@ public final class BitcoinPKeySigner: Signer {
         )
     }
 
-    /// ``descriptor`` — the account this signer signs for.
+    /// Returns the descriptor for the account this signer signs for.
     public func address() throws -> BitcoinDescriptor {
         descriptor
     }
@@ -63,15 +63,12 @@ public final class BitcoinPKeySigner: Signer {
     /// Signs `transaction` — unsigned PSBT bytes from
     /// ``BitcoinTransactionBuilder/buildTransfer(sender:recipient:amount:token:options:)``.
     ///
-    /// Reads back each input's own recorded derivation path
-    /// (`bitcoinPsbtInputDerivations`), derives the matching private key
-    /// from ``seed``, signs (`BitcoinSignerFfi.signPsbt`), and finalizes
-    /// (`.finalizePsbt`) — returning the finalized, broadcastable raw
-    /// transaction ready for ``BitcoinClient/broadcast(transaction:signature:)``
-    /// (as its `signature` parameter; `transaction` there is unused).
+    /// Uses each input's recorded derivation path to derive its signing key
+    /// and returns the finalized transaction ready for
+    /// ``BitcoinClient/broadcast(transaction:signature:)``.
     ///
     /// - Throws: ``WalletKitError/signingFailed(reason:)`` if
-    ///   `transaction` isn't a well-formed PSBT built by this crate, or a
+    ///   `transaction` isn't a well-formed PSBT built by WalletKit, or a
     ///   derived key doesn't own the input it's positioned at (e.g.
     ///   `seed` doesn't match the descriptor that built this PSBT).
     public func sign(transaction: Data) async throws -> Data {

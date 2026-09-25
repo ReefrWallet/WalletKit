@@ -6,7 +6,9 @@ import GRPCNIOTransportHTTP2Posix
 import WalletKit
 import WalletKitGRPC
 
+/// An error raised when the local Sui network cannot be started or queried.
 public struct SuiLaunchError: Error, CustomStringConvertible {
+    /// A description of the failed local-node operation.
     public let description: String
 }
 
@@ -110,6 +112,7 @@ private actor SuiNodeGate {
 public final class SuiNode {
     private static let localnetTimeout: Duration = .seconds(10)
 
+    /// The local full node's gRPC port.
     public let rpcPort: UInt16
     private let faucetPort: UInt16
     private let process: Process
@@ -211,7 +214,7 @@ public final class SuiNode {
     /// anchored to this repo's `mise.toml` (`-C repoRoot`) so the pinned
     /// `testnet-v1.77.2` is used even when another `sui` version is also
     /// installed. `mise x sui -- true` first, to trigger mise's own
-    /// auto-install on first use — same as `AnvilNode`'s `mise x foundry`.
+    /// auto-install on first use — same as `EthereumNode`'s `mise x foundry`.
     private static func resolveSuiBinaryPath(misePath: String, repoRoot: URL) throws -> String {
         func run(_ arguments: [String]) throws -> String {
             let process = Process()
@@ -238,6 +241,7 @@ public final class SuiNode {
         return try run(["-C", repoRoot.path, "which", "sui"])
     }
 
+    /// Stops the local network and removes its temporary files.
     public func stop() {
         process.terminate()
         process.waitUntilExit()
@@ -399,8 +403,8 @@ public final class SuiNode {
     }
 
     /// Polls `LedgerService.GetTransaction` for `digest`'s effects, until
-    /// it lands in a checkpoint — the ``waitForReceipt(_:)`` analogue for
-    /// `AnvilNode`, needed because a broadcast localnet transaction isn't
+    /// it lands in a checkpoint. This is analogous to waiting for an EVM
+    /// receipt, because a broadcast localnet transaction isn't
     /// necessarily final the instant `broadcast(transactionData:signature:)`
     /// returns.
     public func waitForEffects(_ digest: String) async throws -> Sui_Rpc_V2_TransactionEffects {

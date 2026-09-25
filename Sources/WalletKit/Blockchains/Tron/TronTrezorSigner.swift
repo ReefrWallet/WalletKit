@@ -8,7 +8,7 @@ import Foundation
 public final class TronTrezorSigner: Signer {
     public typealias Address = TronAddress
 
-    public let account: WKAccount
+    public let account: Account
 
     private let device: HardwareDevice
 
@@ -19,7 +19,7 @@ public final class TronTrezorSigner: Signer {
     ) async throws {
         let publicKey = try await device.publicKey(path: derivationPath, curve: .secp256k1)
         self.device = device
-        account = WKAccount(
+        account = Account(
             blockchain: .tron(network),
             derivationPath: derivationPath,
             curve: .secp256k1,
@@ -42,7 +42,7 @@ public final class TronTrezorSigner: Signer {
         }
 
         return try await remappingWalletKitError {
-            try await device.raw.tronSignTx(path: account.derivationPath, transaction: transaction)
+            try await device.raw.tronSignTx(path: account.derivationPath.raw, transaction: transaction)
         }
     }
 }

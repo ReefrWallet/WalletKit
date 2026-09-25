@@ -14,20 +14,17 @@ import WalletKitRust
 /// signing data into the structured fields the device's trusted screen
 /// displays (``signTx(from:)``) and re-assembling the device's returned
 /// signature into a broadcastable transaction
-/// (``signedTransaction(_:signature:)``) — both real, Rust-backed
-/// operations, shared with ``EthereumPKeySigner``'s software path via
-/// `EthereumSignerFfi`. ``sign(transaction:)`` composes both around the
-/// actual device conversation (``HardwareDevice/raw``'s
-/// `ethereumSignTx(path:tx:)`), which shows `transaction`'s decoded fields
-/// on the device's trusted screen and returns its signature.
+/// (``signedTransaction(_:signature:)``). ``sign(transaction:)`` presents
+/// the decoded transaction on the device's trusted screen and returns its
+/// signature after the person confirms it.
 public final class EthereumTrezorSigner: Signer {
     public typealias Address = EthereumAddress
 
     /// The account this signer signs for.
-    public let account: WKAccount
+    public let account: Account
 
     /// EVM chain ID this signer is scoped to (1 = mainnet, 11155111 =
-    /// Sepolia, ...) — the value carried by `WKBlockchain.ethereum(_:)`.
+    /// Sepolia, ...) — the value carried by `Blockchain.ethereum(_:)`.
     public let chainId: UInt64
 
     private let device: HardwareDevice
@@ -49,7 +46,7 @@ public final class EthereumTrezorSigner: Signer {
         self.chainId = chainId
         self.device = device
         raw = EthereumSignerFfi(chainId: chainId)
-        account = WKAccount(
+        account = Account(
             blockchain: .evm(EVMBlockchain(chainId: chainId)),
             derivationPath: derivationPath,
             curve: .secp256k1,
@@ -138,7 +135,7 @@ public final class EthereumTrezorSigner: Signer {
             // EIP-1559 path
             let tx = try remappingWalletKitError { try raw.decodeEip1559SigningData(signingData: transaction) }
             let ffiSignature = try await remappingWalletKitError {
-                try await device.raw.ethereumSignTxEip1559(path: account.derivationPath, tx: tx)
+                try await device.raw.ethereumSignTxEip1559(path: account.derivationPath.raw, tx: tx)
             }
 
             let signature = EthereumEIP1559Signature(
@@ -153,7 +150,7 @@ public final class EthereumTrezorSigner: Signer {
         // Legacy EIP-155 path
         let tx = try remappingWalletKitError { try raw.decodeSigningData(signingData: transaction) }
         let ffiSignature = try await remappingWalletKitError {
-            try await device.raw.ethereumSignTx(path: account.derivationPath, tx: tx)
+            try await device.raw.ethereumSignTx(path: account.derivationPath.raw, tx: tx)
         }
         let signature = EthereumSignature(v: ffiSignature.v, r: ffiSignature.r, s: ffiSignature.s)
         return try signedTransaction(transaction, signature: signature)

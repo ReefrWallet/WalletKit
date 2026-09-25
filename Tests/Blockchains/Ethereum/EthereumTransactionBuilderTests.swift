@@ -9,7 +9,7 @@
 // EIP-1559 type-2 path (options: []) are exercised for native ETH and
 // ERC-20 transfers.
 //
-// `anvil` is run via `mise x foundry -- anvil` (AnvilNode.swift). There's
+// `anvil` is run via `mise x foundry -- anvil` (EthereumNode.swift). There's
 // no `withKnownIssue` gating: if the node can't start, the suite fails
 // loudly.
 
@@ -24,7 +24,7 @@ struct EthereumTransactionBuilderTests {
     // MARK: - Native ETH transfer (EIP-155 legacy)
 
     @Test func builderProducesValidNativeETHTransferThatDecrementsSenderBalance() async throws {
-        let node = try await AnvilNode.start()
+        let node = try await EthereumNode.start()
         defer { node.stop() }
 
         let vectors = loadEthAddressVectors()
@@ -64,7 +64,7 @@ struct EthereumTransactionBuilderTests {
     // MARK: - Native ETH transfer (EIP-1559)
 
     @Test func builderProducesValidEIP1559NativeETHTransferThatDecrementsSenderBalance() async throws {
-        let node = try await AnvilNode.start()
+        let node = try await EthereumNode.start()
         defer { node.stop() }
 
         let vectors = loadEthAddressVectors()
@@ -102,7 +102,7 @@ struct EthereumTransactionBuilderTests {
     // MARK: - ERC-20 transfer (EIP-155 legacy)
 
     @Test func builderProducesValidERC20TransferThatMovesTokenBalance() async throws {
-        let node = try await AnvilNode.start()
+        let node = try await EthereumNode.start()
         defer { node.stop() }
 
         let vectors = loadEthAddressVectors()
@@ -164,7 +164,7 @@ struct EthereumTransactionBuilderTests {
     // MARK: - ERC-20 transfer (EIP-1559)
 
     @Test func builderProducesValidEIP1559ERC20TransferThatMovesTokenBalance() async throws {
-        let node = try await AnvilNode.start()
+        let node = try await EthereumNode.start()
         defer { node.stop() }
 
         let vectors = loadEthAddressVectors()
@@ -231,7 +231,7 @@ private func sendRaw(
     value: BigUInt,
     data: Data,
     gasLimit: BigUInt,
-    node: AnvilNode,
+    node: EthereumNode,
     client: EthereumRPCClient,
     gasPrice: BigUInt
 ) async throws -> TransactionReceipt {

@@ -38,7 +38,7 @@ public enum WalletKitError: Error, Equatable {
     /// deriving an Ethereum address from an ed25519 key).
     case unsupportedCurve(curve: Curve)
 
-    /// A ``BigIntFfi`` conversion couldn't be represented in the requested
+    /// A big-integer conversion couldn't be represented in the requested
     /// integer type (negative magnitude for an unsigned type, or a value
     /// too large/small for the target's bit width). `reason` describes
     /// what went wrong.

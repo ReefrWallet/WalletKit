@@ -10,14 +10,6 @@ import BigInt
 import Foundation
 
 /// ``BlockchainClientProtocol`` conformance for ``SolanaRPCClient``.
-///
-/// `Address` is inferred as ``SolanaAddress``. Unlike Ethereum/Sui, Solana
-/// has no dedicated "native asset" identifier distinct from a mint
-/// address, so ``nativeMintPlaceholder`` — Wrapped SOL's real mint
-/// address, a convention several Solana wallet SDKs already use to mean
-/// "native SOL" — doubles as the `token` key/parameter representing
-/// native SOL throughout this conformance, mirroring how Sui uses its
-/// real `"0x2::sui::SUI"` coin type for the same purpose.
 extension SolanaRPCClient: BlockchainClientProtocol {
     public typealias Address = SolanaAddress
 
@@ -91,8 +83,8 @@ extension SolanaRPCClient: BlockchainClientProtocol {
     ///
     /// Pass `nil` (or a `request` with `data == nil`) for a rates-only
     /// estimate: ``FeeEstimate/gasPrice`` is the current median recent
-    /// priority fee (micro-lamports per compute unit); ``FeeEstimate/
-    /// gasLimit``/``FeeEstimate/estimatedFee`` are `nil`.
+    /// priority fee (micro-lamports per compute unit);
+    /// ``FeeEstimate/gasLimit``/``FeeEstimate/estimatedFee`` are `nil`.
     ///
     /// With a request: ``FeeEstimate/estimatedFee`` is `getFeeForMessage`'s
     /// base fee (5 000 lamports per required signature) plus the

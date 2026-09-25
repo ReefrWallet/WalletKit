@@ -9,12 +9,6 @@
 import BigInt
 
 /// ``BlockchainClientProtocol`` conformance for ``EthereumRPCClient``.
-///
-/// `Address` is inferred as ``EthereumAddress`` from the method signatures.
-/// The `token` parameter in ``getBalance(_:token:)`` and ``getTokenInfo(_:)``
-/// remains a `String` — an ERC-20 contract address string — because the
-/// protocol's `token` parameter is stringly-typed across all chains (on Sui,
-/// token identifiers are coin-type strings, not addresses).
 extension EthereumRPCClient: BlockchainClientProtocol {
     public func getAllBalances(_ owner: EthereumAddress) async throws -> [String: BigUInt] {
         throw WalletKitError.unsupportedFeature

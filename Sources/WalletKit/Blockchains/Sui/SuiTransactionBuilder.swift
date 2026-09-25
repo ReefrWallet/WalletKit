@@ -12,31 +12,9 @@ import Foundation
 /// A ``BlockchainTransactionBuilderProtocol`` implementation for Sui,
 /// backed by a ``SuiGRPCClient``.
 ///
-/// Builds BCS-encoded `TransactionData` bytes ready for
-/// ``SuiPKeySigner/sign(transaction:)`` directly.
-///
-/// **Native SUI transfer** (`token == nil` or any equivalent form of
-/// `"0x2::sui::SUI"`):
-/// Uses the gas-coin-split PTB (``UnsignedSuiTransaction``): the gas coin
-/// is also the transfer source; `SplitCoins(GasCoin, [amount])` produces
-/// the piece, then `TransferObjects` delivers it to `recipient`.
-///
-/// **Arbitrary-coin transfer** (any other coin type):
-/// Gathers all `Coin<T>` objects owned by `sender` via
-/// ``SuiGRPCClient/ownedCoins(of:coinType:)``. Uses a separate SUI coin
-/// for gas. With one coin, uses
-/// ``UnsignedSingleCoinSplitTransfer``; with multiple, uses
-/// ``UnsignedMultiCoinMergeSplitTransfer`` to consolidate before splitting.
-///
-/// **Gas budget:** built iteratively. An initial transaction is simulated
-/// with a gas budget capped by the sender's actual available balance — so
-/// accounts with less than 50 M MIST for gas are never rejected before the
-/// real fee is known. After simulation, gas coins are re-selected for the
-/// actual budget. If the payment set grows (the budget exceeds the
-/// simulation ceiling, requiring more coins), the transaction is
-/// re-simulated with the new set since additional gas objects affect cost.
-/// This repeats until the set stabilizes (same or fewer coins), bounded at
-/// five growth steps to prevent unbounded iteration.
+/// Builds BCS-encoded `TransactionData` for native SUI and arbitrary-coin
+/// transfers. The builder simulates each transaction to select an adequate
+/// gas-coin set and budget.
 public struct SuiTransactionBuilder: BlockchainTransactionBuilderProtocol {
     public typealias Address = SuiAddress
 
@@ -72,6 +50,7 @@ public struct SuiTransactionBuilder: BlockchainTransactionBuilderProtocol {
     ///     (e.g. the full 64-digit address) for native SUI; a coin-type
     ///     string (e.g. `"0x5d4b302506645c37ff133b98c4b50a4ae4023"`) for
     ///     any other coin.
+    ///   - options: Builder flags, including an optional Sui gas override.
     /// - Returns: BCS `TransactionData` bytes ready for
     ///   ``SuiPKeySigner/sign(transaction:)``.
     /// - Throws: ``BlockchainTransactionBuilderError/insufficientFunds(reason:)``

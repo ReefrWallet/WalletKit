@@ -16,7 +16,7 @@ public protocol Signer {
     associatedtype Address: BlockchainAddress
 
     /// The account this signer signs for.
-    var account: WKAccount { get }
+    var account: Account { get }
 
     /// Derives this signer's account's address.
     ///
@@ -33,5 +33,5 @@ public protocol Signer {
 
 public extension Signer {
     /// The blockchain this signer is scoped to — ``account``'s blockchain.
-    var blockchain: WKBlockchain { account.blockchain }
+    var blockchain: Blockchain { account.blockchain }
 }

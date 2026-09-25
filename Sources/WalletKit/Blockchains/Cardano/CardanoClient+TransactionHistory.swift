@@ -2,8 +2,8 @@ import Foundation
 
 extension CardanoClient {
     /// Returns one page of `owner`'s transaction history — Blockfrost's
-    /// `accounts/{stake_address}/transactions`, windowed by
-    /// ``historyQuery(request:count:from:page:)``.
+    /// `accounts/{stake_address}/transactions`, using a stable query for
+    /// each requested page.
     ///
     /// - Descending (backfill): pages from `upperBound` toward the account's
     ///   oldest transaction; `reachedBoundary` is `true` on the first short

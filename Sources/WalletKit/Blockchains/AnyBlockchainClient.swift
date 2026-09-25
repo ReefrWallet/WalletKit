@@ -12,21 +12,7 @@ import Foundation
 /// A type-erased, String-addressed wrapper around any
 /// ``BlockchainClientProtocol`` conformer.
 ///
-/// ``BlockchainClientProtocol`` has `associatedtype Address: BlockchainAddress`
-/// (so that each client's owner-address parameters are type-safe), which makes
-/// the protocol a PAT — it cannot be used directly as an existential
-/// (`any BlockchainClientProtocol`). `AnyBlockchainClient` is the concrete
-/// type `BlockchainClientProvider` returns to existential consumers (e.g.
-/// `BalancesService`) that don't care which chain they're on, only that they
-/// can call the same set of methods with plain `String` addresses.
-///
-/// Internally each closure bridges `String → C.Address` via
-/// `C.Address(string:)`. An invalid address string causes the closure to throw
-/// a ``BlockchainAddressError`` at the call site, not at construction time.
-///
-/// Fee estimation is exposed via the String-addressed
-/// ``estimateFee(for:)`` method that accepts an optional
-/// ``AnyFeeEstimateRequest``.
+/// Use this type when the concrete address type is not known statically.
 public struct AnyBlockchainClient: Sendable {
     // MARK: - Stored closures (one per protocol requirement)
 
@@ -53,23 +39,27 @@ public struct AnyBlockchainClient: Sendable {
     /// Wraps `client`, erasing its concrete `Address` type behind String-based
     /// forwarding closures.
     ///
-    /// - Parameter client: Any ``BlockchainClientProtocol`` conformer. The
-    ///   client is captured by value (it's typically a struct).
-    public init<C: BlockchainClientProtocol>(_ client: C) { // swiftlint:disable:this function_body_length
+    /// - Parameters:
+    ///   - client: The client to wrap.
+    ///   - makeAddress: Creates the client's address type from a string.
+    public init<C: BlockchainClientProtocol>( // swiftlint:disable:this function_body_length
+        _ client: C,
+        makeAddress: @Sendable @escaping (String) throws -> C.Address = { try C.Address(string: $0) }
+    ) {
         _getAllBalances = { ownerString in
-            let owner = try C.Address(string: ownerString)
+            let owner = try makeAddress(ownerString)
             return try await client.getAllBalances(owner)
         }
         _getBalances = { ownerString, tokens in
-            let owner = try C.Address(string: ownerString)
+            let owner = try makeAddress(ownerString)
             return try await client.getBalances(owner, tokens: tokens)
         }
         _getBalance = { ownerString, token in
-            let owner = try C.Address(string: ownerString)
+            let owner = try makeAddress(ownerString)
             return try await client.getBalance(owner, token: token)
         }
         _getNativeBalance = { ownerString in
-            let owner = try C.Address(string: ownerString)
+            let owner = try makeAddress(ownerString)
             return try await client.getNativeBalance(owner)
         }
         _getTokenInfo = { token in
@@ -79,7 +69,7 @@ public struct AnyBlockchainClient: Sendable {
             try await client.getTokenPrice(token)
         }
         _isActiveAccount = { ownerString in
-            let owner = try C.Address(string: ownerString)
+            let owner = try makeAddress(ownerString)
             return try await client.isActiveAccount(owner)
         }
         _isSupported = { feature in
@@ -90,8 +80,8 @@ public struct AnyBlockchainClient: Sendable {
                 return try await client.estimateFee(for: nil)
             }
             // Bridge String addresses → C.Address, forwarding nil as nil.
-            let typedFrom = try anyRequest.from.map { try C.Address(string: $0) }
-            let typedTo = try anyRequest.to.map { try C.Address(string: $0) }
+            let typedFrom = try anyRequest.from.map { try makeAddress($0) }
+            let typedTo = try anyRequest.to.map { try makeAddress($0) }
             let typedRequest = FeeEstimateRequest<C.Address>(
                 from: typedFrom,
                 to: typedTo,
@@ -104,11 +94,11 @@ public struct AnyBlockchainClient: Sendable {
             try await client.broadcast(transaction: transaction, signature: signature)
         }
         _transactionHistory = { ownerString, request in
-            let owner = try C.Address(string: ownerString)
+            let owner = try makeAddress(ownerString)
             return try await client.transactionHistory(owner, request: request)
         }
         _transactionHeads = { ownerString in
-            guard let owner = try? C.Address(string: ownerString) else {
+            guard let owner = try? makeAddress(ownerString) else {
                 return AsyncThrowingStream { continuation in
                     continuation.finish(throwing: WalletKitError.invalidAddress(reason: "Invalid account address"))
                 }
@@ -192,21 +182,20 @@ public struct AnyBlockchainClient: Sendable {
     /// - Returns: A ``FeeEstimate`` with the current gas rates and, when
     ///   `request` is non-nil, ``FeeEstimate/gasLimit`` and
     ///   ``FeeEstimate/estimatedFee``.
-    /// - Throws: ``BlockchainAddressError`` if a supplied address string is
+    /// - Throws: An invalid-address error if a supplied address string is
     ///   malformed; ``BlockchainClientError`` on a transport, RPC, or
     ///   decoding failure.
     public func estimateFee(for request: AnyFeeEstimateRequest?) async throws -> FeeEstimate {
         try await _estimateFee(request)
     }
 
-    /// Broadcasts a signed transaction and returns its hash / digest.
+    /// Broadcasts a signed transaction and returns its identifier.
     ///
     /// - Parameters:
-    ///   - transaction: The unsigned transaction bytes (used on Sui; ignored
-    ///     on Ethereum).
-    ///   - signature: The signed transaction envelope (Ethereum) or the
-    ///     serialized Sui signature (Sui).
-    /// - Returns: The transaction hash (Ethereum) or digest (Sui).
+    ///   - transaction: The unsigned transaction bytes, when required by the
+    ///     chain.
+    ///   - signature: The signed transaction data.
+    /// - Returns: The transaction identifier.
     /// - Throws: ``BlockchainClientError`` on a transport or RPC failure.
     public func broadcast(transaction: Data, signature: Data) async throws -> String {
         try await _broadcast(transaction, signature)

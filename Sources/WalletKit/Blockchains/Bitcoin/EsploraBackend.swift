@@ -6,8 +6,8 @@
 import Foundation
 import WalletKitRust
 
-/// ``BitcoinBackend`` conformance backed by ``EsploraClient``. No push
-/// transport exists in the Esplora API, so ``headsStream()`` resolves
+/// Internal Bitcoin backend backed by an Esplora client. No push
+/// transport exists in the Esplora API, so `headsStream()` resolves
 /// immediately with ``WalletKitError/unsupportedFeature``.
 struct EsploraBackend: BitcoinBackend {
     let client: EsploraClient

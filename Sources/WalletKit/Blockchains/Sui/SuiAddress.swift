@@ -11,7 +11,6 @@ import WalletKitRust
 
 /// A validated Sui address (32 raw bytes) — the Blake2b-256 digest of a
 /// one-byte scheme flag followed by the account's public key bytes.
-/// Backed by ``SuiAddressFfi``.
 public struct SuiAddress: BlockchainAddress {
     let raw: SuiAddressFfi
 

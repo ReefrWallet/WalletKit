@@ -11,11 +11,8 @@ import Foundation
 /// Failures from talking to a blockchain node — JSON-RPC (Ethereum) or
 /// gRPC (Sui).
 ///
-/// Kept deliberately separate from ``WalletKitError``: that type's own
-/// doc comment scopes it to software key-management and hardware-device
-/// failures, and every one of its cases is generated 1:1 from the Rust
-/// `WalletKitErrorFfi` — there is no Rust error to map from here, since
-/// node clients never cross the FFI boundary.
+/// Kept deliberately separate from ``WalletKitError``, which represents
+/// wallet and hardware-device operations rather than node communication.
 public enum BlockchainClientError: Error, Equatable {
     /// The underlying transport (`URLSession`, a gRPC channel) failed
     /// before a response was received — no connectivity, a timeout, TLS

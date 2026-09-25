@@ -48,8 +48,9 @@ public struct EthereumRPCClient: Sendable {
     }
 
     /// Executes a read-only contract call against `address` — the
-    /// general "execute a smart contract" entry point. ``erc20Balance``
-    /// and ``latestRoundData`` are two worked examples built on this; a
+    /// general "execute a smart contract" entry point.
+    /// ``erc20Balance(token:owner:)`` and ``latestRoundData(feed:)`` are
+    /// two worked examples built on this; a
     /// caller with a different contract computes its own call data via
     /// ``EthereumABI`` and calls this directly.
     ///

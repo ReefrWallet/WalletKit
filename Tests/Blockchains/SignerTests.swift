@@ -31,7 +31,7 @@ private struct MockAddress: BlockchainAddress {
 private struct MockSigner: Signer {
     typealias Address = MockAddress
 
-    let account: WKAccount
+    let account: Account
     let addressString: String
     let signHandler: (Data) async throws -> Data
 

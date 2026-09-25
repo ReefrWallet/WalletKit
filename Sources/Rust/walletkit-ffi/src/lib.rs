@@ -10,7 +10,7 @@
 //!
 //!   errors/         WalletKitError
 //!   common/         CurveFfi, DerivationScheme, Wordlist, MnemonicWordCount,
-//!                   BlockchainFfi, DerivationPath, BigIntFfi
+//!                   BlockchainFfi, DerivationPathFfi, BigIntFfi
 //!   keys/           Mnemonic, Seed, ExtendedKey, PublicKey, PrivateKey
 //!   accounts/       KeySource, Account — not implemented yet
 //!   hardware/       HardwareVendorFfi, HardwareTransportKindFfi,

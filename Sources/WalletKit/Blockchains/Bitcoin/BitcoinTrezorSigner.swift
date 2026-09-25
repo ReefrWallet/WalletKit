@@ -6,33 +6,13 @@
 import Foundation
 import WalletKitRust
 
-/// A ``Signer`` backed by a connected Trezor ``HardwareDevice``, for
-/// Bitcoin.
-///
-/// Unlike ``EthereumTrezorSigner`` (one address, one device-read public
-/// key), a Bitcoin account is identified by a whole ``BitcoinDescriptor``
-/// spanning many addresses. Building one from the device needs two reads,
-/// each its own device round-trip:
-///  - the master public key at the root path (``PublicKeyFfi``, no chain
-///    code) — hashed into ``BitcoinDescriptor/masterFingerprint(of:)``, the
-///    same way ``BitcoinPKeySigner`` hashes a software seed's master key;
-///  - the account-level xpub at
-///    ``DerivationPath/bitcoinAccount(network:scriptType:accountIndex:)``
-///    (`device.raw.bitcoinXpub(path:)`), which — unlike the raw
-///    ``HardwareDevice/publicKey(path:curve:)`` read — keeps its chain
-///    code, so ``BitcoinDescriptor`` can derive every external/change
-///    address locally without a further device round-trip.
-///
-/// ``sign(transaction:)`` then hands the whole unsigned PSBT to the device
-/// for its own interactive `SignTx`/`TxRequest`/`TxAck` flow, which reads
-/// each input's owning key straight off the PSBT's own `bip32_derivation`/
-/// `tap_key_origins` fields — no local per-input key derivation, unlike
-/// ``BitcoinPKeySigner``.
+/// A ``Signer`` backed by a connected Trezor ``HardwareDevice`` for a
+/// Bitcoin ``BitcoinDescriptor`` account.
 public final class BitcoinTrezorSigner: Signer {
     public typealias Address = BitcoinDescriptor
 
     /// The account this signer signs for.
-    public let account: WKAccount
+    public let account: Account
 
     private let descriptor: BitcoinDescriptor
     private let device: HardwareDevice
@@ -62,7 +42,7 @@ public final class BitcoinTrezorSigner: Signer {
         let accountPathText = String(accountDerivationPath.string.dropFirst(2)) // drop the leading "m/".
 
         let xpub = try await remappingWalletKitError {
-            try await device.raw.bitcoinXpub(path: accountDerivationPath)
+            try await device.raw.bitcoinXpub(path: accountDerivationPath.raw)
         }
 
         let descriptor = try BitcoinDescriptor(
@@ -77,7 +57,7 @@ public final class BitcoinTrezorSigner: Signer {
 
         self.descriptor = descriptor
         self.device = device
-        account = WKAccount(
+        account = Account(
             blockchain: .bitcoin(network),
             derivationPath: accountDerivationPath,
             curve: .secp256k1,
@@ -86,7 +66,7 @@ public final class BitcoinTrezorSigner: Signer {
         )
     }
 
-    /// ``descriptor`` — the account this signer signs for.
+    /// Returns the descriptor for the account this signer signs for.
     public func address() throws -> BitcoinDescriptor {
         descriptor
     }

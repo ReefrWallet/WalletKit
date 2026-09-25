@@ -8,7 +8,7 @@ use sha2::{Digest, Sha256, Sha512};
 use std::sync::Arc;
 use zeroize::Zeroizing;
 
-use crate::common::{CurveFfi, DerivationPath, DerivationScheme};
+use crate::common::{CurveFfi, DerivationPathFfi, DerivationScheme};
 use crate::errors::WalletKitErrorFfi;
 use crate::keys::private_key::PrivateKeyFfi;
 use crate::keys::public_key::PublicKeyFfi;
@@ -80,7 +80,7 @@ impl ExtendedKeyFfi {
     }
 
     /// Owned, non-FFI variant of `derive_child` used internally for
-    /// chaining a full `DerivationPath`.
+    /// chaining a full `DerivationPathFfi`.
     fn derive_child_owned(&self, index: u32, hardened: bool) -> Result<ExtendedKeyFfi, WalletKitErrorFfi> {
         if index >= HARDENED_OFFSET {
             return Err(WalletKitErrorFfi::InvalidDerivationPath {
@@ -317,7 +317,7 @@ impl ExtendedKeyFfi {
         Ok(Arc::new(PrivateKeyFfi::new(self.curve, bytes)))
     }
 
-    pub fn derive(&self, path: DerivationPath) -> Result<Arc<ExtendedKeyFfi>, WalletKitErrorFfi> {
+    pub fn derive(&self, path: DerivationPathFfi) -> Result<Arc<ExtendedKeyFfi>, WalletKitErrorFfi> {
         let mut current = self.clone();
         for segment in &path.segments {
             current = current.derive_child_owned(segment.index, segment.hardened)?;
@@ -382,7 +382,7 @@ mod tests {
     #[test]
     fn derive_walks_the_full_requested_path() {
         let master = master(CurveFfi::Secp256k1);
-        let path = DerivationPath::parse("m/44'/60'/0'/0/0").unwrap();
+        let path = DerivationPathFfi::parse("m/44'/60'/0'/0/0").unwrap();
         let derived = master.derive(path.clone()).unwrap();
         assert_eq!(derived.depth() as usize, path.segments.len());
     }

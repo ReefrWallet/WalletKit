@@ -39,7 +39,7 @@ pub struct EthereumSignatureFfi {
 }
 
 /// EVM chain ID this signer is scoped to (1 = mainnet, 11155111 =
-/// Sepolia, ...) — the value carried by `WKBlockchain.ethereum(_:)`.
+/// Sepolia, ...) — the value carried by `Blockchain.ethereum(_:)`.
 #[derive(Debug, Clone, Copy, uniffi::Object)]
 pub struct EthereumSignerFfi {
     chain_id: u64,

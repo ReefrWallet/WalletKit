@@ -34,11 +34,10 @@ public protocol SeedProtocol: AnyObject {
     func exportRaw() -> Data
 }
 
-/// A 64-byte BIP39 seed, backed by ``SeedFfi``.
+/// A 64-byte BIP39 seed.
 ///
-/// Derived from a ``Mnemonic`` via ``Mnemonic/toSeed(passphrase:)``. The raw
-/// bytes live in Rust-managed, zeroized memory and are only copied into a
-/// Swift `Data` when ``exportRaw()`` is called explicitly.
+/// Derive a seed from ``Mnemonic/toSeed(passphrase:)``. Export raw bytes only
+/// for an explicit backup or recovery operation.
 public final class Seed: SeedProtocol {
     let raw: SeedFfi
 

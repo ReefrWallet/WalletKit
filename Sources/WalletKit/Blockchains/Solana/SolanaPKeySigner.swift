@@ -18,7 +18,7 @@ public final class SolanaPKeySigner: Signer {
     public typealias Address = SolanaAddress
 
     /// The account this signer signs for.
-    public let account: WKAccount
+    public let account: Account
 
     private let privateKey: PrivateKey
 
@@ -38,7 +38,7 @@ public final class SolanaPKeySigner: Signer {
             throw WalletKitError.unsupportedCurve(curve: privateKey.curve)
         }
         self.privateKey = privateKey
-        account = WKAccount(
+        account = Account(
             blockchain: .solana(network),
             derivationPath: derivationPath,
             curve: .ed25519,

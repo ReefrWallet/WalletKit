@@ -43,7 +43,7 @@ fn blake2b_256(parts: &[&[u8]]) -> [u8; 32] {
 }
 
 /// Which signature scheme this signer's accounts use — the `CurveFfi`
-/// carried by `WKBlockchain.sui(_:)`.
+/// carried by `Blockchain.sui(_:)`.
 #[derive(Debug, Clone, Copy, uniffi::Object)]
 pub struct SuiSignerFfi {
     curve: CurveFfi,

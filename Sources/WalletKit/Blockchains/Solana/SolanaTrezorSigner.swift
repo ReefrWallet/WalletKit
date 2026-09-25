@@ -18,7 +18,7 @@ import Foundation
 public final class SolanaTrezorSigner: Signer {
     public typealias Address = SolanaAddress
 
-    public let account: WKAccount
+    public let account: Account
 
     private let device: HardwareDevice
 
@@ -31,7 +31,7 @@ public final class SolanaTrezorSigner: Signer {
     ) async throws {
         let publicKey = try await device.publicKey(path: derivationPath, curve: .ed25519)
         self.device = device
-        account = WKAccount(
+        account = Account(
             blockchain: .solana(network),
             derivationPath: derivationPath,
             curve: .ed25519,
@@ -60,7 +60,7 @@ public final class SolanaTrezorSigner: Signer {
         }
 
         return try await remappingWalletKitError {
-            try await device.raw.solanaSignTx(path: account.derivationPath, transaction: transaction)
+            try await device.raw.solanaSignTx(path: account.derivationPath.raw, transaction: transaction)
         }
     }
 }

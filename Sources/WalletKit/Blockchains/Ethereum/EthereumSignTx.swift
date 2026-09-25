@@ -24,7 +24,7 @@ public struct EthereumSignTx {
 
     init(raw: EthereumSignTxFfi) throws {
         // EIP-155 signing data's nonce/gasPrice/gasLimit/value fields are
-        // always non-negative U256s on the Rust side, so these never fail.
+        // always non-negative U256s, so these conversions never fail.
         nonce = BigUInt(raw.nonce)!
         gasPrice = BigUInt(raw.gasPrice)!
         gasLimit = BigUInt(raw.gasLimit)!

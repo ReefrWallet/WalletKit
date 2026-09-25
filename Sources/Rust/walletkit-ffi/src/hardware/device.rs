@@ -7,7 +7,7 @@ use crate::{
         BitcoinNetworkFfi, EthereumEIP1559SignTxFfi, EthereumEIP1559SignatureFfi, EthereumSignTxFfi,
         EthereumSignatureFfi,
     },
-    common::{BigIntFfi, CurveFfi, DerivationPath},
+    common::{BigIntFfi, CurveFfi, DerivationPathFfi},
     errors::WalletKitErrorFfi,
     keys::PublicKeyFfi,
 };
@@ -23,7 +23,7 @@ pub struct CardanoSignTxFfi {
     pub outputs: Vec<CardanoOutputFfi>,
     pub protocol_magic: u32,
     pub ttl: Option<u64>,
-    pub witness_paths: Vec<DerivationPath>,
+    pub witness_paths: Vec<DerivationPathFfi>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -62,7 +62,7 @@ impl HardwareDeviceFfi {
     /// other hardware-wallet `WalletKitError` cases.
     pub async fn public_key(
         &self,
-        path: DerivationPath,
+        path: DerivationPathFfi,
         curve: CurveFfi,
     ) -> Result<Arc<PublicKeyFfi>, WalletKitErrorFfi> {
         let segments = to_hardware_segments(&path);
@@ -79,7 +79,7 @@ impl HardwareDeviceFfi {
     /// or `.signingFailed` if the device reports a protocol-level failure.
     pub async fn ethereum_sign_tx(
         &self,
-        path: DerivationPath,
+        path: DerivationPathFfi,
         tx: EthereumSignTxFfi,
     ) -> Result<EthereumSignatureFfi, WalletKitErrorFfi> {
         let segments = to_hardware_segments(&path);
@@ -96,7 +96,7 @@ impl HardwareDeviceFfi {
     /// `.signingFailed` if the device reports a protocol-level failure.
     pub async fn ethereum_sign_tx_eip1559(
         &self,
-        path: DerivationPath,
+        path: DerivationPathFfi,
         tx: EthereumEIP1559SignTxFfi,
     ) -> Result<EthereumEIP1559SignatureFfi, WalletKitErrorFfi> {
         let segments = to_hardware_segments(&path);
@@ -109,7 +109,7 @@ impl HardwareDeviceFfi {
     /// currently constructs `TransferContract` and `TriggerSmartContract`.
     pub async fn tron_sign_tx(
         &self,
-        path: DerivationPath,
+        path: DerivationPathFfi,
         transaction: String,
     ) -> Result<Vec<u8>, WalletKitErrorFfi> {
         let fields = to_tron_tx_fields(&transaction)?;
@@ -125,7 +125,7 @@ impl HardwareDeviceFfi {
     /// ed25519 signature over the decoded message.
     pub async fn solana_sign_tx(
         &self,
-        path: DerivationPath,
+        path: DerivationPathFfi,
         transaction: String,
     ) -> Result<Vec<u8>, WalletKitErrorFfi> {
         let fields = to_solana_tx_fields(&transaction)?;
@@ -133,7 +133,7 @@ impl HardwareDeviceFfi {
     }
 
     /// Reads the Cardano Icarus/CIP-1852 account xpub at `path`.
-    pub async fn cardano_xpub(&self, path: DerivationPath) -> Result<String, WalletKitErrorFfi> {
+    pub async fn cardano_xpub(&self, path: DerivationPathFfi) -> Result<String, WalletKitErrorFfi> {
         let xpub = self.inner.cardano_xpub(to_hardware_segments(&path)).await?;
         crate::blockchain_clients::cardano::normalize_account_xpub(&xpub)
     }
@@ -181,7 +181,7 @@ impl HardwareDeviceFfi {
     ///
     /// Throws `.userCancelled`/`.userRejectedOnDevice` if the user backs
     /// out, or `.deviceDisconnected` if the device goes away mid-request.
-    pub async fn bitcoin_xpub(&self, path: DerivationPath) -> Result<String, WalletKitErrorFfi> {
+    pub async fn bitcoin_xpub(&self, path: DerivationPathFfi) -> Result<String, WalletKitErrorFfi> {
         let segments = to_hardware_segments(&path);
         let xpub = self.inner.bitcoin_xpub(segments).await?;
         Ok(xpub)
@@ -210,7 +210,7 @@ impl HardwareDeviceFfi {
     }
 }
 
-fn to_hardware_segments(path: &DerivationPath) -> Vec<hw::HardwarePathSegment> {
+fn to_hardware_segments(path: &DerivationPathFfi) -> Vec<hw::HardwarePathSegment> {
     path.segments.iter().map(|segment| hw::HardwarePathSegment { index: segment.index, hardened: segment.hardened }).collect()
 }
 
@@ -444,7 +444,7 @@ mod tests {
 
     #[test]
     fn to_hardware_segments_preserves_index_and_hardened_flags() {
-        let path = DerivationPath {
+        let path = DerivationPathFfi {
             segments: vec![Segment { index: 44, hardened: true }, Segment { index: 0, hardened: false }],
         };
         let segments = to_hardware_segments(&path);

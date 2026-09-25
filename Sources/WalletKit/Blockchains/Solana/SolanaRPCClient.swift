@@ -13,8 +13,8 @@ import Foundation
 /// reads, fee/rent queries, transaction submission, and account history.
 /// Pairs with ``SolanaTransactionBuilder``/``SolanaPKeySigner``/
 /// ``SolanaTrezorSigner``, which produce the ``SolanaUnsignedTransaction``
-/// envelope this client's ``estimateFee(for:)``/``broadcast(transaction:
-/// signature:)`` consume.
+/// envelope this client's ``estimateFee(for:)`` and
+/// ``broadcast(transaction:signature:)`` consume.
 public struct SolanaRPCClient: Sendable {
     let rpc: JSONRPCClient
 

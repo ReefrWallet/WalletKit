@@ -54,8 +54,8 @@ public struct BitcoinUTXO: Sendable, Equatable {
 
 /// One historical transaction touching an address, as a backend reports
 /// it — the minimal shape needed to union/dedupe/sort activity across
-/// every discovered address before hydrating the survivors with
-/// ``BitcoinBackend/transaction(txid:)``.
+/// every discovered address before hydrating the surviving transactions
+/// with their full detail.
 public struct BitcoinBackendHistoryEntry: Sendable, Equatable, Hashable {
     public let txid: String
     /// `nil` for an unconfirmed (mempool) transaction.
@@ -129,13 +129,7 @@ protocol BitcoinBackend: Sendable {
     /// transaction) and returns its txid.
     func broadcast(rawTransaction: Data) async throws -> String
 
-    /// The current chain tip height — what
-    /// ``BitcoinClient/transactionHistory(_:request:)`` reports as
-    /// ``BlockchainTransactionPage/head``, the same role
-    /// `eth_blockNumber`/`GetServiceInfo.checkpointHeight` play for
-    /// Ethereum/Sui: it's what `TransactionSyncService` needs to
-    /// establish `currentHead` and start forward polling once the
-    /// descending backfill has run at least once.
+    /// The current chain tip height.
     func currentHeight() async throws -> UInt64
 
     /// Streams newly observed chain heads. Resolves immediately with

@@ -21,7 +21,8 @@ public protocol HardwareDeviceManagerProtocol: AnyObject {
     /// Connects to a previously discovered device.
     ///
     /// - Parameters:
-    ///   - info: The device to connect to, as returned by ``scan``.
+    ///   - info: The device to connect to, as returned by
+    ///     `scan(vendors:transports:)`.
     ///   - delegate: The delegate to relay input/confirmation requests and
     ///     disconnection events to.
     /// - Returns: The connected device.
@@ -61,12 +62,13 @@ public final class HardwareDeviceManager: HardwareDeviceManagerProtocol {
     /// Connects to a previously discovered device.
     ///
     /// - Parameters:
-    ///   - info: The device to connect to, as returned by ``scan``.
+    ///   - info: The device to connect to, as returned by
+    ///     `scan(vendors:transports:)`.
     ///   - delegate: The delegate to relay input/confirmation requests and
     ///     disconnection events to.
     /// - Returns: The connected device.
     /// - Throws: ``WalletKitError/deviceNotFound`` if `info` doesn't match
-    ///   a device from a preceding ``scan`` call, or another
+    ///   a device from a preceding `scan(vendors:transports:)` call, or another
     ///   hardware-wallet ``WalletKitError`` case if the connection
     ///   handshake fails.
     public func connect(_ info: HardwareDeviceInfo, delegate: HardwareDeviceDelegate) async throws -> HardwareDevice {

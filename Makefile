@@ -29,7 +29,9 @@ BUILD_DIR := .build
 BINDINGS_DIR := $(BUILD_DIR)/bindings
 HEADERS_DIR := $(BUILD_DIR)/headers
 
-# Deliverables: what the rest of the project (Xcode/SPM) actually consumes.
+# Disposable static documentation artifact for GitHub Pages.
+DOCS_DIR := $(BUILD_DIR)/docs
+DOCS_BASE_PATH ?= WalletKit
 FRAMEWORKS_DIR := Frameworks
 GENERATED_SOURCES_DIR := $(SOURCES_DIR)/Generated/Bindings
 XCFRAMEWORK := $(FRAMEWORKS_DIR)/WalletKit.xcframework
@@ -89,9 +91,23 @@ IOS_DEVICE_LIB := $(TARGET_DIR)/$(IOS_DEVICE_TARGET)/release/$(LIB_NAME)
 BINDGEN_SOURCE_LIB := $(TARGET_DIR)/aarch64-apple-darwin/release/$(LIB_NAME)
 
 .DEFAULT_GOAL := spm
-.PHONY: all walletkit-ffi sui-grpc bitcoin-testing solana-testing test clean rust-targets
+.PHONY: all docs walletkit-ffi sui-grpc bitcoin-testing solana-testing test clean rust-targets
 
-all: $(XCFRAMEWORK) test
+all: $(XCFRAMEWORK) test docs
+
+docs: $(XCFRAMEWORK)
+	@rm -rf $(DOCS_DIR)
+	@mkdir -p $(DOCS_DIR)/symbol-graphs
+	@swift package --allow-writing-to-directory $(DOCS_DIR)/symbol-graphs \
+		generate-documentation --target WalletKit --output-path $(DOCS_DIR)/symbol-graphs/walletkit \
+		--disable-indexing
+	@swift package --allow-writing-to-directory $(DOCS_DIR)/symbol-graphs \
+		generate-documentation --target WalletKitTesting --output-path $(DOCS_DIR)/symbol-graphs/walletkittesting \
+		--disable-indexing
+	@Scripts/generate-docc.sh WalletKit Sources/WalletKit/WalletKit.docc $(DOCS_DIR) $(DOCS_BASE_PATH)
+	@Scripts/generate-docc.sh WalletKitTesting Sources/WalletKitTesting/WalletKitTesting.docc $(DOCS_DIR)/testing $(DOCS_BASE_PATH)/testing
+	@rm -rf $(DOCS_DIR)/symbol-graphs
+	@touch $(DOCS_DIR)/.nojekyll
 
 spm: walletkit-ffi sui-grpc
 	@swift build

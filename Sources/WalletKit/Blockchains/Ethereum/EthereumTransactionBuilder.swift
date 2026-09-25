@@ -14,31 +14,9 @@ import Foundation
 /// A ``BlockchainTransactionBuilderProtocol`` implementation for Ethereum,
 /// backed by an ``EthereumRPCClient``.
 ///
-/// By default (no special ``BlockchainTransactionBuilderOptions``) builds
-/// **EIP-1559 (type-2)** transactions whose ``UnsignedEIP1559Transaction/signingData``
-/// bytes ``EthereumPKeySigner/sign(transaction:)`` and
-/// ``EthereumTrezorSigner/sign(transaction:)`` dispatch on automatically
-/// via the `0x02` type prefix.
-///
-/// Pass ``BlockchainTransactionBuilderOptions/legacyEip155`` in `options` to
-/// produce a legacy **EIP-155** transaction instead — the 9-field RLP
-/// ``UnsignedLegacyTransaction/signingData`` the same signers accept.
-///
-/// **Native ETH transfer:**
-/// - `to = recipient`, `value = amount`, `data = empty`.
-/// - `gasLimit` from `eth_estimateGas` with `from`, `to`, and `value` —
-///   falls back to 21 000 if the node omits the field. This correctly
-///   handles contract recipients whose `receive`/`fallback` functions
-///   consume more than 21 000 gas.
-///
-/// **ERC-20 transfer:**
-/// - `to = token contract`, `value = 0`.
-/// - `data = ABI-encoded transfer(address,uint256)` calldata built via
-///   ``EthereumABI``.
-/// - `gasLimit` from `eth_estimateGas` with the exact call object.
-///
-/// Both paths fetch nonce and the `eth_estimateGas` result concurrently
-/// alongside ``EthereumRPCClient/nonce(of:)``.
+/// Builds EIP-1559 transactions by default and legacy EIP-155 transactions
+/// when requested in ``BlockchainTransactionBuilderOptions``. It supports
+/// native ETH and ERC-20 transfers and estimates the required gas.
 public struct EthereumTransactionBuilder: BlockchainTransactionBuilderProtocol {
     public typealias Address = EthereumAddress
 

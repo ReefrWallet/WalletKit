@@ -6,13 +6,13 @@
 import Foundation
 import WalletKitRust
 
-/// A validated Bitcoin account identity — one of three descriptor shapes
-/// (see ``BitcoinDescriptorFfi``'s module docs): `wpkh(...)`/`tr(...)` for
-/// an xpub-rooted local account, or `addr(...)` for a single watch-only or
-/// send-destination address. Backed by ``BitcoinDescriptorFfi``.
+/// A validated Bitcoin account identity.
 ///
-/// Doubles as the ``BlockchainTransactionBuilderProtocol/recipient``
-/// address type: a plain destination address string parses as a
+/// A descriptor is `wpkh(...)` or `tr(...)` for a derivable account, or
+/// `addr(...)` for a watch-only or transfer-destination address.
+///
+/// Doubles as the transaction builder's `recipient` address type: a plain
+/// destination address string parses as a
 /// `SingleAddress` descriptor (see ``init(string:)``), so `sender` and
 /// `recipient` share one `Address` type without a second wrapper.
 public struct BitcoinDescriptor: BlockchainAddress {
@@ -39,9 +39,7 @@ public struct BitcoinDescriptor: BlockchainAddress {
 
     /// This descriptor's canonical text encoding.
     ///
-    /// `BitcoinDescriptorFfi.string()` only throws for an internal
-    /// invariant violation (a `SingleAddress` descriptor built without its
-    /// address) that construction always prevents, so `try!` is safe here.
+    /// The value is stable for the descriptor's lifetime.
     public var string: String {
         try! raw.string() // swiftlint:disable:this force_try
     }
@@ -53,7 +51,7 @@ public struct BitcoinDescriptor: BlockchainAddress {
         Data(string.utf8)
     }
 
-    /// Parses `string` as one of this crate's own descriptor shapes,
+    /// Parses `string` as one of WalletKit's descriptor shapes,
     /// inferring network from its xpub/tpub version prefix: `.mainnet`
     /// for an `xpub`-rooted descriptor, `.testnet` for anything else
     /// (`tpub`, or a plain address with no xpub at all).
@@ -74,7 +72,7 @@ public struct BitcoinDescriptor: BlockchainAddress {
         try self.init(string: string, network: inferredNetwork)
     }
 
-    /// Parses `string` as one of this crate's own descriptor shapes for
+    /// Parses `string` as one of WalletKit's descriptor shapes for
     /// `network` — use this whenever the account's actual network is
     /// known, rather than the network-less ``init(string:)``.
     ///

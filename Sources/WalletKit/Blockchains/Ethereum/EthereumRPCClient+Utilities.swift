@@ -187,8 +187,8 @@ extension EthereumRPCClient {
     /// `quote`, via the Factory contract's
     /// `getPool(address,address,uint24)`.
     ///
-    /// When `fee` isn't given, scans every standard fee tier
-    /// (``uniswapV3FeeTiers``) and returns whichever existing pool has the
+    /// When `fee` isn't given, scans every standard fee tier and returns
+    /// whichever existing pool has the
     /// most liquidity — anyone can create a Uniswap V3 pool at any tier
     /// and any initial price, so the first tier checked (or the
     /// conventional 0.3% default) isn't necessarily a real market; an

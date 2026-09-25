@@ -74,8 +74,7 @@ public protocol ExtendedKeyProtocol: AnyObject {
     func serializedPrivate() throws -> String
 }
 
-/// A node in an HD (hierarchical-deterministic) key tree, backed by
-/// ``ExtendedKeyFfi``.
+/// A node in an HD (hierarchical-deterministic) key tree.
 ///
 /// Obtained from ``Seed/masterKey(curve:)`` (the tree root), from
 /// ``derive(_:)``/``deriveChild(index:hardened:)`` (a descendant), or from
@@ -132,7 +131,7 @@ public final class ExtendedKey: ExtendedKeyProtocol {
     /// - Parameter path: The derivation path to walk, relative to this key.
     /// - Returns: The extended key at the end of `path`.
     public func derive(_ path: DerivationPath) throws -> ExtendedKey {
-        try remappingWalletKitError { ExtendedKey(raw: try raw.derive(path: path)) }
+        try remappingWalletKitError { ExtendedKey(raw: try raw.derive(path: path.raw)) }
     }
 
     /// Derives a single direct child of this key.

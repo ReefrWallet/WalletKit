@@ -11,8 +11,7 @@ import WalletKitRust
 
 /// A validated Solana address (32 raw bytes) — plain (non-checksummed)
 /// Base58 of either an ed25519 public key (a wallet) or a program-derived
-/// address (a PDA, deliberately off the ed25519 curve). Backed by
-/// ``SolanaAddressFfi``.
+/// address (a PDA, deliberately off the ed25519 curve).
 public struct SolanaAddress: BlockchainAddress {
     let raw: SolanaAddressFfi
 

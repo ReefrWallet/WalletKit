@@ -58,10 +58,10 @@ public enum HardwareTransportKind: String, Codable, CaseIterable, Sendable {
 
 /// A piece of input a hardware device is asking the user to provide,
 /// relayed to the app via ``HardwareDeviceDelegate``.
-@_exported import enum WalletKitRust.HardwareInputRequest
+@_documentation(visibility: internal) @_exported import enum WalletKitRust.HardwareInputRequest
 
 /// A physical confirmation the device is waiting for the user to perform
 /// on its own screen/buttons, relayed to the app via
 /// ``HardwareDeviceDelegate`` so the UI can show "check your device"-style
 /// messaging.
-@_exported import enum WalletKitRust.HardwareButtonRequest
+@_documentation(visibility: internal) @_exported import enum WalletKitRust.HardwareButtonRequest

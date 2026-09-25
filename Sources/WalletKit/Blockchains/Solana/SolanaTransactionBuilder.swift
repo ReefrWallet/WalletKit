@@ -12,24 +12,9 @@ import Foundation
 /// A ``BlockchainTransactionBuilderProtocol`` implementation for Solana,
 /// backed by a ``SolanaRPCClient``.
 ///
-/// Builds a legacy ``SolanaMessage`` wrapped in the
-/// ``SolanaUnsignedTransaction`` JSON envelope
-/// ``SolanaPKeySigner``/``SolanaTrezorSigner`` expect: a compute-budget
-/// priority-fee instruction, then (for an SPL transfer) an idempotent
-/// associated-token-account creation for the recipient, then the
-/// transfer itself.
-///
-/// **Native SOL transfer** (`token == nil`, or the Wrapped SOL mint
-/// placeholder ``SolanaRPCClient/nativeMintPlaceholder``): a single
-/// `SystemProgram.transfer`.
-///
-/// **SPL transfer** (any other `token`, a mint address): the recipient's
-/// associated token account (ATA) is created idempotently in the same
-/// transaction if it doesn't already exist — unconditionally, since
-/// `CreateIdempotent` is a no-op (not an error) when the ATA already
-/// exists, which is simpler and race-free compared to checking first.
-/// `sender` pays that account's rent (≈0.00204 SOL) on top of the
-/// transfer.
+/// Builds a legacy ``SolanaMessage`` in a ``SolanaUnsignedTransaction``
+/// envelope. SPL transfers include idempotent recipient associated-token
+/// account creation when needed.
 public struct SolanaTransactionBuilder: BlockchainTransactionBuilderProtocol {
     public typealias Address = SolanaAddress
 

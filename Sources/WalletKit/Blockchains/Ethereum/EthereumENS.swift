@@ -10,7 +10,7 @@ import Foundation
 import WalletKitRust
 
 /// ENS (Ethereum Name Service) name hashing — backs
-/// ``EthereumRPCClient/chainlinkFeedAddress(base:quote:)``, which resolves
+/// ``EthereumRPCClient/chainlinkFeedAddress(base:quote:ensRegistry:)``, which resolves
 /// a Chainlink feed's ENS name (e.g. `"eth-usd.data.eth"`) to a node hash
 /// before looking it up through the ENS Registry.
 public enum EthereumENS {

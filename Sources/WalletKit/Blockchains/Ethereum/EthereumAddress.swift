@@ -10,8 +10,7 @@ import Foundation
 import class WalletKitRust.EthereumAddressFfi
 import class WalletKitRust.EthereumSignerFfi
 
-/// A validated Ethereum address (20 raw bytes), backed by
-/// ``EthereumAddressFfi``.
+/// A validated Ethereum address containing 20 raw bytes.
 public struct EthereumAddress: BlockchainAddress {
     let raw: EthereumAddressFfi
 

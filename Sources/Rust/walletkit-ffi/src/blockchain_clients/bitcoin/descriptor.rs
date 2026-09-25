@@ -334,7 +334,7 @@ mod tests {
             bitcoin::secp256k1::SecretKey::from_slice(&master.private_key().unwrap().raw_bytes()).unwrap();
         let master_public = bitcoin::secp256k1::PublicKey::from_secret_key(&secp, &master_secret);
         let fingerprint = bitcoin::hashes::hash160::Hash::hash(&master_public.serialize()).as_byte_array()[0..4].to_vec();
-        let account_key = master.derive(crate::common::DerivationPath::parse("m/84'/0'/0'").unwrap()).unwrap();
+        let account_key = master.derive(crate::common::DerivationPathFfi::parse("m/84'/0'/0'").unwrap()).unwrap();
         (account_key.serialized_public(), fingerprint)
     }
 

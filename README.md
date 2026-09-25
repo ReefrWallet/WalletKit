@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/kervich/WalletKit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kervich/WalletKit/actions/workflows/ci.yml)
 
-WalletKit is a source-first Swift toolkit for building non-custodial wallet applications on Apple platforms. Its cryptographic core is implemented in Rust and exposed through an idiomatic Swift API using UniFFI.
+WalletKit is a Swift toolkit for building non-custodial wallet applications.
 
 > [!WARNING]
 > WalletKit is under active development and has not received a production security audit. Do not use it to protect real funds without completing your own security review and testing.
@@ -12,6 +12,7 @@ WalletKit is a source-first Swift toolkit for building non-custodial wallet appl
  - BIP-39 mnemonic generation and import. BIP-39 seed derivation. 
  - BIP-32 secp256k1 and SLIP-0010 ed25519 derivation. Extended-key serialization
  - Hardware wallets: Trezor discovery, connection, public-key retrieval, transaction signing over USB on macOS.
+ - Local blockchain node testing infrastructure.
 
 ## Blockchain support
 
@@ -19,7 +20,7 @@ WalletKit is a source-first Swift toolkit for building non-custodial wallet appl
 - **Cardano**: CIP-1852 account and Shelley address derivation; Blockfrost account, UTxO, and native-asset data; ADA and native-asset transaction construction, local or Trezor signing, and submission.
 - **Ethereum**: address derivation and validation, EIP-155 and EIP-1559 transaction signing, transaction construction, JSON-RPC access; ERC-20 support; local or Trezor signing.
 - **Solana**: address derivation and validation; SOL and SPL token account data, fee estimation, transaction construction, local or Trezor signing, and RPC broadcast.
-- **Sui**: address derivation and validation, BCS transaction construction and signing, and a gRPC client.
+- **Sui**: address derivation and validation, BCS transaction construction and signing, and a gRPC client. Local signing only.
 - **Tron**: address derivation and validation; TRX and TRC-20 account data, transaction history, fee estimation, transaction construction, local or Trezor signing, and TronGrid broadcast.
 
 ## Getting started
@@ -42,11 +43,14 @@ Use as a local SPM dependency while developing with WalletKit:
 .package(path: "../WalletKit")
 ```
 
+## Documentation
+
+[Read the API reference and guides on GitHub Pages.](https://kervich.github.io/WalletKit/)
+
 ## Requirements
 
 - macOS with Xcode Command Line Tools for Apple-framework builds
-- Rust and `rustup`
-- For Sui gRPC bindings: `protoc`, `protoc-gen-swift`, and `protoc-gen-grpc-swift` v2 (for example, `brew install protobuf swift-protobuf protoc-gen-grpc-swift`)
+-  `protoc`, `protoc-gen-swift`, and `protoc-gen-grpc-swift` v2 (for example, `brew install protobuf swift-protobuf protoc-gen-grpc-swift`)
 - `mise`
 
 ## License

@@ -45,17 +45,11 @@ public enum BlockchainTransactionBuilderError: Error, LocalizedError {
 /// Builds unsigned transaction bytes for a token transfer, ready to pass
 /// directly to ``Signer/sign(transaction:)``.
 ///
-/// Implementations fetch all necessary on-chain context — nonces, gas
-/// prices, coin references — from their associated chain client, so callers
-/// only need to supply the four high-level parameters of the transfer.
-///
-/// ``EthereumTransactionBuilder`` and ``SuiTransactionBuilder`` are the
-/// two concrete implementations; ``AnyBlockchainTransactionBuilder`` is the
-/// String-based type-eraser that lets callers consume both through a single
-/// concrete type when the chain isn't known statically.
+/// Implementations obtain the chain context needed to build the transaction.
+/// WalletKit includes builders for Bitcoin, Cardano, Ethereum, Solana, Sui,
+/// Tron, and EVM-compatible networks.
 public protocol BlockchainTransactionBuilderProtocol: Sendable {
-    /// The chain-specific address type — ``EthereumAddress`` or
-    /// ``SuiAddress``.
+    /// The chain-specific address type.
     associatedtype Address: BlockchainAddress
 
     /// Builds unsigned transaction bytes encoding a transfer of `amount`
@@ -69,11 +63,10 @@ public protocol BlockchainTransactionBuilderProtocol: Sendable {
     /// - Parameters:
     ///   - sender: The sending address.
     ///   - recipient: The destination address.
-    ///   - amount: The transfer amount in the token's smallest unit (wei
-    ///     for ETH/ERC-20, MIST for SUI and any other Sui coin type).
-    ///   - token: `nil` for the native token; an ERC-20 contract address
-    ///     string for Ethereum tokens; a Sui coin-type string (e.g.
-    ///     `"0x2::sui::SUI"`) for Sui tokens.
+    ///   - amount: The transfer amount in the token's smallest unit.
+    ///   - token: A chain-specific token identifier, or `nil` for the native
+    ///     token.
+    ///   - options: Chain-specific transaction-building options.
     /// - Returns: Unsigned transaction bytes, ready for
     ///   ``Signer/sign(transaction:)``.
     /// - Throws: ``BlockchainTransactionBuilderError`` when the transfer
@@ -91,7 +84,7 @@ public protocol BlockchainTransactionBuilderProtocol: Sendable {
 // MARK: - Default options shim
 
 public extension BlockchainTransactionBuilderProtocol {
-    /// Builds a transfer with default options (EIP-1559 on Ethereum).
+    /// Builds a transfer with default options.
     func buildTransfer(
         sender: Address,
         recipient: Address,
@@ -107,16 +100,7 @@ public extension BlockchainTransactionBuilderProtocol {
 /// A String-addressed facade over any ``BlockchainTransactionBuilderProtocol``
 /// implementation, mirroring ``AnyBlockchainClient``.
 ///
-/// Because ``BlockchainTransactionBuilderProtocol`` is a PAT (it has an
-/// `associatedtype`), it can't be used directly as an existential when the
-/// concrete chain type isn't known at the call site. `AnyBlockchainTransactionBuilder`
-/// wraps any concrete builder and bridges its `Address` type to/from `String`
-/// via `Address(string:)` — the same pattern ``AnyBlockchainClient`` uses.
-///
-/// ``BlockchainClientProvider`` (app layer) can return this type so
-/// ``TransferView`` (or a future `TransactionService`) can call
-/// `buildTransfer` without knowing whether the current account is Ethereum
-/// or Sui.
+/// Use this type when the concrete address type is not known statically.
 public struct AnyBlockchainTransactionBuilder: Sendable {
     private let _buildTransfer: @Sendable (
         String,
@@ -128,13 +112,16 @@ public struct AnyBlockchainTransactionBuilder: Sendable {
 
     /// Wraps `builder`, bridging its concrete `Address` type to `String`.
     ///
-    /// `Address(string:)` is called at the time `buildTransfer` is invoked;
-    /// a malformed address string causes it to throw at that point rather
-    /// than at init time.
-    public init<B: BlockchainTransactionBuilderProtocol>(_ builder: B) {
+    /// - Parameters:
+    ///   - builder: The concrete transaction builder to wrap.
+    ///   - makeAddress: Creates `B.Address` from a string.
+    public init<B: BlockchainTransactionBuilderProtocol>(
+        _ builder: B,
+        makeAddress: @Sendable @escaping (String) throws -> B.Address = { try B.Address(string: $0) }
+    ) {
         _buildTransfer = { sender, recipient, amount, token, options in
-            let from = try B.Address(string: sender)
-            let to = try B.Address(string: recipient)
+            let from = try makeAddress(sender)
+            let to = try makeAddress(recipient)
             return try await builder.buildTransfer(
                 sender: from,
                 recipient: to,

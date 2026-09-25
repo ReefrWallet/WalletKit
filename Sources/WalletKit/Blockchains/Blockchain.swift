@@ -9,10 +9,10 @@
 import SwiftUI
 import WalletKitRust
 
-// MARK: - WKBlockchain
+// MARK: - Blockchain
 
 /// A chain identifier — one case per supported blockchain.
-public enum WKBlockchain: Equatable, Hashable, Codable, Sendable {
+public enum Blockchain: Equatable, Hashable, Codable, Sendable {
     case bitcoin(BitcoinNetwork)
     case evm(EVMBlockchain)
     case tron(TronNetwork)
@@ -32,9 +32,9 @@ public enum WKBlockchain: Equatable, Hashable, Codable, Sendable {
     }
 }
 
-public extension WKBlockchain {
-    static var allMainnets: [WKBlockchain] {
-        let mainnets: [WKBlockchain] = [
+public extension Blockchain {
+    static var allMainnets: [Blockchain] {
+        let mainnets: [Blockchain] = [
             .bitcoin(.mainnet),
             .cardano(.mainnet),
             .solana(.mainnet),
@@ -44,7 +44,7 @@ public extension WKBlockchain {
         return mainnets.sorted { $0 < $1 }
     }
 
-    var allNetworks: [WKBlockchain] {
+    var allNetworks: [Blockchain] {
         switch self {
         case .bitcoin:
             BitcoinNetwork.allNetworks
@@ -171,8 +171,8 @@ public extension WKBlockchain {
     }
 }
 
-extension WKBlockchain: Comparable {
-    public static func < (lhs: WKBlockchain, rhs: WKBlockchain) -> Bool {
+extension Blockchain: Comparable {
+    public static func < (lhs: Blockchain, rhs: Blockchain) -> Bool {
         lhs.displayName < rhs.displayName
     }
 }

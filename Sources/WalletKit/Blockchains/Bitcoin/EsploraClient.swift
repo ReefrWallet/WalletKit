@@ -7,8 +7,8 @@ import Foundation
 
 /// A client for an Esplora-compatible REST API (blockstream.info,
 /// mempool.space, self-hosted `electrs --http-addr`, ...). Plain HTTPS
-/// JSON over `URLSession`, following ``JSONRPCClient``/``EthereumRPCClient``'s
-/// shape rather than introducing a new transport pattern — unlike
+/// JSON over `URLSession`, following the Ethereum client's shape rather than
+/// introducing a new transport pattern — unlike
 /// Electrum, Esplora needs nothing beyond what `URLSession` already gives.
 struct EsploraClient: Sendable {
     let endpoint: URL

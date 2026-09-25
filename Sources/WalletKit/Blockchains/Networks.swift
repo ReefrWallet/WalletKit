@@ -10,7 +10,7 @@ import Foundation
 import WalletKitRust
 
 /// Which indexing backend a Bitcoin account talks to — a per-account
-/// setting (like ``Networks/BitcoinNetwork/rpcURL``, only set at account
+/// setting (like ``BitcoinNetwork/rpcURL``, only set at account
 /// creation) rather than a chain-wide constant, since both are viable and
 /// neither is universally better: Electrum supports push subscriptions
 /// (``BlockchainClientFeature/transactionSubscription``), Esplora is a
@@ -26,7 +26,7 @@ public enum BitcoinNetwork: Codable, Equatable, Hashable, Sendable {
     case signet
     case regtest
 
-    public static var allNetworks: [WKBlockchain] {
+    public static var allNetworks: [Blockchain] {
         [.bitcoin(.mainnet), .bitcoin(.testnet), .bitcoin(.signet), .bitcoin(.regtest)]
     }
 
@@ -48,27 +48,15 @@ public enum BitcoinNetwork: Codable, Equatable, Hashable, Sendable {
         }
     }
 
-    /// The default Electrum endpoint — kept as the pre-existing `rpcURL`
-    /// name so call sites that don't yet know about ``BitcoinBackendKind``
-    /// keep compiling. New call sites should prefer
-    /// ``defaultEndpoint(for:)``.
+    /// The default Electrum endpoint.
     public var rpcURL: URL {
         defaultEndpoint(for: .electrum)
     }
 
-    /// The default public endpoint for `backend` on this network — verified
-    /// reachable, not just a placeholder, but still a third party: privacy-
-    /// and reliability-sensitive users should still override it via
-    /// `AddAccountView`'s existing override field. Sourced from
-    /// `electrum/chains/{mainnet,testnet}/servers.json` in spesmilo/electrum
-    /// for `.electrum` (Blockstream's own public server; `signet-electrumx
-    /// .wakiyamap.dev` for signet, since Blockstream doesn't run one) and
-    /// Blockstream's public Esplora instances for `.esplora`.
+    /// The default public endpoint for `backend` on this network.
     ///
-    /// Regtest has no public network to point at — it's always local,
-    /// spun up by ``WalletKitTesting/BitcoinNode`` with its own explicit
-    /// endpoint — so it falls back to `localhost` here as a non-functional
-    /// placeholder that's never actually dialed.
+    /// Provide a private endpoint when privacy or reliability requirements
+    /// demand it. Regtest returns a local placeholder endpoint.
     public func defaultEndpoint(for backend: BitcoinBackendKind) -> URL {
         switch (self, backend) {
         case (.mainnet, .electrum):
@@ -93,7 +81,7 @@ public enum CardanoNetwork: Codable, Equatable, Hashable, Sendable {
     case mainnet
     case preprod
 
-    public static var allNetworks: [WKBlockchain] {
+    public static var allNetworks: [Blockchain] {
         [.cardano(.mainnet), .cardano(.preprod)]
     }
 
@@ -138,7 +126,7 @@ public enum SolanaNetwork: Codable, Equatable, Hashable, Sendable {
     case testnet
     case devnet
 
-    public static var allNetworks: [WKBlockchain] {
+    public static var allNetworks: [Blockchain] {
         [.solana(.mainnet), .solana(.testnet), .solana(.devnet)]
     }
 
@@ -150,10 +138,7 @@ public enum SolanaNetwork: Codable, Equatable, Hashable, Sendable {
         }
     }
 
-    /// The cluster's public RPC endpoint. These are rate-limited shared
-    /// endpoints (as Solana's own docs warn) — privacy- and reliability-
-    /// sensitive users should override via `AddAccountView`'s custom RPC
-    /// field, same as every other chain here.
+    /// The cluster's public RPC endpoint.
     public var rpcURL: URL {
         switch self {
         case .mainnet:
@@ -170,7 +155,7 @@ public enum TronNetwork: Codable, Equatable, Hashable, Sendable {
     case mainnet
     case testnet
 
-    public static var allNetworks: [WKBlockchain] {
+    public static var allNetworks: [Blockchain] {
         [.tron(.mainnet), .tron(.testnet)]
     }
 

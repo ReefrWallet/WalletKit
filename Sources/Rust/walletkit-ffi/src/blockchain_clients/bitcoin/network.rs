@@ -2,7 +2,7 @@
 //! belongs to. Kept local to `blockchain_clients::bitcoin` rather than
 //! threaded through `common::BlockchainFfi` — `BlockchainFfi::Bitcoin`
 //! still carries no network payload (pre-existing; the Swift
-//! `WKBlockchain.raw`/`init(raw:)` round-trip always assumes mainnet,
+//! `Blockchain.raw`/`init(raw:)` round-trip always assumes mainnet,
 //! tracked for a fix alongside the Swift `Networks.swift` work). Every
 //! Bitcoin-specific FFI entry point below takes network explicitly instead.
 

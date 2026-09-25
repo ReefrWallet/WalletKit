@@ -16,7 +16,7 @@
 // key, no `anvil_setStorageAt` slot-hacking against a real contract's
 // storage layout.
 //
-// `anvil` is run via `mise x foundry -- anvil` (AnvilNode.swift), which
+// `anvil` is run via `mise x foundry -- anvil` (EthereumNode.swift), which
 // auto-installs `foundry` on first use the same way this repo's other
 // mise-managed tools already do. There's no `withKnownIssue` gating here:
 // if `mise` can't find/run it, or the node never becomes ready, this suite
@@ -64,7 +64,7 @@ private extension String {
 
 /// Anvil's own well-known default account #0 — pre-funded with 10,000 ETH
 /// out of the box, so it can pay deployment/minting gas without needing
-/// `AnvilNode.setBalance` itself. Used only as the deployer/minter, kept
+/// `EthereumNode.setBalance` itself. Used only as the deployer/minter, kept
 /// separate from wallet A/B so their own nonce bookkeeping stays limited to
 /// the transfers actually under test.
 private let anvilDefaultAccountPrivateKeyHex = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
@@ -89,7 +89,7 @@ struct EthereumAnvilTests {
     ///   EVM's flat cost for a native transfer with no calldata); `estimatedFee`
     ///   equals `gasLimit × maxFeePerGas`.
     @Test func estimateFeeRatesOnlyAndNativeTransferProduceExpectedGasFields() async throws {
-        let node = try await AnvilNode.start()
+        let node = try await EthereumNode.start()
         defer { node.stop() }
 
         let vectors = loadAddressVectors()
@@ -119,7 +119,7 @@ struct EthereumAnvilTests {
 
     // swiftlint:disable:next function_body_length
     @Test func twoWalletsExchangeETHAndMockUSDC() async throws {
-        let node = try await AnvilNode.start()
+        let node = try await EthereumNode.start()
         defer { node.stop() }
 
         let vectors = loadAddressVectors()

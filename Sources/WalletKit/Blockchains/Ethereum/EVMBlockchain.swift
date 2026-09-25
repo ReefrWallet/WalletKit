@@ -66,7 +66,7 @@ public extension EVMBlockchain {
 }
 
 public extension EVMBlockchain {
-    static var allMainnets: [WKBlockchain] {
+    static var allMainnets: [Blockchain] {
         [
             .evm(.arbitrum(.mainnet)),
             .evm(.bsc(.mainnet)),
@@ -75,7 +75,7 @@ public extension EVMBlockchain {
         ]
     }
 
-    var allNetworks: [WKBlockchain] {
+    var allNetworks: [Blockchain] {
         switch self {
         case .arbitrum: [.evm(.arbitrum(.mainnet)), .evm(.arbitrum(.sepolia))]
         case .bsc: [.evm(.bsc(.mainnet)), .evm(.bsc(.testnet))]

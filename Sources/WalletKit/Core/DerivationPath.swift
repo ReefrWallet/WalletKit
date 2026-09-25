@@ -7,10 +7,41 @@
 
 import WalletKitRust
 
-extension DerivationPath {
-    /// Gets derivation path for given ``WKBlockchain``, account index, and
-    /// signature scheme.
-    public init(_ blockchain: WKBlockchain, accountIndex: UInt64, curve: Curve) throws {
+/// A BIP32 or SLIP-0010 derivation path.
+///
+/// Create a path from its segments with ``init(segments:)``, parse a
+/// standard path string with ``init(string:)``, or use
+/// ``init(_:accountIndex:curve:)`` for a blockchain's conventional account
+/// path.
+public struct DerivationPath: Codable, Equatable, Hashable, Sendable {
+    let raw: DerivationPathFfi
+
+    /// The ordered segments that make up this path.
+    public var segments: [Segment] { raw.segments }
+
+    /// Creates a derivation path from ordered segments.
+    ///
+    /// An empty array denotes the master key. Use ``init(string:)`` when the
+    /// path originates as a standard `m/...` string.
+    public init(segments: [Segment]) {
+        raw = DerivationPathFfi(segments: segments)
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(segments: try container.decode([Segment].self, forKey: .segments))
+    }
+
+    /// Creates the conventional account path for a blockchain.
+    ///
+    /// - Parameters:
+    ///   - blockchain: The blockchain the account belongs to.
+    ///   - accountIndex: The account's zero-based index.
+    ///   - curve: The curve used for the account's keys.
+    /// - Throws: ``WalletKitError/invalidDerivationPath(path:)`` when the
+    ///   resulting path is invalid, or ``WalletKitError/internalError(message:)``
+    ///   when the blockchain requires a specialized path.
+    public init(_ blockchain: Blockchain, accountIndex: UInt64, curve: Curve) throws {
         switch blockchain {
         case .evm:
             try self.init(string: "m/44'/60'/0'/0/\(accountIndex)")
@@ -44,14 +75,17 @@ extension DerivationPath {
     /// account — where a ``BitcoinDescriptor``'s xpub sits, not a full
     /// address path. Bitcoin derives external/change addresses
     /// non-hardened below this via
-    /// ``BitcoinDescriptorFfi/deriveAddress(chain:index:)``, not through
+    /// ``BitcoinDescriptor/deriveAddress(chain:index:)``, not through
     /// a plain ``DerivationPath`` the way EVM/Sui do — this is why
     /// ``init(_:accountIndex:curve:)`` throws for `.bitcoin` instead of
     /// handling it.
     ///
-    /// - Parameter network: Selects the coin type — `0'` for `.mainnet`,
-    ///   `1'` for any test network (testnet/signet/regtest all
-    ///   conventionally share coin type `1'` per SLIP-44).
+    /// - Parameters:
+    ///   - network: Selects the coin type — `0'` for `.mainnet`, `1'` for
+    ///     any test network (testnet/signet/regtest all conventionally
+    ///     share coin type `1'` per SLIP-44).
+    ///   - scriptType: Selects BIP-84 (`.p2wpkh`) or BIP-86 (`.p2tr`).
+    ///   - accountIndex: The account's zero-based index.
     public static func bitcoinAccount(
         network: BitcoinNetwork,
         scriptType: BitcoinScriptType,
@@ -117,5 +151,14 @@ extension DerivationPath {
         }
 
         return result
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(segments, forKey: .segments)
+    }
+
+    private enum CodingKeys: CodingKey {
+        case segments
     }
 }

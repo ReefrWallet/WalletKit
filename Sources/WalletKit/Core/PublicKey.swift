@@ -30,7 +30,7 @@ public protocol PublicKeyProtocol: AnyObject {
     func verify(signature: Data, message: Data) -> Bool
 }
 
-/// A curve-tagged public key handle, backed by ``PublicKeyFfi``.
+/// A curve-tagged public key.
 public final class PublicKey: PublicKeyProtocol {
     let raw: PublicKeyFfi
 

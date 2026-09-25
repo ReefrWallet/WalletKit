@@ -4,7 +4,7 @@ import Foundation
 public final class TronPKeySigner: Signer {
     public typealias Address = TronAddress
 
-    public let account: WKAccount
+    public let account: Account
 
     private let privateKey: PrivateKey
 
@@ -13,7 +13,7 @@ public final class TronPKeySigner: Signer {
             throw WalletKitError.unsupportedCurve(curve: privateKey.curve)
         }
         self.privateKey = privateKey
-        account = WKAccount(
+        account = Account(
             blockchain: .tron(network),
             derivationPath: derivationPath,
             curve: .secp256k1,

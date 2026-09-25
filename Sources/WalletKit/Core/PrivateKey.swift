@@ -29,11 +29,10 @@ public protocol PrivateKeyProtocol: AnyObject {
     func sign(message: Data) throws -> Data
 }
 
-/// A curve-tagged private key handle, backed by ``PrivateKeyFfi``.
+/// A curve-tagged private key handle.
 ///
-/// The underlying raw bytes live in Rust-managed, zeroized memory and are
-/// never exposed to Swift — this type can only be used to derive a public
-/// key or produce signatures.
+/// Use a private key to derive its public key or produce signatures. Avoid
+/// retaining imported raw key bytes after creating this value.
 public final class PrivateKey: PrivateKeyProtocol {
     let raw: PrivateKeyFfi
 

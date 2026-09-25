@@ -34,11 +34,9 @@ public struct SolanaTokenAccountInfo: Codable, Equatable, Sendable {
 /// (`tokenAccounts`, empty for a native SOL transfer).
 ///
 /// A bare `SolanaMessage`'s bytes alone can't carry that metadata, so
-/// every consumer — ``SolanaPKeySigner``, ``SolanaTrezorSigner``,
-/// ``SolanaRPCClient``'s `estimateFee(for:)`/`broadcast(transaction:
-/// signature:)`, and the Rust-side Trezor bridge
-/// (`hardware::device::to_solana_tx_fields`) — decodes this envelope
-/// rather than treating the builder's output as a raw message.
+/// every consumer — ``SolanaPKeySigner``, ``SolanaTrezorSigner``, and
+/// ``SolanaRPCClient`` — decodes this envelope rather than treating the builder's
+/// output as a raw message.
 public struct SolanaUnsignedTransaction: Codable, Equatable, Sendable {
     public let message: Data
     public let tokenAccounts: [SolanaTokenAccountInfo]

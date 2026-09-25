@@ -7,8 +7,10 @@ import WalletKit
 /// An error raised when the local Bitcoin regtest node (`bitcoind` +
 /// `electrs`) cannot be provisioned, started, or queried.
 public struct BitcoinLaunchError: Error, CustomStringConvertible {
+    /// A description of the failed local-node operation.
     public let description: String
 
+    /// Creates an error with a diagnostic description.
     public init(description: String) {
         self.description = description
     }
@@ -17,7 +19,7 @@ public struct BitcoinLaunchError: Error, CustomStringConvertible {
 /// Binds five distinct ephemeral TCP ports via the kernel (port 0) and reads
 /// back what it assigned, so concurrently-running tests each get their own
 /// `bitcoind`/`electrs` pair instead of racing over hardcoded defaults — see
-/// `AnvilNode`/`SuiNode`'s identical reasoning. All five sockets are kept
+/// `EthereumNode`/`SuiNode`'s identical reasoning. All five sockets are kept
 /// open until every port is chosen so the allocations can't collide with
 /// each other.
 private func freeTCPPorts(_ count: Int) throws -> [UInt16] {
@@ -67,10 +69,9 @@ private func freeTCPPorts(_ count: Int) throws -> [UInt16] {
 /// fork, which — unlike upstream `romanz/electrs` — indexes both the
 /// Electrum wire protocol *and* an Esplora-compatible HTTP REST API from
 /// the same process against the same chain state), for integration tests
-/// that need a real backend behind ``ElectrumBackend``/``EsploraBackend``
-/// rather than ``BitcoinTransactionBuilderTests``'s mock.
+/// that need a real Electrum or Esplora backend rather than a mock.
 ///
-/// Unlike `AnvilNode`/`SuiNode`, neither tool has a `mise` registry entry
+/// Unlike `EthereumNode`/`SuiNode`, neither tool has a `mise` registry entry
 /// (checked: `mise registry` has no `bitcoind`/`electrs` backend), so
 /// they aren't provisioned lazily here — `make bitcoin-testing` downloads
 /// `bitcoind`/`bitcoin-cli` and builds `electrs` from source (a
@@ -84,6 +85,7 @@ public final class BitcoinNode {
     /// `ElectrumBackend`'s connection target — plaintext (no TLS) for a
     /// local regtest node.
     public let electrumHost = "127.0.0.1"
+    /// The local Electrum TCP port.
     public let electrumPort: UInt16
 
     /// `EsploraBackend`'s connection target.
@@ -234,6 +236,7 @@ public final class BitcoinNode {
         return node
     }
 
+    /// Stops the Bitcoin and indexer processes.
     public func stop() {
         electrsProcess.terminate()
         electrsProcess.waitUntilExit()
@@ -270,7 +273,7 @@ public final class BitcoinNode {
 
     /// Sends `amountSats` from the node's own wallet to `address`, mines
     /// one confirming block, and waits until `electrs` has indexed it —
-    /// the fixture's `AnvilNode.faucetERC20`/`SuiNode.faucet` equivalent
+    /// the fixture's `EthereumNode.faucetERC20`/`SuiNode.faucet` equivalent
     /// for funding a freshly derived Bitcoin account's receive address.
     ///
     /// - Returns: The funding transaction's txid.
@@ -378,7 +381,7 @@ public final class BitcoinNode {
 
 /// Resolves `make bitcoin-testing`'s already-provisioned binaries under
 /// `WalletKit/.build/bitcoin-testing/bin/` — the same `SRCROOT`-or-
-/// walk-up-from-`#filePath` trick `AnvilNode.resolveAnvilBinaryPath` uses
+/// walk-up-from-`#filePath` trick `EthereumNode.resolveAnvilBinaryPath` uses
 /// to find the `WalletKit` directory regardless of where the test host
 /// (Xcode, `swift test`, CI) sets the working directory.
 ///

@@ -195,7 +195,7 @@ mod tests {
             BitcoinScriptTypeFfi::P2tr => "m/86'/0'/0'",
             BitcoinScriptTypeFfi::SingleAddress => unreachable!(),
         };
-        let account_key = master.derive(crate::common::DerivationPath::parse(path_string).unwrap()).unwrap();
+        let account_key = master.derive(crate::common::DerivationPathFfi::parse(path_string).unwrap()).unwrap();
         let secp = bitcoin::secp256k1::Secp256k1::new();
         let master_secret =
             bitcoin::secp256k1::SecretKey::from_slice(&master.private_key().unwrap().raw_bytes()).unwrap();
@@ -219,7 +219,7 @@ mod tests {
         )
         .unwrap();
 
-        let child_key = account_key.derive(crate::common::DerivationPath::parse("m/0/0").unwrap()).unwrap();
+        let child_key = account_key.derive(crate::common::DerivationPathFfi::parse("m/0/0").unwrap()).unwrap();
         (descriptor, child_key.private_key().unwrap())
     }
 

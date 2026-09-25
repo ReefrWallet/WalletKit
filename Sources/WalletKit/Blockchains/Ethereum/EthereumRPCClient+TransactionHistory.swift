@@ -55,6 +55,10 @@ private struct EVMHistoryLog: Codable {
     let transactionHash: String
 }
 
+private struct EVMTransactionReceipt: Decodable {
+    let status: String?
+}
+
 private struct EVMHeadSubscriptionResponse: Decodable {
     let params: Parameters?
 
@@ -181,6 +185,8 @@ extension EthereumRPCClient {
             transactions.append(contentsOf: records.values)
         }
 
+        transactions = await applyConfirmationStatus(to: transactions)
+
         let reachedBoundary = blocks.last == (direction == .descending ? lowerBound : upperBound)
         let nextCursor = reachedBoundary ? nil : try JSONEncoder().encode(
             EVMHistoryCursor(
@@ -268,6 +274,47 @@ private extension EthereumRPCClient {
     func blockHeight() async throws -> UInt64 {
         let raw: String = try await rpc.call(method: "eth_blockNumber", params: [String]())
         return try parseEVMQuantity(raw)
+    }
+
+    /// Promotes each transaction from the default `.unconfirmed` set while
+    /// building the page to `.confirmed`/`.failed` based on its mined
+    /// receipt. Best-effort: a node that rejects the batch receipt call
+    /// leaves every transaction `.unconfirmed` rather than failing history
+    /// sync outright, mirroring `tokenEffects`'s degrade-on-error behavior.
+    func applyConfirmationStatus(to transactions: [BlockchainTransaction]) async -> [BlockchainTransaction] {
+        guard !transactions.isEmpty else {
+            return transactions
+        }
+
+        let receipts: [EVMTransactionReceipt?]
+
+        do {
+            receipts = try await rpc.callBatch(
+                method: "eth_getTransactionReceipt",
+                params: transactions.map { [$0.identifier] }
+            )
+        } catch {
+            return transactions
+        }
+
+        return zip(transactions, receipts).map { transaction, receipt in
+            guard let status = receipt?.status else {
+                return transaction
+            }
+
+            return BlockchainTransaction(
+                identifier: transaction.identifier,
+                blockHeight: transaction.blockHeight,
+                blockHash: transaction.blockHash,
+                timestamp: transaction.timestamp,
+                transactionIndex: transaction.transactionIndex,
+                sender: transaction.sender,
+                recipient: transaction.recipient,
+                status: status == "0x1" ? .confirmed : .failed,
+                rawPayload: transaction.rawPayload,
+                effects: transaction.effects
+            )
+        }
     }
 
     func matches(owner: String, transaction: EVMHistoryTransaction) -> Bool {

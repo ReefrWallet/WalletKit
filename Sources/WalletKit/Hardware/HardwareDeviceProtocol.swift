@@ -34,7 +34,7 @@ public protocol HardwareDeviceProtocol: AnyObject {
     ///   - blockchain: The blockchain to build the account for.
     ///   - account: The BIP44-style account index.
     /// - Returns: The resulting account, including its derived public key.
-    func account(_ blockchain: WKBlockchain, account: UInt32) async throws -> WKAccount
+    func account(_ blockchain: Blockchain, account: UInt32) async throws -> Account
 
     /// Disconnects from this device.
     func disconnect() async

@@ -6,14 +6,8 @@
 import Foundation
 
 /// The ``BlockchainClientProtocol`` conformer for Bitcoin. Holds one
-/// ``BitcoinBackend`` (Electrum or Esplora) and maintains one
-/// ``BitcoinAddressResolver`` per distinct account descriptor it's asked
-/// about, since — unlike Ethereum/Sui, where one address is one account —
-/// a Bitcoin account resolves to many addresses. This mirrors
-/// `BlockchainClientProvider` caching one client per `(blockchain,
-/// rpcURL, backend)` triple shared by every account on that network, not
-/// one client per account: `owner`/`sender` are passed per call, exactly
-/// as `SuiGRPCClient`/`EthereumRPCClient` already do.
+/// Electrum or Esplora backend and maintains a resolver for each account
+/// descriptor. A Bitcoin account can resolve to many addresses.
 public actor BitcoinClient {
     /// Immutable and `Sendable`, so safe to read without hopping onto
     /// the actor — used by `nonisolated` protocol witnesses

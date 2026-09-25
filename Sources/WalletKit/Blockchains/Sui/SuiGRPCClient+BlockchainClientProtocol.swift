@@ -7,11 +7,6 @@
 //
 
 /// ``BlockchainClientProtocol`` conformance for ``SuiGRPCClient``.
-///
-/// `Address` is inferred as ``SuiAddress`` from the method signatures.
-/// The `token` parameter in ``getBalance(_:token:)`` and
-/// ``getTokenInfo(_:)`` remains a `String` — a Sui coin-type string such as
-/// `"0x2::sui::SUI"` — because coin types are module paths, not addresses.
 extension SuiGRPCClient: BlockchainClientProtocol {
     public func getAllBalances(_ owner: SuiAddress) async throws -> [String: BigUInt] {
         let response = try await listAllBalances(of: owner)

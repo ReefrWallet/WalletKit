@@ -1,5 +1,5 @@
 //
-//  WKAccount.swift
+//  Account.swift
 //  WalletKit
 //
 //  Created by Andrey Yurkevich on 16/08/2026.
@@ -36,7 +36,7 @@ extension Curve: CustomStringConvertible {
     }
 }
 
-/// Where an ``Account``'s signing key material actually lives.
+/// Where a ``Account``'s signing key material actually lives.
 public enum KeySource: Equatable {
     /// The key is derived and held in-app (e.g. from a ``Mnemonic``/``Seed``).
     case software
@@ -48,9 +48,9 @@ public enum KeySource: Equatable {
 
 /// A single derived account: a blockchain, a derivation path, and the
 /// public key derived at that path.
-public protocol WKAccountProtocol: AnyObject {
+public protocol AccountProtocol: AnyObject {
     /// The blockchain this account is for.
-    var blockchain: WKBlockchain { get }
+    var blockchain: Blockchain { get }
 
     /// The derivation path this account's public key was derived at.
     var derivationPath: DerivationPath { get }
@@ -67,9 +67,9 @@ public protocol WKAccountProtocol: AnyObject {
 
 /// A single derived account, produced by a ``Signer`` conformer or a
 /// ``HardwareDevice``.
-public final class WKAccount: WKAccountProtocol {
+public final class Account: AccountProtocol {
     /// The blockchain this account is for.
-    public let blockchain: WKBlockchain
+    public let blockchain: Blockchain
 
     /// The derivation path this account's public key was derived at.
     public let derivationPath: DerivationPath
@@ -84,7 +84,7 @@ public final class WKAccount: WKAccountProtocol {
     public let publicKey: PublicKey
 
     init(
-        blockchain: WKBlockchain,
+        blockchain: Blockchain,
         derivationPath: DerivationPath,
         curve: Curve,
         source: KeySource,

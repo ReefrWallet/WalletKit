@@ -6,9 +6,11 @@ import Foundation
 import WalletKit
 
 /// An error raised when the local Anvil test node cannot be started or queried.
-public struct AnvilLaunchError: Error, CustomStringConvertible {
+public struct EthereumLaunchError: Error, CustomStringConvertible {
+    /// A description of the failed local-node operation.
     public let description: String
 
+    /// Creates an error with a diagnostic description.
     public init(description: String) {
         self.description = description
     }
@@ -24,7 +26,7 @@ private func freeTCPPort() throws -> UInt16 {
     let fd = socket(AF_INET, SOCK_STREAM, 0)
 
     guard fd >= 0 else {
-        throw AnvilLaunchError(description: "socket() failed while allocating a free port")
+        throw EthereumLaunchError(description: "socket() failed while allocating a free port")
     }
 
     defer { close(fd) }
@@ -41,7 +43,7 @@ private func freeTCPPort() throws -> UInt16 {
     }
 
     guard bindResult == 0 else {
-        throw AnvilLaunchError(description: "bind() failed while allocating a free port")
+        throw EthereumLaunchError(description: "bind() failed while allocating a free port")
     }
 
     var len = socklen_t(MemoryLayout<sockaddr_in>.size)
@@ -53,7 +55,7 @@ private func freeTCPPort() throws -> UInt16 {
     }
 
     guard getResult == 0 else {
-        throw AnvilLaunchError(description: "getsockname() failed while allocating a free port")
+        throw EthereumLaunchError(description: "getsockname() failed while allocating a free port")
     }
 
     return UInt16(bigEndian: addr.sin_port)
@@ -61,15 +63,21 @@ private func freeTCPPort() throws -> UInt16 {
 
 /// The subset of an Ethereum transaction receipt needed by local integration tests.
 public struct TransactionReceipt: Decodable {
+    /// The transaction execution status reported by Anvil.
     public let status: String
+    /// The gas consumed by the transaction, encoded as an RPC quantity.
     public let gasUsed: String
+    /// The gas price paid by the transaction, when available.
     public let effectiveGasPrice: String?
+    /// The created contract address, for contract-creation transactions.
     public let contractAddress: String?
 }
 
 /// A local Foundry Anvil node used by integration tests.
-public final class AnvilNode {
+public final class EthereumNode {
+    /// The local JSON-RPC endpoint.
     public let endpoint: URL
+    /// The Sepolia-compatible chain identifier used by the node.
     public let chainId: UInt64 = 0xaa36a7
 
     private let process: Process
@@ -90,13 +98,15 @@ public final class AnvilNode {
     /// - Parameter port: Pass an explicit port to pin it; otherwise a free
     ///   one is allocated per call so concurrently-running tests don't race
     ///   over the same Anvil instance.
+    /// - Parameter workingDirectory: An optional directory for node logs and
+    ///   state. A temporary directory is created when omitted.
     public static func start(
         port: UInt16? = nil,
         workingDirectory: URL? = nil
-    ) async throws -> AnvilNode {
+    ) async throws -> EthereumNode {
         let port = try port ?? freeTCPPort()
         guard let misePath = MiseTool.path else {
-            throw AnvilLaunchError(
+            throw EthereumLaunchError(
                 description: "mise was not found in PATH or the host user's .local/bin directory"
             )
         }
@@ -131,13 +141,13 @@ public final class AnvilNode {
         do {
             try process.run()
         } catch {
-            throw AnvilLaunchError(
+            throw EthereumLaunchError(
                 description: "failed to launch anvil at \(anvilPath): \(error.localizedDescription)"
             )
         }
 
         let endpoint = URL(string: "http://127.0.0.1:\(port)")!
-        let node = AnvilNode(
+        let node = EthereumNode(
             process: process,
             endpoint: endpoint,
             workingDirectory: processWorkingDirectory,
@@ -148,6 +158,7 @@ public final class AnvilNode {
         return node
     }
 
+    /// Stops the node and releases its resources.
     public func stop() {
         process.terminate()
         process.waitUntilExit()
@@ -179,7 +190,7 @@ public final class AnvilNode {
             do {
                 try process.run()
             } catch {
-                throw AnvilLaunchError(
+                throw EthereumLaunchError(
                     description: "failed to run mise \(arguments.joined(separator: " ")): \(error.localizedDescription)"
                 )
             }
@@ -197,7 +208,7 @@ public final class AnvilNode {
 
             guard process.terminationStatus == 0 else {
                 let details = errorOutput.isEmpty ? output : errorOutput
-                throw AnvilLaunchError(
+                throw EthereumLaunchError(
                     description: "mise \(arguments.joined(separator: " ")) failed (status \(process.terminationStatus)): \(details)"
                 )
             }
@@ -209,7 +220,7 @@ public final class AnvilNode {
         let path = try run(["-C", sourceRoot, "which", "anvil"])
 
         guard !path.isEmpty else {
-            throw AnvilLaunchError(description: "mise returned an empty path for anvil")
+            throw EthereumLaunchError(description: "mise returned an empty path for anvil")
         }
 
         return path
@@ -229,7 +240,7 @@ public final class AnvilNode {
         let logURL = workingDirectory.appendingPathComponent("anvil.log")
         let log = (try? String(contentsOf: logURL, encoding: .utf8)) ?? "(no log)"
         let status = process.isRunning ? "still running" : "exited with status \(process.terminationStatus)"
-        throw AnvilLaunchError(
+        throw EthereumLaunchError(
             description: "anvil never became ready on \(endpoint) within 30s (\(status)). Log tail:\n\(log.suffix(2000))"
         )
     }
@@ -243,7 +254,7 @@ public final class AnvilNode {
 
         let actual = try await nativeBalance(of: address)
         guard actual == wei else {
-            throw AnvilLaunchError(
+            throw EthereumLaunchError(
                 description: "anvil_setBalance(\(address.string), \(wei)) didn't take effect — balance is \(actual)"
             )
         }
@@ -265,6 +276,7 @@ public final class AnvilNode {
         return balance
     }
 
+    /// Returns an account's pending transaction count.
     public func transactionCount(of address: EthereumAddress) async throws -> BigUInt {
         let hex: String = try await rpc.call(
             method: "eth_getTransactionCount",
@@ -280,6 +292,7 @@ public final class AnvilNode {
         return count
     }
 
+    /// Returns Anvil's current gas price in wei.
     public func gasPrice() async throws -> BigUInt {
         let hex: String = try await rpc.call(method: "eth_gasPrice", params: [String]())
         let body = hex.hasPrefix("0x") ? String(hex.dropFirst(2)) : hex
@@ -320,7 +333,7 @@ public final class AnvilNode {
         let receipt = try await waitForReceipt(hash)
 
         guard receipt.status == "0x1" else {
-            throw AnvilLaunchError(description: "transaction \(hash) reverted")
+            throw EthereumLaunchError(description: "transaction \(hash) reverted")
         }
 
         return hash
@@ -359,7 +372,7 @@ public final class AnvilNode {
             try? await Task.sleep(for: .milliseconds(100))
         }
 
-        throw AnvilLaunchError(description: "no receipt for \(transactionHash) within 10s")
+        throw EthereumLaunchError(description: "no receipt for \(transactionHash) within 10s")
     }
 }
 
@@ -382,17 +395,17 @@ private struct AnvilRPCClient {
         let (data, response) = try await URLSession.shared.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
-            throw AnvilLaunchError(description: "unexpected HTTP response while calling \(method)")
+            throw EthereumLaunchError(description: "unexpected HTTP response while calling \(method)")
         }
 
         let envelope = try JSONDecoder().decode(Response<Result>.self, from: data)
 
         if let error = envelope.error {
-            throw AnvilLaunchError(description: "\(method) failed: \(error.message)")
+            throw EthereumLaunchError(description: "\(method) failed: \(error.message)")
         }
 
         guard let result = envelope.result else {
-            throw AnvilLaunchError(description: "\(method) returned no result")
+            throw EthereumLaunchError(description: "\(method) returned no result")
         }
 
         return result

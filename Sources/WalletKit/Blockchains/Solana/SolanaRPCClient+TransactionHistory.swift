@@ -14,8 +14,8 @@ extension SolanaRPCClient {
     /// between pages.
     ///
     /// A wallet's history is spread across several signature lists — its
-    /// own, plus one per SPL token account it owns (see
-    /// ``scannedAddresses(of:)``) — and `getSignaturesForAddress`'s
+    /// own, plus one per SPL token account it owns — and
+    /// `getSignaturesForAddress`'s
     /// `before`/`until` only accept signatures drawn from the list they
     /// are passed with. So every scanned address carries its own
     /// independent ``AddressCursor``, keyed by base-58 address.
@@ -306,7 +306,7 @@ extension SolanaRPCClient {
     }
 
     /// Returns one page of `owner`'s transaction history, merged across
-    /// every address in ``scannedAddresses(of:)`` — so a page can carry up
+    /// every discovered address — so a page can carry up
     /// to `request.limit` signatures *per scanned address*.
     ///
     /// - Descending (backfill): pages backward from the chain tip (or
