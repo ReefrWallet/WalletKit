@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import WalletKitRust
 
 /// `transactionHistory`/`transactionHeads` for ``BitcoinClient``. No new
 /// `TransactionHistorySource` is needed for Bitcoin — both backends are
@@ -147,12 +148,23 @@ extension BitcoinClient {
         let receivedSats = transaction.outputs.filter { ownedScripts.contains($0.scriptPubkey) }.reduce(0) { $0 + $1.valueSats }
         let netSats = Int64(receivedSats) - Int64(sentSats)
 
+        let counterparty = transaction.inputs
+            .lazy
+            .filter { !ownedScripts.contains($0.scriptPubkey) }
+            .compactMap { input in
+                try? BitcoinAddressFfi.fromScriptPubkey(
+                    scriptPubkey: input.scriptPubkey,
+                    network: owner.network.raw
+                ).string()
+            }
+            .first
+
         let effect = BlockchainTransactionEffect(
             index: 0,
             kind: .nativeTransfer,
             amount: String(abs(netSats)),
-            from: netSats < 0 ? owner.string : nil,
-            to: netSats > 0 ? owner.string : nil
+            from: netSats < 0 ? owner.string : counterparty,
+            to: netSats > 0 ? owner.string : counterparty
         )
 
         return BlockchainTransaction(
