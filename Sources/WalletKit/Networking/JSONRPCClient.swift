@@ -93,6 +93,58 @@ struct JSONRPCClient {
         return result
     }
 
+    /// Calls `method` with an already-JSON-encoded `params` value,
+    /// returning the raw `result` JSON verbatim rather than decoding it
+    /// into a fixed `Decodable` type — the passthrough surface for
+    /// arbitrary RPC calls with no compile-time result type (a dapp
+    /// bridge's read-only allowlist).
+    ///
+    /// - Throws: ``BlockchainClientError`` for a transport failure, a
+    ///   non-2xx HTTP status, or a JSON-RPC `error` response.
+    func call(method: String, params: Data) async throws -> Data {
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var body = Data("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":".utf8)
+        body.append(try JSONEncoder().encode(method))
+        body.append(Data(",\"params\":".utf8))
+        body.append(params)
+        body.append(Data("}".utf8))
+        request.httpBody = body
+
+        let data: Data
+        let response: URLResponse
+
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw BlockchainClientError.transportError(reason: error.localizedDescription)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+            throw BlockchainClientError.invalidResponse(reason: "unexpected HTTP status \(status)")
+        }
+
+        guard let envelope = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) as? [String: Any] else {
+            throw BlockchainClientError.decodingFailed(reason: "response was not a JSON object")
+        }
+
+        if let error = envelope["error"] as? [String: Any] {
+            throw BlockchainClientError.rpcError(
+                code: error["code"] as? Int ?? 0,
+                message: error["message"] as? String ?? "unknown error"
+            )
+        }
+
+        guard let result = envelope["result"] else {
+            throw BlockchainClientError.invalidResponse(reason: "response had neither result nor error")
+        }
+
+        return try JSONSerialization.data(withJSONObject: result, options: [.fragmentsAllowed])
+    }
+
     /// Calls the same JSON-RPC method with multiple parameter sets in one HTTP
     /// request. Individual RPC errors are represented by `nil` at their input
     /// index so callers can preserve partial-success semantics.

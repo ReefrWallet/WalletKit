@@ -2,15 +2,19 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use protobuf::MessageField;
-use trezor_client::{protos, Trezor};
+use trezor_client::{protos, protos::MessageType, Trezor, TrezorMessage};
 use walletkit_hardware::{
     CardanoTxFields, CardanoWitness, EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
-    HardwareBitcoinNetwork, HardwareButtonRequest, HardwareCurve, HardwareDevice as HardwareDeviceTrait,
-    HardwareDeviceDelegate, HardwareDeviceInfo, HardwareError, HardwarePathSegment, SolanaTxFields,
-    TronTxFields,
+    EthereumTypedDataFields, HardwareBitcoinNetwork, HardwareButtonRequest, HardwareCurve,
+    HardwareDevice as HardwareDeviceTrait, HardwareDeviceDelegate, HardwareDeviceInfo, HardwareError, HardwareInputRequest,
+    HardwarePathSegment, SolanaTxFields, TronTxFields,
 };
 
-use super::{interaction::drive_interaction, worker::DeviceWorker};
+use super::{
+    error::{map_failure, map_trezor_error},
+    interaction::drive_interaction,
+    worker::DeviceWorker,
+};
 
 /// A connected Trezor device. Every operation is served by a dedicated
 /// worker thread (`DeviceWorker`) that owns the underlying `Trezor` client
@@ -83,6 +87,22 @@ impl HardwareDeviceTrait for TrezorDevice {
         fields: EthereumEIP1559TxFields,
     ) -> Result<EthereumEIP1559Signature, HardwareError> {
         self.worker.ethereum_sign_tx_eip1559(path, fields).await
+    }
+
+    async fn ethereum_sign_message(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        message: Vec<u8>,
+    ) -> Result<EthereumSignature, HardwareError> {
+        self.worker.ethereum_sign_message(path, message).await
+    }
+
+    async fn ethereum_sign_typed_data(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        fields: EthereumTypedDataFields,
+    ) -> Result<EthereumSignature, HardwareError> {
+        self.worker.ethereum_sign_typed_data(path, fields).await
     }
 
     async fn tron_sign_tx(
@@ -370,6 +390,440 @@ pub(super) fn ethereum_sign_tx_eip1559(
     })
 }
 
+fn signature_from_bytes(raw: &[u8]) -> Result<EthereumSignature, HardwareError> {
+    if raw.len() != 65 {
+        return Err(HardwareError::SigningFailed {
+            reason: format!("expected a 65-byte signature, got {} bytes", raw.len()),
+        });
+    }
+    Ok(EthereumSignature { v: raw[64] as u64, r: raw[0..32].to_vec(), s: raw[32..64].to_vec() })
+}
+
+/// Runs on the device's worker thread. Hand-rolls the `EthereumSignMessage`
+/// exchange (rather than using `Trezor::ethereum_sign_message`) so
+/// `drive_interaction` drives it, for the same PIN-hook reason
+/// `ethereum_sign_tx` above does. Unlike `ethereum_sign_tx`, there's no
+/// chunk-streaming loop — `EthereumSignMessage` carries the whole message
+/// in one request and gets one `EthereumMessageSignature` back.
+pub(super) fn ethereum_sign_message(
+    trezor: &mut Trezor,
+    path: &[HardwarePathSegment],
+    message: Vec<u8>,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<EthereumSignature, HardwareError> {
+    let mut req = protos::EthereumSignMessage::new();
+    req.address_n = path.iter().map(HardwarePathSegment::to_address_n).collect();
+    req.set_message(message);
+
+    let resp = drive_interaction(
+        trezor.call(req, Box::new(|_, m: protos::EthereumMessageSignature| Ok(m))),
+        delegate,
+        runtime,
+        &HardwareButtonRequest::Other { description: "signing the message".to_string() },
+    )?;
+    signature_from_bytes(resp.signature())
+}
+
+/// Runs on the device's worker thread. Dispatches to Trezor One's
+/// `EthereumSignTypedHash` fallback or the full interactive
+/// `EthereumSignTypedData` struct/value walk, based on the connected
+/// device's reported model — Trezor One's firmware doesn't implement the
+/// full flow at all.
+pub(super) fn ethereum_sign_typed_data(
+    trezor: &mut Trezor,
+    path: &[HardwarePathSegment],
+    fields: EthereumTypedDataFields,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<EthereumSignature, HardwareError> {
+    let is_trezor_one = trezor.features().and_then(|features| features.model.as_deref()) == Some("1");
+    if is_trezor_one {
+        ethereum_sign_typed_hash(trezor, path, &fields, delegate, runtime)
+    } else {
+        ethereum_sign_typed_data_full(trezor, path, fields, delegate, runtime)
+    }
+}
+
+/// Trezor One's firmware doesn't implement the interactive
+/// `EthereumSignTypedData` struct/value walk — it only signs the two
+/// already-computed EIP-712 hashes directly via `EthereumSignTypedHash`.
+fn ethereum_sign_typed_hash(
+    trezor: &mut Trezor,
+    path: &[HardwarePathSegment],
+    fields: &EthereumTypedDataFields,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<EthereumSignature, HardwareError> {
+    let mut req = protos::EthereumSignTypedHash::new();
+    req.address_n = path.iter().map(HardwarePathSegment::to_address_n).collect();
+    req.set_domain_separator_hash(fields.domain_separator_hash.clone());
+    req.set_message_hash(fields.message_hash.clone());
+
+    let resp = drive_interaction(
+        trezor.call(req, Box::new(|_, m: protos::EthereumTypedDataSignature| Ok(m))),
+        delegate,
+        runtime,
+        &HardwareButtonRequest::Other { description: "signing the typed data".to_string() },
+    )?;
+    signature_from_bytes(resp.signature())
+}
+
+/// Drives the full interactive `EthereumSignTypedData` exchange on Trezor
+/// Model T/Safe — answering each `EthereumTypedDataStructRequest`/
+/// `EthereumTypedDataValueRequest` from `fields`'s verbatim `types`/
+/// `domain`/`message` JSON. Mirrors `trezorlib.ethereum.sign_typed_data`
+/// (the Trezor team's own Python reference client) field-for-field, since
+/// `trezor-client` has no Rust convenience wrapper for this message.
+fn ethereum_sign_typed_data_full(
+    trezor: &mut Trezor,
+    path: &[HardwarePathSegment],
+    fields: EthereumTypedDataFields,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<EthereumSignature, HardwareError> {
+    let types = parse_json(&fields.types_json)?;
+    let domain = parse_json(&fields.domain_json)?;
+    let message = parse_json(&fields.message_json)?;
+
+    let mut req = protos::EthereumSignTypedData::new();
+    req.address_n = path.iter().map(HardwarePathSegment::to_address_n).collect();
+    req.set_primary_type(fields.primary_type.clone());
+    req.set_metamask_v4_compat(true);
+
+    let mut step = call_typed_data_step(trezor, req, delegate, runtime)?;
+    loop {
+        step = match step {
+            TypedDataStep::StructRequest(request) => {
+                let mut ack = protos::EthereumTypedDataStructAck::new();
+                ack.members = struct_members(&types, request.name())?;
+                call_typed_data_step(trezor, ack, delegate, runtime)?
+            }
+            TypedDataStep::ValueRequest(request) => {
+                let value =
+                    encode_member_value(&fields.primary_type, &domain, &message, &request.member_path, &types)?;
+                let mut ack = protos::EthereumTypedDataValueAck::new();
+                ack.set_value(value);
+                call_typed_data_step(trezor, ack, delegate, runtime)?
+            }
+            TypedDataStep::Signature(signature) => return signature_from_bytes(signature.signature()),
+        };
+    }
+}
+
+/// One step of the `EthereumSignTypedData` exchange — the device's next
+/// message, classified by wire type.
+enum TypedDataStep {
+    StructRequest(protos::EthereumTypedDataStructRequest),
+    ValueRequest(protos::EthereumTypedDataValueRequest),
+    Signature(protos::EthereumTypedDataSignature),
+}
+
+/// Sends `message` and classifies the device's response by wire message
+/// type. Unlike every other flow in this file, `EthereumSignTypedData`'s
+/// responses alternate between three different message types
+/// (`EthereumTypedDataStructRequest`, `EthereumTypedDataValueRequest`,
+/// `EthereumTypedDataSignature`) depending on protocol phase, which
+/// `Trezor::call`'s single-fixed-expected-response-type contract (and so
+/// `drive_interaction`, built on top of it) can't express. This
+/// reimplements `drive_interaction`'s button/PIN/passphrase handling
+/// directly atop `Trezor::call_raw` instead.
+fn call_typed_data_step(
+    trezor: &mut Trezor,
+    message: impl TrezorMessage,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<TypedDataStep, HardwareError> {
+    let into_message_error = |err: protobuf::Error| HardwareError::SigningFailed { reason: err.to_string() };
+    let mut resp = trezor.call_raw(message).map_err(map_trezor_error)?;
+    let mut pin_attempt: u32 = 0;
+    loop {
+        match resp.message_type() {
+            MessageType::MessageType_EthereumTypedDataStructRequest => {
+                return Ok(TypedDataStep::StructRequest(resp.into_message().map_err(into_message_error)?));
+            }
+            MessageType::MessageType_EthereumTypedDataValueRequest => {
+                return Ok(TypedDataStep::ValueRequest(resp.into_message().map_err(into_message_error)?));
+            }
+            MessageType::MessageType_EthereumTypedDataSignature => {
+                return Ok(TypedDataStep::Signature(resp.into_message().map_err(into_message_error)?));
+            }
+            MessageType::MessageType_Failure => {
+                let failure: protos::Failure = resp.into_message().map_err(into_message_error)?;
+                return Err(map_failure(&failure));
+            }
+            MessageType::MessageType_ButtonRequest => {
+                runtime.block_on(delegate.waiting_for_confirmation(HardwareButtonRequest::Other {
+                    description: "signing the typed data".to_string(),
+                }));
+                resp = trezor.call_raw(protos::ButtonAck::new()).map_err(map_trezor_error)?;
+            }
+            MessageType::MessageType_PinMatrixRequest => {
+                pin_attempt += 1;
+                let Some(pin) = runtime.block_on(delegate.needs_input(HardwareInputRequest::Pin { attempt: pin_attempt }))
+                else {
+                    return Err(HardwareError::UserCancelled);
+                };
+                let mut ack = protos::PinMatrixAck::new();
+                ack.set_pin(pin);
+                resp = trezor.call_raw(ack).map_err(map_trezor_error)?;
+            }
+            MessageType::MessageType_PassphraseRequest => {
+                let request: protos::PassphraseRequest = resp.into_message().map_err(into_message_error)?;
+                let mut ack = protos::PassphraseAck::new();
+                if request._on_device() {
+                    ack.set_on_device(true);
+                } else {
+                    let Some(passphrase) = runtime.block_on(delegate.needs_input(HardwareInputRequest::Passphrase))
+                    else {
+                        return Err(HardwareError::UserCancelled);
+                    };
+                    ack.set_passphrase(passphrase);
+                }
+                resp = trezor.call_raw(ack).map_err(map_trezor_error)?;
+            }
+            other => {
+                return Err(HardwareError::SigningFailed {
+                    reason: format!("unexpected Trezor message type while signing typed data: {other:?}"),
+                });
+            }
+        }
+    }
+}
+
+fn parse_json(raw: &str) -> Result<serde_json::Value, HardwareError> {
+    serde_json::from_str(raw).map_err(|err| HardwareError::SigningFailed {
+        reason: format!("invalid typed-data JSON: {err}"),
+    })
+}
+
+/// The field declarations for `type_name`, as EIP-712 `types[type_name]`
+/// — an array of `{"name", "type"}` objects in declaration order, which
+/// is the order `EthereumTypedDataValueRequest.member_path` indices are
+/// relative to.
+fn struct_fields<'a>(types: &'a serde_json::Value, type_name: &str) -> Result<&'a Vec<serde_json::Value>, HardwareError> {
+    types.get(type_name).and_then(|value| value.as_array()).ok_or_else(|| HardwareError::SigningFailed {
+        reason: format!("typed-data `types` has no definition for `{type_name}`"),
+    })
+}
+
+fn is_array_type(type_name: &str) -> bool {
+    type_name.ends_with(']')
+}
+
+fn array_element_type(type_name: &str) -> Result<&str, HardwareError> {
+    let open = type_name.rfind('[').ok_or_else(|| HardwareError::SigningFailed {
+        reason: format!("malformed array type `{type_name}`"),
+    })?;
+    Ok(&type_name[..open])
+}
+
+/// `None` for a dynamic array (`Type[]`); `Some(n)` for a fixed-size one
+/// (`Type[n]`).
+fn array_length(type_name: &str) -> Option<u32> {
+    if type_name.ends_with("[]") {
+        return None;
+    }
+    let open = type_name.rfind('[')?;
+    type_name[open + 1..type_name.len() - 1].parse().ok()
+}
+
+fn int_type_byte_size(type_name: &str) -> Result<u32, HardwareError> {
+    let digits: String = type_name.chars().filter(char::is_ascii_digit).collect();
+    let bits: u32 = digits.parse().map_err(|_| HardwareError::SigningFailed {
+        reason: format!("could not parse bit width from integer type `{type_name}`"),
+    })?;
+    Ok(bits / 8)
+}
+
+/// `None` for dynamic `bytes`; `Some(n)` for fixed-size `bytesN`.
+fn bytes_type_size(type_name: &str) -> Option<u32> {
+    if type_name == "bytes" {
+        return None;
+    }
+    type_name.trim_start_matches("bytes").parse().ok()
+}
+
+/// Ports `trezorlib.ethereum.get_field_type` — an EIP-712 field-type
+/// string (`"uint256"`, `"Person[]"`, `"MyStruct"`, ...) into the
+/// structured `EthereumFieldType` `EthereumTypedDataStructAck` needs,
+/// recursively describing array element types.
+fn field_type(
+    type_name: &str,
+    types: &serde_json::Value,
+) -> Result<protos::ethereum_typed_data_struct_ack::EthereumFieldType, HardwareError> {
+    use protos::ethereum_typed_data_struct_ack::{EthereumDataType, EthereumFieldType};
+
+    let mut field = EthereumFieldType::new();
+    if is_array_type(type_name) {
+        let entry = field_type(array_element_type(type_name)?, types)?;
+        if entry.data_type() == EthereumDataType::ARRAY {
+            return Err(HardwareError::SigningFailed { reason: "nested arrays are not supported".to_string() });
+        }
+        field.set_data_type(EthereumDataType::ARRAY);
+        if let Some(length) = array_length(type_name) {
+            field.set_size(length);
+        }
+        field.entry_type = MessageField::some(entry);
+    } else if type_name.starts_with("uint") {
+        field.set_data_type(EthereumDataType::UINT);
+        field.set_size(int_type_byte_size(type_name)?);
+    } else if type_name.starts_with("int") {
+        field.set_data_type(EthereumDataType::INT);
+        field.set_size(int_type_byte_size(type_name)?);
+    } else if type_name.starts_with("bytes") {
+        field.set_data_type(EthereumDataType::BYTES);
+        if let Some(size) = bytes_type_size(type_name) {
+            field.set_size(size);
+        }
+    } else if type_name == "string" {
+        field.set_data_type(EthereumDataType::STRING);
+    } else if type_name == "bool" {
+        field.set_data_type(EthereumDataType::BOOL);
+    } else if type_name == "address" {
+        field.set_data_type(EthereumDataType::ADDRESS);
+    } else if types.get(type_name).is_some() {
+        field.set_data_type(EthereumDataType::STRUCT);
+        field.set_size(struct_fields(types, type_name)?.len() as u32);
+        field.set_struct_name(type_name.to_string());
+    } else {
+        return Err(HardwareError::SigningFailed { reason: format!("unsupported EIP-712 type `{type_name}`") });
+    }
+    Ok(field)
+}
+
+/// Ports `trezorlib.ethereum.sign_typed_data`'s handling of an
+/// `EthereumTypedDataStructRequest` — the members Trezor's trusted
+/// screen will display and, later, request values for.
+fn struct_members(
+    types: &serde_json::Value,
+    struct_name: &str,
+) -> Result<Vec<protos::ethereum_typed_data_struct_ack::EthereumStructMember>, HardwareError> {
+    struct_fields(types, struct_name)?
+        .iter()
+        .map(|field| {
+            let name = field.get("name").and_then(|v| v.as_str()).ok_or_else(|| HardwareError::SigningFailed {
+                reason: format!("typed-data struct `{struct_name}` has a field with no name"),
+            })?;
+            let type_name = field.get("type").and_then(|v| v.as_str()).ok_or_else(|| HardwareError::SigningFailed {
+                reason: format!("typed-data struct `{struct_name}` field `{name}` has no type"),
+            })?;
+            let mut member = protos::ethereum_typed_data_struct_ack::EthereumStructMember::new();
+            member.type_ = MessageField::some(field_type(type_name, types)?);
+            member.set_name(name.to_string());
+            Ok(member)
+        })
+        .collect()
+}
+
+/// Ports `trezorlib.ethereum.sign_typed_data`'s handling of an
+/// `EthereumTypedDataValueRequest` — walks `member_path` from the domain
+/// (`member_path[0] == 0`) or message (`== 1`) root through nested
+/// struct/array members, encoding the leaf value (or, for an array, its
+/// length as a big-endian `uint16`) the same way
+/// `trezorlib.ethereum.encode_data` does.
+fn encode_member_value(
+    primary_type: &str,
+    domain: &serde_json::Value,
+    message: &serde_json::Value,
+    member_path: &[u32],
+    types: &serde_json::Value,
+) -> Result<Vec<u8>, HardwareError> {
+    let (mut type_name, mut data) = match member_path.first() {
+        Some(0) => ("EIP712Domain".to_string(), domain),
+        Some(1) => (primary_type.to_string(), message),
+        _ => {
+            return Err(HardwareError::SigningFailed {
+                reason: "typed-data value request has an invalid root index".to_string(),
+            });
+        }
+    };
+
+    for &index in &member_path[1..] {
+        let index = index as usize;
+        if let Some(object) = data.as_object() {
+            let fields = struct_fields(types, &type_name)?;
+            let field = fields.get(index).ok_or_else(|| HardwareError::SigningFailed {
+                reason: format!("typed-data struct `{type_name}` has no field at index {index}"),
+            })?;
+            let field_name = field.get("name").and_then(|v| v.as_str()).unwrap_or_default();
+            type_name = field.get("type").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+            data = object.get(field_name).ok_or_else(|| HardwareError::SigningFailed {
+                reason: format!("typed-data message is missing field `{field_name}`"),
+            })?;
+        } else if let Some(array) = data.as_array() {
+            type_name = array_element_type(&type_name)?.to_string();
+            data = array.get(index).ok_or_else(|| HardwareError::SigningFailed {
+                reason: format!("typed-data array `{type_name}` has no element at index {index}"),
+            })?;
+        } else {
+            return Err(HardwareError::SigningFailed {
+                reason: "typed-data value request path descends into a scalar".to_string(),
+            });
+        }
+    }
+
+    if let Some(array) = data.as_array() {
+        return Ok((array.len() as u16).to_be_bytes().to_vec());
+    }
+    encode_atomic_value(data, &type_name)
+}
+
+/// Ports `trezorlib.ethereum.encode_data` for a single atomic (non-array,
+/// non-struct) EIP-712 value.
+fn encode_atomic_value(value: &serde_json::Value, type_name: &str) -> Result<Vec<u8>, HardwareError> {
+    let invalid = |reason: String| HardwareError::SigningFailed { reason };
+
+    if type_name.starts_with("bytes") {
+        let hex = value.as_str().ok_or_else(|| invalid(format!("expected a hex string for `{type_name}`")))?;
+        decode_hex_value(hex)
+    } else if type_name == "string" {
+        let string = value.as_str().ok_or_else(|| invalid("expected a string value".to_string()))?;
+        Ok(string.as_bytes().to_vec())
+    } else if type_name.starts_with("uint") {
+        let byte_length = int_type_byte_size(type_name)? as usize;
+        let magnitude = parse_u256(&scalar_to_string(value)?).map_err(invalid)?;
+        Ok(magnitude.to_be_bytes::<32>()[32 - byte_length..].to_vec())
+    } else if type_name.starts_with("int") {
+        let byte_length = int_type_byte_size(type_name)? as usize;
+        let magnitude = parse_i256(&scalar_to_string(value)?).map_err(invalid)?;
+        Ok(magnitude.to_be_bytes::<32>()[32 - byte_length..].to_vec())
+    } else if type_name == "bool" {
+        let boolean = value.as_bool().ok_or_else(|| invalid(format!("expected a bool value, got {value}")))?;
+        Ok(vec![boolean as u8])
+    } else if type_name == "address" {
+        let address = value.as_str().ok_or_else(|| invalid("expected a hex address string".to_string()))?;
+        decode_hex_value(address)
+    } else {
+        Err(invalid(format!("unsupported data type for direct field encoding: {type_name}")))
+    }
+}
+
+fn scalar_to_string(value: &serde_json::Value) -> Result<String, HardwareError> {
+    match value {
+        serde_json::Value::String(s) => Ok(s.clone()),
+        serde_json::Value::Number(n) => Ok(n.to_string()),
+        other => Err(HardwareError::SigningFailed { reason: format!("expected a numeric value, got {other}") }),
+    }
+}
+
+fn decode_hex_value(value: &str) -> Result<Vec<u8>, HardwareError> {
+    hex::decode(value.trim_start_matches("0x").trim_start_matches("0X"))
+        .map_err(|err| HardwareError::SigningFailed { reason: format!("invalid hex value `{value}`: {err}") })
+}
+
+fn parse_u256(text: &str) -> Result<alloy_primitives::U256, String> {
+    if let Some(hex) = text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
+        alloy_primitives::U256::from_str_radix(hex, 16).map_err(|err| err.to_string())
+    } else {
+        alloy_primitives::U256::from_str_radix(text, 10).map_err(|err| err.to_string())
+    }
+}
+
+fn parse_i256(text: &str) -> Result<alloy_primitives::I256, String> {
+    text.parse::<alloy_primitives::I256>().map_err(|err| err.to_string())
+}
+
 /// Drives Trezor's `TronSignTx` → contract → `TronSignature` exchange for
 /// the two contract types WalletKit can build: native transfers and TRC-20
 /// calls. The device displays these structured fields before signing.
@@ -648,5 +1102,196 @@ mod tests {
         ];
         let address_n: Vec<u32> = to_bip32_path(&path).into_iter().map(|child| u32::from(*child)).collect();
         assert_eq!(address_n, path.iter().map(HardwarePathSegment::to_address_n).collect::<Vec<_>>());
+    }
+
+    // -----------------------------------------------------------------------
+    // EIP-712 typed-data struct/value walk (pure logic, no device needed)
+    // -----------------------------------------------------------------------
+
+    /// The same worked "Mail" example from the EIP-712 spec used in
+    /// `walletkit-ffi`'s `ethereum_message` tests.
+    const EIP_712_MAIL_EXAMPLE: &str = r#"{
+        "types": {
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+                {"name": "verifyingContract", "type": "address"}
+            ],
+            "Person": [
+                {"name": "name", "type": "string"},
+                {"name": "wallet", "type": "address"}
+            ],
+            "Mail": [
+                {"name": "from", "type": "Person"},
+                {"name": "to", "type": "Person"},
+                {"name": "contents", "type": "string"}
+            ]
+        },
+        "primaryType": "Mail",
+        "domain": {
+            "name": "Ether Mail",
+            "version": "1",
+            "chainId": 1,
+            "verifyingContract": "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC"
+        },
+        "message": {
+            "from": {"name": "Cow", "wallet": "0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826"},
+            "to": {"name": "Bob", "wallet": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"},
+            "contents": "Hello, Bob!"
+        }
+    }"#;
+
+    fn mail_example() -> (serde_json::Value, serde_json::Value, serde_json::Value) {
+        let raw: serde_json::Value = serde_json::from_str(EIP_712_MAIL_EXAMPLE).unwrap();
+        (raw["types"].clone(), raw["domain"].clone(), raw["message"].clone())
+    }
+
+    #[test]
+    fn field_type_describes_every_atomic_kind() {
+        use protos::ethereum_typed_data_struct_ack::EthereumDataType;
+        let (types, _, _) = mail_example();
+
+        assert_eq!(field_type("string", &types).unwrap().data_type(), EthereumDataType::STRING);
+        assert_eq!(field_type("bool", &types).unwrap().data_type(), EthereumDataType::BOOL);
+        assert_eq!(field_type("address", &types).unwrap().data_type(), EthereumDataType::ADDRESS);
+
+        let uint256 = field_type("uint256", &types).unwrap();
+        assert_eq!(uint256.data_type(), EthereumDataType::UINT);
+        assert_eq!(uint256.size(), 32);
+
+        let int8 = field_type("int8", &types).unwrap();
+        assert_eq!(int8.data_type(), EthereumDataType::INT);
+        assert_eq!(int8.size(), 1);
+
+        let bytes32 = field_type("bytes32", &types).unwrap();
+        assert_eq!(bytes32.data_type(), EthereumDataType::BYTES);
+        assert_eq!(bytes32.size(), 32);
+
+        let dynamic_bytes = field_type("bytes", &types).unwrap();
+        assert_eq!(dynamic_bytes.data_type(), EthereumDataType::BYTES);
+        assert!(!dynamic_bytes.has_size());
+    }
+
+    #[test]
+    fn field_type_describes_a_struct_by_its_member_count() {
+        let (types, _, _) = mail_example();
+        let person = field_type("Person", &types).unwrap();
+        assert_eq!(person.data_type(), protos::ethereum_typed_data_struct_ack::EthereumDataType::STRUCT);
+        assert_eq!(person.size(), 2);
+        assert_eq!(person.struct_name(), "Person");
+    }
+
+    #[test]
+    fn field_type_describes_a_dynamic_array_of_structs() {
+        let (types, _, _) = mail_example();
+        let array = field_type("Person[]", &types).unwrap();
+        assert_eq!(array.data_type(), protos::ethereum_typed_data_struct_ack::EthereumDataType::ARRAY);
+        assert!(!array.has_size());
+        assert_eq!(array.entry_type.struct_name(), "Person");
+    }
+
+    #[test]
+    fn field_type_describes_a_fixed_size_array() {
+        let (types, _, _) = mail_example();
+        let array = field_type("uint8[4]", &types).unwrap();
+        assert_eq!(array.data_type(), protos::ethereum_typed_data_struct_ack::EthereumDataType::ARRAY);
+        assert_eq!(array.size(), 4);
+    }
+
+    #[test]
+    fn field_type_rejects_nested_arrays() {
+        let (types, _, _) = mail_example();
+        assert!(field_type("uint8[][]", &types).is_err());
+    }
+
+    #[test]
+    fn field_type_rejects_an_unknown_type_name() {
+        let (types, _, _) = mail_example();
+        assert!(field_type("NotAType", &types).is_err());
+    }
+
+    #[test]
+    fn struct_members_matches_the_declared_field_order() {
+        let (types, _, _) = mail_example();
+        let members = struct_members(&types, "Mail").unwrap();
+        let names: Vec<&str> = members.iter().map(|m| m.name()).collect();
+        assert_eq!(names, vec!["from", "to", "contents"]);
+    }
+
+    #[test]
+    fn encode_member_value_reads_the_domain_root_for_index_zero() {
+        let (types, domain, message) = mail_example();
+        // domain.name is field index 0 of EIP712Domain.
+        let value = encode_member_value("Mail", &domain, &message, &[0, 0], &types).unwrap();
+        assert_eq!(value, b"Ether Mail");
+    }
+
+    #[test]
+    fn encode_member_value_reads_the_message_root_for_index_one() {
+        let (types, domain, message) = mail_example();
+        // message.contents is field index 2 of Mail.
+        let value = encode_member_value("Mail", &domain, &message, &[1, 2], &types).unwrap();
+        assert_eq!(value, b"Hello, Bob!");
+    }
+
+    #[test]
+    fn encode_member_value_walks_into_a_nested_struct_field() {
+        let (types, domain, message) = mail_example();
+        // message.from (field 0 of Mail) .name (field 0 of Person).
+        let value = encode_member_value("Mail", &domain, &message, &[1, 0, 0], &types).unwrap();
+        assert_eq!(value, b"Cow");
+    }
+
+    #[test]
+    fn encode_member_value_encodes_an_address_as_raw_bytes() {
+        let (types, domain, message) = mail_example();
+        // message.from.wallet
+        let value = encode_member_value("Mail", &domain, &message, &[1, 0, 1], &types).unwrap();
+        assert_eq!(value, hex::decode("CD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826").unwrap());
+    }
+
+    #[test]
+    fn encode_member_value_encodes_a_uint256_domain_chain_id() {
+        let (types, domain, message) = mail_example();
+        // domain.chainId
+        let value = encode_member_value("Mail", &domain, &message, &[0, 2], &types).unwrap();
+        assert_eq!(value.len(), 32);
+        assert_eq!(value[31], 1);
+        assert!(value[..31].iter().all(|&byte| byte == 0));
+    }
+
+    #[test]
+    fn encode_member_value_rejects_an_invalid_root_index() {
+        let (types, domain, message) = mail_example();
+        assert!(encode_member_value("Mail", &domain, &message, &[2], &types).is_err());
+    }
+
+    #[test]
+    fn encode_atomic_value_encodes_uint256_from_a_decimal_string() {
+        let value = serde_json::Value::String("1000000000000000000".to_string());
+        let encoded = encode_atomic_value(&value, "uint256").unwrap();
+        assert_eq!(encoded.len(), 32);
+        let expected = alloy_primitives::U256::from(1_000_000_000_000_000_000u128).to_be_bytes::<32>();
+        assert_eq!(encoded, expected.to_vec());
+    }
+
+    #[test]
+    fn encode_atomic_value_encodes_a_negative_int() {
+        let value = serde_json::Value::String("-1".to_string());
+        let encoded = encode_atomic_value(&value, "int8").unwrap();
+        assert_eq!(encoded, vec![0xff]);
+    }
+
+    #[test]
+    fn encode_atomic_value_encodes_a_bool() {
+        assert_eq!(encode_atomic_value(&serde_json::Value::Bool(true), "bool").unwrap(), vec![1]);
+        assert_eq!(encode_atomic_value(&serde_json::Value::Bool(false), "bool").unwrap(), vec![0]);
+    }
+
+    #[test]
+    fn encode_atomic_value_rejects_an_unsupported_type() {
+        let value = serde_json::Value::String("x".to_string());
+        assert!(encode_atomic_value(&value, "Person").is_err());
     }
 }

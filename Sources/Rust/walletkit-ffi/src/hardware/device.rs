@@ -5,7 +5,7 @@ use walletkit_hardware as hw;
 use crate::{
     blockchain_clients::{
         BitcoinNetworkFfi, EthereumEIP1559SignTxFfi, EthereumEIP1559SignatureFfi, EthereumSignTxFfi,
-        EthereumSignatureFfi,
+        EthereumSignatureFfi, EthereumTypedDataFieldsFfi,
     },
     common::{BigIntFfi, CurveFfi, DerivationPathFfi},
     errors::WalletKitErrorFfi,
@@ -103,6 +103,49 @@ impl HardwareDeviceFfi {
         let fields = to_ethereum_eip1559_tx_fields(tx)?;
         let signature = self.inner.ethereum_sign_tx_eip1559(segments, fields).await?;
         Ok(EthereumEIP1559SignatureFfi { y_parity: signature.y_parity, r: signature.r, s: signature.s })
+    }
+
+    /// Signs an EIP-191 personal message on the device, returning the
+    /// same 65-byte `r ‖ s ‖ v` shape (legacy 27/28 `v`) `EthereumSignerFfi
+    /// ::sign_digest` returns for the software path — so
+    /// `EthereumTrezorSigner`'s `MessageSigner` conformance can hand back
+    /// either one without further reshaping.
+    ///
+    /// Throws `.userCancelled`/`.userRejectedOnDevice` if the user backs
+    /// out, `.deviceDisconnected` if the device goes away mid-signature,
+    /// or `.signingFailed` if the device reports a protocol-level failure.
+    pub async fn ethereum_sign_message(&self, path: DerivationPathFfi, message: Vec<u8>) -> Result<Vec<u8>, WalletKitErrorFfi> {
+        let segments = to_hardware_segments(&path);
+        let signature = self.inner.ethereum_sign_message(segments, message).await?;
+        encode_message_signature(signature)
+    }
+
+    /// Signs an EIP-712 typed-data payload on the device — the full
+    /// interactive `EthereumSignTypedData` struct/value walk on Trezor
+    /// Model T/Safe, or `EthereumSignTypedHash` (over `fields`'s two
+    /// hashes) on Trezor One, whose firmware doesn't implement the full
+    /// flow. Returns the same 65-byte shape `ethereum_sign_message` does.
+    ///
+    /// Throws `.userCancelled`/`.userRejectedOnDevice` if the user backs
+    /// out, `.deviceDisconnected` if the device goes away mid-signature,
+    /// or `.signingFailed` if the device reports a protocol-level failure
+    /// or `fields`' JSON is malformed.
+    pub async fn ethereum_sign_typed_data(
+        &self,
+        path: DerivationPathFfi,
+        fields: EthereumTypedDataFieldsFfi,
+    ) -> Result<Vec<u8>, WalletKitErrorFfi> {
+        let segments = to_hardware_segments(&path);
+        let fields = hw::EthereumTypedDataFields {
+            primary_type: fields.primary_type,
+            types_json: fields.types_json,
+            domain_json: fields.domain_json,
+            message_json: fields.message_json,
+            domain_separator_hash: fields.domain_separator_hash,
+            message_hash: fields.message_hash,
+        };
+        let signature = self.inner.ethereum_sign_typed_data(segments, fields).await?;
+        encode_message_signature(signature)
     }
 
     /// Signs the raw TronGrid transaction response on the device. WalletKit
@@ -410,6 +453,29 @@ fn encode_varint(output: &mut Vec<u8>, value: u64) {
     output.push(value as u8);
 }
 
+/// Packs a hardware-returned Ethereum signature into the 65-byte
+/// `r ‖ s ‖ v` shape `EthereumSignerFfi::sign_digest` produces for the
+/// software path, folding `v` down to a single byte (legacy 27/28 —
+/// `ethereum_sign_message`/`ethereum_sign_typed_data` never EIP-155-fold
+/// it the way transaction signing does).
+fn encode_message_signature(signature: hw::EthereumSignature) -> Result<Vec<u8>, WalletKitErrorFfi> {
+    let r: [u8; 32] = signature.r.as_slice().try_into().map_err(|_| WalletKitErrorFfi::SigningFailed {
+        reason: format!("expected a 32-byte r, got {} bytes", signature.r.len()),
+    })?;
+    let s: [u8; 32] = signature.s.as_slice().try_into().map_err(|_| WalletKitErrorFfi::SigningFailed {
+        reason: format!("expected a 32-byte s, got {} bytes", signature.s.len()),
+    })?;
+    let v: u8 = signature.v.try_into().map_err(|_| WalletKitErrorFfi::SigningFailed {
+        reason: format!("expected a legacy 27/28 v, got {}", signature.v),
+    })?;
+
+    let mut out = Vec::with_capacity(65);
+    out.extend_from_slice(&r);
+    out.extend_from_slice(&s);
+    out.push(v);
+    Ok(out)
+}
+
 /// `BigIntFfi::magnitude_be_bytes` is already the minimal big-endian
 /// encoding the device's wire protocol expects; every field is
 /// non-negative by construction (decoded from unsigned RLP `U256`s),
@@ -564,5 +630,27 @@ mod tests {
             to_solana_tx_fields(r#"{"message": "not-base64!"}"#),
             Err(WalletKitErrorFfi::SigningFailed { .. })
         ));
+    }
+
+    #[test]
+    fn encode_message_signature_packs_r_s_v_into_65_bytes() {
+        let signature = hw::EthereumSignature { v: 27, r: vec![0xaa; 32], s: vec![0xbb; 32] };
+        let encoded = encode_message_signature(signature).unwrap();
+        assert_eq!(encoded.len(), 65);
+        assert_eq!(&encoded[0..32], [0xaa; 32]);
+        assert_eq!(&encoded[32..64], [0xbb; 32]);
+        assert_eq!(encoded[64], 27);
+    }
+
+    #[test]
+    fn encode_message_signature_rejects_an_eip_155_folded_v() {
+        let signature = hw::EthereumSignature { v: 11_155_111 * 2 + 35, r: vec![0u8; 32], s: vec![0u8; 32] };
+        assert!(matches!(encode_message_signature(signature), Err(WalletKitErrorFfi::SigningFailed { .. })));
+    }
+
+    #[test]
+    fn encode_message_signature_rejects_a_short_r() {
+        let signature = hw::EthereumSignature { v: 27, r: vec![1, 2, 3], s: vec![0u8; 32] };
+        assert!(matches!(encode_message_signature(signature), Err(WalletKitErrorFfi::SigningFailed { .. })));
     }
 }

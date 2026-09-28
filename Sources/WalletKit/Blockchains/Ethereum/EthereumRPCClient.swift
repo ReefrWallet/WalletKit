@@ -165,6 +165,22 @@ public struct EthereumRPCClient: Sendable {
         )
     }
 
+    /// Executes an arbitrary JSON-RPC method with raw, already
+    /// JSON-encoded `params`, returning the raw `result` JSON verbatim —
+    /// the passthrough surface a dapp bridge uses for read-only methods
+    /// it doesn't otherwise model (`eth_blockNumber`, `eth_getLogs`, ...).
+    ///
+    /// - Parameters:
+    ///   - method: The JSON-RPC method name.
+    ///   - params: The method's `params` value, already JSON-encoded
+    ///     (e.g. a JSON array literal).
+    /// - Returns: The raw `result` JSON.
+    /// - Throws: ``BlockchainClientError`` on a transport, RPC, or
+    ///   decoding failure.
+    public func request(method: String, params: Data) async throws -> Data {
+        try await rpc.call(method: method, params: params)
+    }
+
     // MARK: - Private helpers
 
     /// Parses Ethereum's "Quantity" hex encoding — a `0x`-prefixed,

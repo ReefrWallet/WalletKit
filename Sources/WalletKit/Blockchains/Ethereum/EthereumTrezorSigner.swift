@@ -17,7 +17,7 @@ import WalletKitRust
 /// (``signedTransaction(_:signature:)``). ``sign(transaction:)`` presents
 /// the decoded transaction on the device's trusted screen and returns its
 /// signature after the person confirms it.
-public final class EthereumTrezorSigner: Signer {
+public final class EthereumTrezorSigner: Signer, MessageSigner {
     public typealias Address = EthereumAddress
 
     /// The account this signer signs for.
@@ -154,5 +154,34 @@ public final class EthereumTrezorSigner: Signer {
         }
         let signature = EthereumSignature(v: ffiSignature.v, r: ffiSignature.r, s: ffiSignature.s)
         return try signedTransaction(transaction, signature: signature)
+    }
+
+    /// Signs `message` on the connected Trezor — the full interactive
+    /// `EthereumSignTypedData` struct/value walk on Model T/Safe (or
+    /// `EthereumSignTypedHash` on Trezor One) for typed data, or
+    /// `EthereumSignMessage` for a personal message — showing it on the
+    /// device's trusted screen for the user to confirm.
+    ///
+    /// - Throws: ``WalletKitError/unsupportedFeature`` if `message` isn't
+    ///   an Ethereum message kind, ``WalletKitError/deviceDisconnected``
+    ///   if the device has gone away, or
+    ///   ``WalletKitError/userCancelled``/``WalletKitError/userRejectedOnDevice``
+    ///   if the user backs out of a confirmation prompt.
+    public func sign(message: SignableMessage) async throws -> Data {
+        guard device.isConnected else {
+            throw WalletKitError.deviceDisconnected
+        }
+
+        switch message {
+        case .ethereumPersonal(let data):
+            return try await remappingWalletKitError {
+                try await device.raw.ethereumSignMessage(path: account.derivationPath.raw, message: data)
+            }
+        case .ethereumTypedData(let json):
+            let fields = try remappingWalletKitError { try ethereumTypedDataFields(json: json) }
+            return try await remappingWalletKitError {
+                try await device.raw.ethereumSignTypedData(path: account.derivationPath.raw, fields: fields)
+            }
+        }
     }
 }

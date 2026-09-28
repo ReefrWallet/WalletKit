@@ -221,6 +221,100 @@ struct EthereumTransactionBuilderTests {
         #expect(afterAUSDC == beforeAUSDC - transferAmount)
         #expect(afterBUSDC == beforeBUSDC + transferAmount)
     }
+
+    // MARK: - buildCall (a dapp's eth_sendTransaction)
+
+    @Test func buildCallProducesAValidNativeCallThatMovesTheSpecifiedValue() async throws {
+        let node = try await EthereumNode.start()
+        defer { node.stop() }
+
+        let vectors = loadEthAddressVectors()
+        let signerA = try makeEthSigner(privateKeyHex: vectors[0].privateKey, chainId: node.chainId)
+        let walletA = try signerA.address()
+        let walletB = try EthereumAddress(string: vectors[1].address)
+
+        let oneEther = BigUInt(1_000_000_000_000_000_000)
+        try await node.setBalance(walletA, wei: oneEther * 10)
+        try await node.setBalance(walletB, wei: oneEther * 10)
+
+        let client = EthereumRPCClient(endpoint: node.endpoint, chainId: node.chainId)
+        let builder = EthereumTransactionBuilder(client: client)
+
+        let beforeB = try await client.nativeBalance(of: walletB)
+        let txBytes = try await builder.buildCall(
+            sender: walletA, to: walletB, value: oneEther, data: Data(), options: []
+        )
+        let signed = try await signerA.sign(transaction: txBytes)
+        let hash = try await client.broadcast(signed)
+        let receipt = try await node.waitForReceipt(hash)
+        #expect(receipt.status == "0x1", "buildCall native transfer should succeed")
+
+        let afterB = try await client.nativeBalance(of: walletB)
+        #expect(afterB == beforeB + oneEther)
+    }
+
+    @Test func buildCallSupportsContractCreationWithANilRecipient() async throws {
+        let node = try await EthereumNode.start()
+        defer { node.stop() }
+
+        let vectors = loadEthAddressVectors()
+        let signerA = try makeEthSigner(privateKeyHex: vectors[0].privateKey, chainId: node.chainId)
+        let walletA = try signerA.address()
+        try await node.setBalance(walletA, wei: BigUInt(1_000_000_000_000_000_000) * 10)
+
+        let client = EthereumRPCClient(endpoint: node.endpoint, chainId: node.chainId)
+        let builder = EthereumTransactionBuilder(client: client)
+
+        let txBytes = try await builder.buildCall(
+            sender: walletA, to: nil, value: 0, data: mockUSDCCreationBytecode,
+            options: [.ethereumFeeOverride(maxFeePerGas: nil, maxPriorityFeePerGas: nil, gasLimit: 1_000_000)]
+        )
+        let signed = try await signerA.sign(transaction: txBytes)
+        let hash = try await client.broadcast(signed)
+        let receipt = try await node.waitForReceipt(hash)
+        #expect(receipt.status == "0x1", "buildCall contract creation should succeed")
+        #expect(receipt.contractAddress != nil)
+    }
+
+    @Test func buildCallInvokesAnArbitraryContractMethodWithCallerSuppliedData() async throws {
+        let node = try await EthereumNode.start()
+        defer { node.stop() }
+
+        let vectors = loadEthAddressVectors()
+        let signerA = try makeEthSigner(privateKeyHex: vectors[0].privateKey, chainId: node.chainId)
+        let deployerSigner = try makeEthSigner(
+            privateKeyHex: anvilDefaultAccountPrivateKeyHex,
+            chainId: node.chainId
+        )
+        let walletA = try signerA.address()
+        try await node.setBalance(walletA, wei: BigUInt(1_000_000_000_000_000_000) * 10)
+
+        let client = EthereumRPCClient(endpoint: node.endpoint, chainId: node.chainId)
+        let gasPrice = try await node.gasPrice()
+
+        let deployReceipt = try await sendRaw(
+            signer: deployerSigner, to: nil, value: 0, data: mockUSDCCreationBytecode, gasLimit: 1_000_000,
+            node: node, client: client, gasPrice: gasPrice
+        )
+        let mockUSDC = try EthereumAddress(string: try #require(deployReceipt.contractAddress))
+
+        let builder = EthereumTransactionBuilder(client: client)
+        let mintAmount = BigUInt(1_000_000_000)
+        let mintCallData = EthereumABI.encodeCall(
+            selector: EthereumABI.selector("mint(address,uint256)"),
+            parameters: [.address(walletA), .uint256(mintAmount)]
+        )
+        let txBytes = try await builder.buildCall(
+            sender: walletA, to: mockUSDC, value: 0, data: mintCallData, options: []
+        )
+        let signed = try await signerA.sign(transaction: txBytes)
+        let hash = try await client.broadcast(signed)
+        let receipt = try await node.waitForReceipt(hash)
+        #expect(receipt.status == "0x1", "buildCall mint invocation should succeed")
+
+        let balance = try await client.erc20Balance(token: mockUSDC, owner: walletA)
+        #expect(balance == mintAmount)
+    }
 }
 
 // MARK: - Helpers (local to this file)

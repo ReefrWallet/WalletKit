@@ -18,6 +18,11 @@ trezor-client = { version = "0.1", default-features = false, features = [
     "solana",
     "tron",
 ] }
+# Arbitrary-precision big-endian encoding of EIP-712 `intN`/`uintN` typed-data
+# values for `EthereumTypedDataValueAck` — the same crate `walletkit-ffi`
+# already uses for Ethereum primitives, kept at the same major version.
+alloy-primitives = "1"
 bitcoin = "0.32"
 hex = "0.4"
 protobuf = "=3.7.2"
+serde_json = "1"

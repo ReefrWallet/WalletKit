@@ -21,6 +21,7 @@ pub mod bitcoin;
 pub mod cardano;
 mod ethereum_abi;
 mod ethereum_address;
+mod ethereum_message;
 mod ethereum_signer;
 pub mod solana;
 mod sui_address;
@@ -42,6 +43,9 @@ pub use cardano::{
 };
 pub use ethereum_abi::{ethereum_function_selector, ethereum_keccak256};
 pub use ethereum_address::EthereumAddressFfi;
+pub use ethereum_message::{
+    ethereum_personal_message_hash, ethereum_typed_data_fields, ethereum_typed_data_hash, EthereumTypedDataFieldsFfi,
+};
 pub use ethereum_signer::{
     EthereumEIP1559SignTxFfi, EthereumEIP1559SignatureFfi,
     EthereumSignTxFfi, EthereumSignatureFfi, EthereumSignerFfi,

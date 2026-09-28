@@ -7,8 +7,8 @@ use tokio::sync::oneshot;
 use trezor_client::{protos, AvailableDevice};
 use walletkit_hardware::{
     CardanoTxFields, CardanoWitness, EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
-    HardwareBitcoinNetwork, HardwareButtonRequest, HardwareDeviceDelegate, HardwareError, HardwarePathSegment,
-    SolanaTxFields, TronTxFields,
+    EthereumTypedDataFields, HardwareBitcoinNetwork, HardwareButtonRequest, HardwareDeviceDelegate, HardwareError,
+    HardwarePathSegment, SolanaTxFields, TronTxFields,
 };
 
 use super::{error::map_trezor_error, interaction::drive_interaction};
@@ -33,6 +33,16 @@ enum Command {
         path: Vec<HardwarePathSegment>,
         fields: EthereumEIP1559TxFields,
         reply: oneshot::Sender<Result<EthereumEIP1559Signature, HardwareError>>,
+    },
+    EthereumSignMessage {
+        path: Vec<HardwarePathSegment>,
+        message: Vec<u8>,
+        reply: oneshot::Sender<Result<EthereumSignature, HardwareError>>,
+    },
+    EthereumSignTypedData {
+        path: Vec<HardwarePathSegment>,
+        fields: EthereumTypedDataFields,
+        reply: oneshot::Sender<Result<EthereumSignature, HardwareError>>,
     },
     TronSignTx {
         path: Vec<HardwarePathSegment>,
@@ -146,6 +156,16 @@ impl DeviceWorker {
                         );
                         let _ = reply.send(result);
                     }
+                    Command::EthereumSignMessage { path, message, reply } => {
+                        let result =
+                            super::device::ethereum_sign_message(&mut trezor, &path, message, &delegate, &runtime);
+                        let _ = reply.send(result);
+                    }
+                    Command::EthereumSignTypedData { path, fields, reply } => {
+                        let result =
+                            super::device::ethereum_sign_typed_data(&mut trezor, &path, fields, &delegate, &runtime);
+                        let _ = reply.send(result);
+                    }
                     Command::TronSignTx { path, fields, reply } => {
                         let result = super::device::tron_sign_tx(&mut trezor, &path, fields, &delegate, &runtime);
                         let _ = reply.send(result);
@@ -218,6 +238,30 @@ impl DeviceWorker {
         let (reply_tx, reply_rx) = oneshot::channel::<Result<EthereumEIP1559Signature, HardwareError>>();
         self.command_tx
             .send(Command::EthereumSignTxEip1559 { path, fields, reply: reply_tx })
+            .map_err(|_| HardwareError::Disconnected)?;
+        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+    }
+
+    pub(super) async fn ethereum_sign_message(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        message: Vec<u8>,
+    ) -> Result<EthereumSignature, HardwareError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx
+            .send(Command::EthereumSignMessage { path, message, reply: reply_tx })
+            .map_err(|_| HardwareError::Disconnected)?;
+        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+    }
+
+    pub(super) async fn ethereum_sign_typed_data(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        fields: EthereumTypedDataFields,
+    ) -> Result<EthereumSignature, HardwareError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx
+            .send(Command::EthereumSignTypedData { path, fields, reply: reply_tx })
             .map_err(|_| HardwareError::Disconnected)?;
         reply_rx.await.map_err(|_| HardwareError::Disconnected)?
     }

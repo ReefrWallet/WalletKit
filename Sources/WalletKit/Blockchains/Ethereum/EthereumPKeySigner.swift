@@ -11,7 +11,7 @@ import WalletKitRust
 
 /// A ``Signer`` backed directly by a software-held ``PrivateKey`` for
 /// Ethereum.
-public final class EthereumPKeySigner: Signer {
+public final class EthereumPKeySigner: Signer, MessageSigner {
     public typealias Address = EthereumAddress
 
     /// The account this signer signs for.
@@ -81,5 +81,23 @@ public final class EthereumPKeySigner: Signer {
             }
         }
         return try remappingWalletKitError { try raw.sign(signingData: transaction, privateKey: privateKey.raw) }
+    }
+
+    /// Signs `message` — an EIP-191 personal message or an EIP-712
+    /// typed-data payload — with ``account``'s key, returning the 65-byte
+    /// `r ‖ s ‖ v` signature (legacy 27/28 `v`, no EIP-155 folding).
+    ///
+    /// - Throws: ``WalletKitError/unsupportedFeature`` if `message` isn't
+    ///   an Ethereum message kind, or ``WalletKitError/signingFailed(reason:)``
+    ///   if `message`'s typed-data JSON is malformed.
+    public func sign(message: SignableMessage) async throws -> Data {
+        let digest: Data
+        switch message {
+        case .ethereumPersonal(let data):
+            digest = ethereumPersonalMessageHash(message: data)
+        case .ethereumTypedData(let json):
+            digest = try remappingWalletKitError { try ethereumTypedDataHash(json: json) }
+        }
+        return try remappingWalletKitError { try raw.signDigest(digest: digest, privateKey: privateKey.raw) }
     }
 }

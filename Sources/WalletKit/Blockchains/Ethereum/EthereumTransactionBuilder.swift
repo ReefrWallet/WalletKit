@@ -98,16 +98,69 @@ public struct EthereumTransactionBuilder: BlockchainTransactionBuilderProtocol {
                     for: FeeEstimateRequest(from: sender, to: recipient, value: amount)
                 )
             }
-            return buildNativeTransfer(
+            return buildNativeCall(
                 sender: sender,
-                recipient: recipient,
-                amount: amount,
+                to: recipient,
+                value: amount,
+                data: Data(),
                 nonce: nonce,
                 fee: fee,
                 feeOverride: feeOverride,
                 useLegacy: useLegacy
             )
         }
+    }
+
+    /// Builds unsigned Ethereum transaction bytes for an arbitrary call —
+    /// `to` optional so contract deployment (`to == nil`) works, `data`
+    /// caller-supplied — the entry point a dapp's `eth_sendTransaction`
+    /// needs, as opposed to ``buildTransfer(sender:recipient:amount:token:options:)``'s
+    /// fixed native-ETH/ERC-20-transfer shapes. Reuses the same nonce/fee
+    /// logic as the native-ETH path of ``buildTransfer(sender:recipient:amount:token:options:)``.
+    ///
+    /// - Parameters:
+    ///   - sender: The account that will sign and pay gas.
+    ///   - to: The call destination, or `nil` for contract creation.
+    ///   - value: Native ETH value in wei.
+    ///   - data: The call data (ABI-encoded function call, or contract
+    ///     creation bytecode).
+    ///   - options: Builder flags — ``BlockchainTransactionBuilderOptions/legacyEip155``
+    ///     for an EIP-155 legacy transaction, or
+    ///     ``BlockchainTransactionBuilderOptions/ethereumFeeOverride(maxFeePerGas:maxPriorityFeePerGas:gasLimit:)``
+    ///     to take a dapp's own gas fields over the node's estimate.
+    /// - Returns: Transaction signing bytes ready for
+    ///   ``EthereumPKeySigner/sign(transaction:)`` or
+    ///   ``EthereumTrezorSigner/sign(transaction:)``.
+    /// - Throws: ``BlockchainClientError`` on RPC failures.
+    public func buildCall(
+        sender: EthereumAddress,
+        to: EthereumAddress?,
+        value: BigUInt,
+        data: Data,
+        options: [BlockchainTransactionBuilderOptions]
+    ) async throws -> Data {
+        let useLegacy = options.containsLegacyEip155
+        let feeOverride = options.ethereumFeeOverride
+
+        async let nonceTask = client.nonce(of: sender)
+        let nonce = try await nonceTask
+        let fee: FeeEstimate
+        if feeOverride?.gasLimit != nil {
+            fee = try await client.estimateFee(for: nil as FeeEstimateRequest<EthereumAddress>?)
+        } else {
+            fee = try await client.estimateFee(for: FeeEstimateRequest(from: sender, to: to, value: value, data: data))
+        }
+
+        return buildNativeCall(
+            sender: sender,
+            to: to,
+            value: value,
+            data: data,
+            nonce: nonce,
+            fee: fee,
+            feeOverride: feeOverride,
+            useLegacy: useLegacy
+        )
     }
 }
 
@@ -116,10 +169,11 @@ public struct EthereumTransactionBuilder: BlockchainTransactionBuilderProtocol {
 private extension EthereumTransactionBuilder {
     typealias EthFeeOverride = (maxFeePerGas: BigUInt?, maxPriorityFeePerGas: BigUInt?, gasLimit: BigUInt?)
 
-    func buildNativeTransfer(
+    func buildNativeCall(
         sender: EthereumAddress,
-        recipient: EthereumAddress,
-        amount: BigUInt,
+        to: EthereumAddress?,
+        value: BigUInt,
+        data: Data,
         nonce: UInt64,
         fee: FeeEstimate,
         feeOverride: EthFeeOverride?,
@@ -131,9 +185,9 @@ private extension EthereumTransactionBuilder {
                 nonce: BigUInt(nonce),
                 gasPrice: feeOverride?.maxFeePerGas ?? fee.gasPrice,
                 gasLimit: gasLimit,
-                to: recipient,
-                value: amount,
-                data: Data(),
+                to: to,
+                value: value,
+                data: data,
                 chainId: client.chainId
             ).signingData
         }
@@ -142,9 +196,9 @@ private extension EthereumTransactionBuilder {
             maxPriorityFeePerGas: feeOverride?.maxPriorityFeePerGas ?? fee.maxPriorityFeePerGas ?? fee.gasPrice,
             maxFeePerGas: feeOverride?.maxFeePerGas ?? fee.maxFeePerGas ?? fee.gasPrice,
             gasLimit: gasLimit,
-            to: recipient,
-            value: amount,
-            data: Data(),
+            to: to,
+            value: value,
+            data: data,
             chainId: client.chainId
         ).signingData
     }

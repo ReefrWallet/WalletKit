@@ -631,6 +631,43 @@ struct EthereumRPCClientTests {
         }
     }
 
+    // MARK: - request (raw passthrough)
+
+    @Test func requestSendsTheGivenMethodAndParamsVerbatim() async throws {
+        let stub = stubbedResult("0x1a")
+        _ = try await makeClient(stub).request(method: "eth_blockNumber", params: Data("[]".utf8))
+
+        let envelope = try capturedEnvelope(stub)
+        #expect(envelope["method"] as? String == "eth_blockNumber")
+        #expect(envelope["params"] as? [String] == [])
+    }
+
+    @Test func requestReturnsTheRawResultJSONVerbatim() async throws {
+        let stub = stubbedResult("0x1a")
+        let result = try await makeClient(stub).request(method: "eth_blockNumber", params: Data("[]".utf8))
+        #expect(String(data: result, encoding: .utf8) == "\"0x1a\"")
+    }
+
+    @Test func requestReturnsRawNullWithoutThrowingWhenTheResultIsNull() async throws {
+        let stub = StubURLProtocol.makeSession(
+            response: .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":null}"#.utf8))
+        )
+        let result = try await makeClient(stub).request(method: "eth_getTransactionReceipt", params: Data("[]".utf8))
+        #expect(String(data: result, encoding: .utf8) == "null")
+    }
+
+    @Test func requestThrowsRPCErrorWhenTheNodeReturnsAnError() async throws {
+        let body = #"{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"method not found"}}"#
+        let client = makeClient(StubURLProtocol.makeSession(response: .success(body: Data(body.utf8))))
+
+        do {
+            _ = try await client.request(method: "eth_madeUpMethod", params: Data("[]".utf8))
+            Issue.record("expected request(method:params:) to throw")
+        } catch let error as BlockchainClientError {
+            #expect(error == .rpcError(code: -32601, message: "method not found"))
+        }
+    }
+
     // MARK: - broadcast
 
     @Test func broadcastSendsTheRawTransactionHexAndReturnsTheHash() async throws {

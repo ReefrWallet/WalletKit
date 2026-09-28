@@ -6,8 +6,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use walletkit_hardware::{
     CardanoTxFields, CardanoWitness, EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
-    HardwareBitcoinNetwork, HardwareCurve, HardwareDevice as HardwareDeviceTrait, HardwareDeviceDelegate,
-    HardwareDeviceInfo, HardwareDeviceManager as HardwareDeviceManagerTrait, HardwareError,
+    EthereumTypedDataFields, HardwareBitcoinNetwork, HardwareCurve, HardwareDevice as HardwareDeviceTrait,
+    HardwareDeviceDelegate, HardwareDeviceInfo, HardwareDeviceManager as HardwareDeviceManagerTrait, HardwareError,
     HardwarePathSegment, HardwareTransportKind, HardwareVendor, SolanaTxFields, TronTxFields,
 };
 
@@ -87,6 +87,22 @@ impl HardwareDeviceTrait for TrezorDevice {
         _path: Vec<HardwarePathSegment>,
         _fields: EthereumEIP1559TxFields,
     ) -> Result<EthereumEIP1559Signature, HardwareError> {
+        Err(unavailable())
+    }
+
+    async fn ethereum_sign_message(
+        &self,
+        _path: Vec<HardwarePathSegment>,
+        _message: Vec<u8>,
+    ) -> Result<EthereumSignature, HardwareError> {
+        Err(unavailable())
+    }
+
+    async fn ethereum_sign_typed_data(
+        &self,
+        _path: Vec<HardwarePathSegment>,
+        _fields: EthereumTypedDataFields,
+    ) -> Result<EthereumSignature, HardwareError> {
         Err(unavailable())
     }
 

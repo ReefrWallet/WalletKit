@@ -60,6 +60,24 @@ pub struct EthereumEIP1559Signature {
     pub s: Vec<u8>,
 }
 
+/// The fields of an EIP-712 typed-data payload a hardware device's
+/// trusted screen needs — the wire-format `types`/`domain`/`message`
+/// sub-objects verbatim as JSON (so a device driver can walk them without
+/// any EIP-712 knowledge of its own), plus the two hashes that combine
+/// into the EIP-712 signing hash (`domain_separator_hash`, `message_hash`),
+/// which Trezor One's `EthereumSignTypedHash` fallback needs directly —
+/// its firmware doesn't implement the full struct/value walk
+/// `EthereumSignTypedData` requires on Model T/Safe.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EthereumTypedDataFields {
+    pub primary_type: String,
+    pub types_json: String,
+    pub domain_json: String,
+    pub message_json: String,
+    pub domain_separator_hash: Vec<u8>,
+    pub message_hash: Vec<u8>,
+}
+
 /// A Tron transfer or smart-contract call displayed and signed by a hardware
 /// device. Addresses include Tron's `0x41` network byte.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,6 +211,26 @@ pub trait HardwareDevice: Send + Sync {
         path: Vec<HardwarePathSegment>,
         fields: EthereumEIP1559TxFields,
     ) -> Result<EthereumEIP1559Signature, HardwareError>;
+
+    /// Signs an EIP-191 personal message on-device, returning the 65-byte
+    /// `r ‖ s ‖ v` signature (legacy 27/28 `v`, no EIP-155 folding)
+    /// `personal_sign` expects.
+    async fn ethereum_sign_message(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        message: Vec<u8>,
+    ) -> Result<EthereumSignature, HardwareError>;
+
+    /// Signs an EIP-712 typed-data payload on-device — the full
+    /// interactive `EthereumSignTypedData` struct/value walk on Trezor
+    /// Model T/Safe, or `EthereumSignTypedHash` (over the two hashes
+    /// `fields` already carries) on Trezor One. Returns the same 65-byte
+    /// `r ‖ s ‖ v` shape as `ethereum_sign_message`.
+    async fn ethereum_sign_typed_data(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        fields: EthereumTypedDataFields,
+    ) -> Result<EthereumSignature, HardwareError>;
 
     /// Signs a Tron `TransferContract` or `TriggerSmartContract` on-device.
     async fn tron_sign_tx(

@@ -33,6 +33,9 @@ walletkit-trezor = { path = "../walletkit-trezor" }
 # `alloy_rlp::Encodable`/`Decodable` for `Address`/`U256`/`Bytes`.
 alloy-primitives = { version = "1", features = ["rlp", "secp256k1"] }
 alloy-rlp = "0.3"
+# EIP-712 typed-data parsing/hashing for `blockchain_clients::ethereum_message`
+# (`eth_signTypedData_v4`) — `TypedData` plus `eip712_signing_hash()`.
+alloy-dyn-abi = { version = "1", features = ["eip712"] }
 # Decodes the base64 `message` field of the JSON envelope
 # `blockchain_clients::solana`'s Trezor bridge (`hardware::device::
 # to_solana_tx_fields`) receives from the Swift side.
