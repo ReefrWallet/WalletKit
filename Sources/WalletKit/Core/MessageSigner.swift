@@ -19,7 +19,11 @@ public enum SignableMessage: Sendable {
     /// `types`/`primaryType`/`domain`/`message` JSON payload, verbatim.
     case ethereumTypedData(json: String)
 
-    // Later: .solanaOffchain, .suiPersonal, .tronV2, .cardanoCIP8, .bitcoinBIP322.
+    /// A Sui personal message (`sui:signPersonalMessage`) — the raw
+    /// message bytes, not yet BCS-wrapped or intent-prefixed.
+    case suiPersonal(Data)
+
+    // Later: .solanaOffchain, .tronV2, .cardanoCIP8, .bitcoinBIP322.
 }
 
 /// A ``Signer`` that can also sign a ``SignableMessage`` —

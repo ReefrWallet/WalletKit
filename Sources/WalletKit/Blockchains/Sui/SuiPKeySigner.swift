@@ -11,7 +11,7 @@ import WalletKitRust
 
 /// A ``Signer`` backed directly by a software-held ``PrivateKey``, for Sui.
 /// Backed by `SuiSignerFfi` (blake2-based).
-public final class SuiPKeySigner: Signer {
+public final class SuiPKeySigner: MessageSigner {
     public typealias Address = SuiAddress
 
     /// The account this signer signs for.
@@ -78,5 +78,24 @@ public final class SuiPKeySigner: Signer {
     ///   `transaction`.
     public func sign(transaction: Data) async throws -> Data {
         try remappingWalletKitError { try raw.sign(transactionData: transaction, privateKey: privateKey.raw) }
+    }
+
+    /// Signs `message` — a Sui personal message (`sui:signPersonalMessage`)
+    /// — with ``account``'s key, returning Sui's serialized signature
+    /// (`flag || signature || public key`), same encoding as
+    /// ``sign(transaction:)``. Uses a distinct signing intent
+    /// (`PersonalMessage`, not `TransactionData`), so this signature can
+    /// never be replayed as a transaction signature or vice versa.
+    ///
+    /// - Throws: ``WalletKitError/unsupportedFeature`` if `message` isn't
+    ///   ``SignableMessage/suiPersonal(_:)``.
+    public func sign(message: SignableMessage) async throws -> Data {
+        guard case let .suiPersonal(data) = message else {
+            throw WalletKitError.unsupportedFeature
+        }
+
+        return try remappingWalletKitError {
+            try raw.signPersonalMessage(message: data, privateKey: privateKey.raw)
+        }
     }
 }

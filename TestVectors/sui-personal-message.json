@@ -1,0 +1,32 @@
+[
+  {
+    "label": "ed25519-fixed-seed",
+    "scheme": "ed25519",
+    "note": "Generated with the official Mysten `@mysten/sui` TypeScript SDK's `Ed25519Keypair.signPersonalMessage` (see WalletKit/Sources/Rust/walletkit-ffi/src/blockchain_clients/sui_signer.rs's sign_personal_message for the independent Rust implementation this vector verifies).",
+    "privateKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "publicKey": "0xd04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "address": "0x0881c07520943bbf13989b92892093c1b50672156fa5f873c22892701cb2e207",
+    "messageHex": "0x68656c6c6f2072656566722077616c6c6574",
+    "signatureHex": "0x00833a636cb0659da55c84058b1f6ba032606fe615846aceef13e533b0948bc51aa92c9011ea836fb503ba8911fe795d50db84cfefab5f97707a9edafb941ce30fd04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+  },
+  {
+    "label": "secp256k1-fixed-seed",
+    "scheme": "secp256k1",
+    "note": "Generated with the official Mysten `@mysten/sui` TypeScript SDK's `Secp256k1Keypair.signPersonalMessage`.",
+    "privateKey": "0x2222222222222222222222222222222222222222222222222222222222222222",
+    "publicKey": "0x02466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27",
+    "address": "0xe059fa59fda3d2f6942a7434b7f4fbe1478d6409e858a02e07ebb0e204d14627",
+    "messageHex": "0x68656c6c6f2072656566722077616c6c6574",
+    "signatureHex": "0x01395a6f9667be1295c098370ced9b4f1932d988a2c45b91c691049fd19a4fafe072de1a9cbcc7c787f19250e321238b05a4e9bc11185438ab81664c401fcfe87e02466d7fcae563e5cb09a0d1870bb580344804617879a14949cf22285f1bae3f27"
+  },
+  {
+    "label": "ed25519-empty-message",
+    "scheme": "ed25519",
+    "note": "Same key as ed25519-fixed-seed, with an empty message — exercises the BCS Vec<u8> zero-length ULEB128 prefix (0x00) path.",
+    "privateKey": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "publicKey": "0xd04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "address": "0x0881c07520943bbf13989b92892093c1b50672156fa5f873c22892701cb2e207",
+    "messageHex": "0x",
+    "signatureHex": "0x004a5bce17f42231887ee25451f868aa60c2d1d77434b5899d05ad88615e249a829907f08ffc5a89630deab4f4bb22d8b000de3c93035da9420290f7ae2e50870dd04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737"
+  }
+]

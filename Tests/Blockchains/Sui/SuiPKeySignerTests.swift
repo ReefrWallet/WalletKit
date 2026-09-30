@@ -66,6 +66,24 @@ private struct SuiTxVector: Decodable, Sendable, CustomTestStringConvertible {
     }
 }
 
+private struct SuiPersonalMessageVector: Decodable, Sendable, CustomTestStringConvertible {
+    let label: String
+    let scheme: String
+    let privateKey: String
+    let messageHex: String
+    let signatureHex: String
+
+    var testDescription: String { label }
+
+    var curve: Curve? {
+        switch scheme {
+        case "ed25519": return .ed25519
+        case "secp256k1": return .secp256k1
+        default: return nil
+        }
+    }
+}
+
 private func loadVectors<T: Decodable>(_ resource: String) -> [T] {
     // swiftlint:disable force_try
     let url = Bundle.module.url(forResource: resource, withExtension: "json")!
@@ -101,6 +119,8 @@ struct SuiPKeySignerTests {
     fileprivate static let supportedVectors = vectors.filter { $0.curve != nil }
     fileprivate static let txVectors: [SuiTxVector] = loadVectors("sui-tx")
     fileprivate static let supportedTxVectors = txVectors.filter { $0.curve != nil }
+    fileprivate static let personalMessageVectors: [SuiPersonalMessageVector] = loadVectors("sui-personal-message")
+    fileprivate static let supportedPersonalMessageVectors = personalMessageVectors.filter { $0.curve != nil }
 
     private static let derivationPath = TestAccountFactory.slip10Path(coinType: 784)
 
@@ -158,5 +178,27 @@ struct SuiPKeySignerTests {
 
         let signature = try await signer.sign(transaction: vector.transactionDataBcsHex.hexDecoded)
         #expect(signature.hexEncoded == vector.signatureHex)
+    }
+
+    /// Verified against the official Mysten `@mysten/sui` TypeScript SDK's
+    /// `Ed25519Keypair`/`Secp256k1Keypair.signPersonalMessage` — an
+    /// implementation independent of this crate's Rust
+    /// `sign_personal_message`, not a same-side self-consistency check.
+    @Test(arguments: supportedPersonalMessageVectors)
+    fileprivate func signMessageProducesTheVectorsExpectedSignature(vector: SuiPersonalMessageVector) async throws {
+        let curve = try #require(vector.curve)
+        let privateKey = try PrivateKey(curve: curve, rawBytes: vector.privateKey.hexDecoded)
+        let signer = try SuiPKeySigner(curve: curve, privateKey: privateKey, derivationPath: Self.derivationPath)
+
+        let signature = try await signer.sign(message: .suiPersonal(vector.messageHex.hexDecoded))
+        #expect(signature.hexEncoded == vector.signatureHex)
+    }
+
+    @Test func signMessageRejectsANonSuiPersonalMessageKind() async throws {
+        let privateKey = try PrivateKey(curve: .ed25519, rawBytes: Data(repeating: 1, count: 32))
+        let signer = try SuiPKeySigner(privateKey: privateKey, derivationPath: Self.derivationPath)
+        await #expect(throws: WalletKitError.self) {
+            _ = try await signer.sign(message: .ethereumPersonal(Data([0x01])))
+        }
     }
 }

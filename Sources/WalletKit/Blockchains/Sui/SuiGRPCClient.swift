@@ -282,6 +282,49 @@ public struct SuiGRPCClient: Sendable {
         }
     }
 
+    /// Executes a signed transaction exactly like ``broadcast(transactionData:signature:)``,
+    /// but also requests and returns the transaction's raw BCS-encoded
+    /// `TransactionEffects` from the same execute call — no separate
+    /// follow-up RPC — for callers that need the full Wallet Standard
+    /// `sui:signAndExecuteTransaction` response shape (`bytes`,
+    /// `signature`, `digest`, `effects`), not just a digest.
+    ///
+    /// This is a Sui-specific extra, not part of
+    /// ``BlockchainClientProtocol`` — every other chain's broadcast only
+    /// ever returns an identifier string, and adding an effects-shaped
+    /// return to that shared, cross-chain protocol would be a much
+    /// larger, unrelated change.
+    ///
+    /// - Parameters:
+    ///   - transactionData: The raw BCS-encoded `TransactionData` bytes.
+    ///   - signature: The serialized signature over `transactionData`.
+    /// - Returns: The executed transaction's digest and raw BCS-encoded
+    ///   `TransactionEffects`.
+    /// - Throws: ``BlockchainClientError`` on a transport, RPC, or
+    ///   decoding failure.
+    public func executeTransactionWithEffects(
+        transactionData: Data, signature: Data
+    ) async throws -> (digest: String, effects: Data) {
+        try await withTransactionExecutionServiceClient { client in
+            let request = Sui_Rpc_V2_ExecuteTransactionRequest.with {
+                $0.transaction = Sui_Rpc_V2_Transaction.with {
+                    $0.bcs = Sui_Rpc_V2_Bcs.with { $0.value = transactionData }
+                }
+                $0.signatures = [
+                    Sui_Rpc_V2_UserSignature.with {
+                        $0.bcs = Sui_Rpc_V2_Bcs.with { $0.value = signature }
+                    }
+                ]
+                $0.readMask.paths = ["digest", "transaction.effects.bcs"]
+            }
+            let response = try await client.executeTransaction(
+                request: ClientRequest(message: request),
+                options: self.callOptions
+            )
+            return (digest: response.transaction.digest, effects: response.transaction.effects.bcs.value)
+        }
+    }
+
     /// Lists all owned `Coin<coinType>` objects for `address`, sorted by
     /// balance descending (largest first).
     ///

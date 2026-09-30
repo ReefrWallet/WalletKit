@@ -20,6 +20,34 @@ use crate::keys::{PrivateKeyFfi, PublicKeyFfi};
 /// other.
 const TRANSACTION_DATA_INTENT: [u8; 3] = [0, 0, 0];
 
+/// Sui's 3-byte intent prefix for a `PersonalMessage` being signed: scope
+/// `3` (`PersonalMessage`), version `0` (`V0`), app id `0` (`Sui`) — the
+/// same version/app-id as `TRANSACTION_DATA_INTENT`, but a different scope
+/// byte, so a signature over a personal message can never be replayed as
+/// a signature over a transaction (or vice versa).
+const PERSONAL_MESSAGE_INTENT: [u8; 3] = [3, 0, 0];
+
+/// BCS-encodes `bytes` as a `Vec<u8>`: a ULEB128 length prefix followed by
+/// the raw bytes. This is also exactly what BCS produces for Sui's
+/// `PersonalMessage { message: Vec<u8> }` struct, since BCS serializes a
+/// single-field struct as just that field's own encoding, with no
+/// additional wrapper.
+fn bcs_encode_byte_vector(bytes: &[u8]) -> Vec<u8> {
+    let mut encoded = Vec::with_capacity(bytes.len() + 5);
+    let mut length = bytes.len() as u64;
+    loop {
+        let byte = (length & 0x7f) as u8;
+        length >>= 7;
+        if length == 0 {
+            encoded.push(byte);
+            break;
+        }
+        encoded.push(byte | 0x80);
+    }
+    encoded.extend_from_slice(bytes);
+    encoded
+}
+
 /// Scheme flag Sui prefixes a public key with before hashing — `0x00` for
 /// Ed25519, `0x01` for Secp256k1. (Sui defines further flags for schemes
 /// this crate doesn't support, e.g. Secp256r1/multisig.)
@@ -105,6 +133,42 @@ impl SuiSignerFfi {
         }
 
         let digest = blake2b_256(&[&TRANSACTION_DATA_INTENT, &transaction_data]);
+
+        let signature = private_key.sign(digest.to_vec())?;
+        let public_key = private_key.public_key();
+
+        let mut serialized = Vec::with_capacity(1 + signature.len() + public_key.raw_bytes().len());
+        serialized.push(scheme_flag(self.curve));
+        serialized.extend_from_slice(&signature);
+        serialized.extend_from_slice(&public_key.raw_bytes());
+        Ok(serialized)
+    }
+
+    /// Signs `message` — arbitrary raw bytes a dapp asked the user to
+    /// sign via `sui:signPersonalMessage`, NOT a transaction — with
+    /// `private_key`, returning Sui's serialized signature (`flag ||
+    /// signature || public_key`), same encoding as `sign`.
+    ///
+    /// Algorithm: BCS-encode `message` as a `Vec<u8>` (see
+    /// `bcs_encode_byte_vector`), prepend the 3-byte
+    /// `PERSONAL_MESSAGE_INTENT`, Blake2b-256 hash the result, and sign
+    /// that 32-byte digest — structurally identical to `sign`, differing
+    /// only in the intent scope byte and the extra BCS-`Vec<u8>`-wrapping
+    /// step this scheme requires that raw `TransactionData` bytes don't
+    /// (they're already a BCS-encoded value, not a bare byte string).
+    ///
+    /// Throws `.unsupportedCurve` if `private_key.curve() != self.curve`.
+    pub fn sign_personal_message(
+        &self,
+        message: Vec<u8>,
+        private_key: Arc<PrivateKeyFfi>,
+    ) -> Result<Vec<u8>, WalletKitErrorFfi> {
+        if private_key.curve() != self.curve {
+            return Err(WalletKitErrorFfi::UnsupportedCurve { curve: private_key.curve() });
+        }
+
+        let encoded_message = bcs_encode_byte_vector(&message);
+        let digest = blake2b_256(&[&PERSONAL_MESSAGE_INTENT, &encoded_message]);
 
         let signature = private_key.sign(digest.to_vec())?;
         let public_key = private_key.public_key();
@@ -334,6 +398,91 @@ mod tests {
                 .unwrap_or_else(|err| panic!("{}: {err}", vector.label));
             assert_eq!(signature, vector.signature, "{}", vector.label);
         }
+    }
+
+    struct PersonalMessageVector {
+        label: String,
+        curve: CurveFfi,
+        private_key: Vec<u8>,
+        message: Vec<u8>,
+        signature: Vec<u8>,
+    }
+
+    /// Generated with the official Mysten `@mysten/sui` TypeScript SDK's
+    /// `Ed25519Keypair`/`Secp256k1Keypair.signPersonalMessage` — an
+    /// independent implementation from this crate's own
+    /// `sign_personal_message`, so a matching signature is real evidence
+    /// the intent scope byte and BCS `Vec<u8>` wrapping are both correct
+    /// (a same-crate self-consistency check could reproduce the same
+    /// mistake on both sides). See `TestVectors/sui-personal-message.json`.
+    fn personal_message_vectors() -> Vec<PersonalMessageVector> {
+        let raw = include_str!("../../../../../TestVectors/sui-personal-message.json");
+        let json: serde_json::Value = serde_json::from_str(raw).expect("sui-personal-message.json is valid JSON");
+        json.as_array()
+            .expect("sui-personal-message.json is a JSON array")
+            .iter()
+            .map(|entry| {
+                let curve = match entry["scheme"].as_str().unwrap() {
+                    "ed25519" => CurveFfi::Ed25519,
+                    "secp256k1" => CurveFfi::Secp256k1,
+                    other => panic!("unexpected scheme {other} in sui-personal-message.json"),
+                };
+                PersonalMessageVector {
+                    label: entry["label"].as_str().unwrap().to_string(),
+                    curve,
+                    private_key: hex::decode(entry["privateKey"].as_str().unwrap().trim_start_matches("0x"))
+                        .unwrap(),
+                    message: hex::decode(entry["messageHex"].as_str().unwrap().trim_start_matches("0x")).unwrap(),
+                    signature: hex::decode(entry["signatureHex"].as_str().unwrap().trim_start_matches("0x"))
+                        .unwrap(),
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn sign_personal_message_matches_every_vectors_expected_signature() {
+        for vector in personal_message_vectors() {
+            let private_key: [u8; 32] = vector
+                .private_key
+                .as_slice()
+                .try_into()
+                .unwrap_or_else(|_| panic!("{}: private key is not 32 bytes", vector.label));
+            let private_key = Arc::new(PrivateKeyFfi::new(vector.curve, private_key));
+
+            let signer = SuiSignerFfi::new(vector.curve);
+            let signature = signer
+                .sign_personal_message(vector.message.clone(), private_key)
+                .unwrap_or_else(|err| panic!("{}: {err}", vector.label));
+            assert_eq!(signature, vector.signature, "{}", vector.label);
+        }
+    }
+
+    #[test]
+    fn sign_personal_message_rejects_a_curve_mismatch() {
+        let vector = personal_message_vectors().into_iter().find(|vector| vector.curve == CurveFfi::Ed25519).unwrap();
+        let private_key: [u8; 32] = vector.private_key.as_slice().try_into().unwrap();
+        let private_key = Arc::new(PrivateKeyFfi::new(CurveFfi::Ed25519, private_key));
+
+        let signer = SuiSignerFfi::new(CurveFfi::Secp256k1);
+        assert!(matches!(
+            signer.sign_personal_message(vector.message, private_key),
+            Err(WalletKitErrorFfi::UnsupportedCurve { curve: CurveFfi::Ed25519 })
+        ));
+    }
+
+    #[test]
+    fn sign_personal_message_produces_a_different_signature_than_sign_for_the_same_bytes() {
+        // The intent scope byte (3 vs 0) must actually change the digest —
+        // this guards against `sign_personal_message` accidentally reusing
+        // `TRANSACTION_DATA_INTENT`, which would let a personal-message
+        // signature be replayed as a transaction signature (or vice versa).
+        let signer = SuiSignerFfi::new(CurveFfi::Ed25519);
+        let private_key = master_private_key(CurveFfi::Ed25519);
+        let payload = vec![0xc0];
+        let tx_signature = signer.sign(payload.clone(), private_key.clone()).unwrap();
+        let personal_signature = signer.sign_personal_message(payload, private_key).unwrap();
+        assert_ne!(tx_signature, personal_signature);
     }
 
     #[test]
