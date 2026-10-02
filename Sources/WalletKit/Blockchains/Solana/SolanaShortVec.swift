@@ -59,4 +59,56 @@ enum SolanaShortVec {
         }
         return result
     }
+
+    /// Decodes a compact-u16 length prefix the same way ``decode(_:offset:)``
+    /// does, but additionally enforces the wire-format guarantees a
+    /// fail-closed parser needs: no more than 3 bytes (compact-u16 never
+    /// needs a 4th), the decoded value fits in 16 bits, and the encoding is
+    /// canonical — i.e. exactly what ``encode(_:)`` would have produced for
+    /// that value, rejecting a padded/non-minimal encoding (e.g. `0x80 0x00`
+    /// for `0`) that could let two byte-different-but-equal-value encodings
+    /// of the same transaction coexist.
+    ///
+    /// - Throws: ``WalletKitError/internalError(message:)`` if `data` runs
+    ///   out of bytes, the value takes more than 3 bytes, the decoded value
+    ///   exceeds `0xFFFF`, or the encoding isn't canonical.
+    static func decodeCanonical(_ data: Data, offset: inout Int) throws -> Int {
+        let start = offset
+        var result = 0
+        var shift = 0
+        var byteCount = 0
+
+        while true {
+            guard offset < data.count else {
+                throw WalletKitError.internalError(message: "compact-u16 ran out of bytes")
+            }
+
+            guard byteCount < 3 else {
+                throw WalletKitError.internalError(message: "compact-u16 took more than 3 bytes")
+            }
+
+            let byte = data[offset]
+
+            offset += 1
+            byteCount += 1
+            result |= Int(byte & 0x7F) << shift
+
+            if byte & 0x80 == 0 {
+                break
+            }
+
+            shift += 7
+        }
+
+        guard result <= 0xFFFF else {
+            throw WalletKitError.internalError(message: "compact-u16 value exceeds 0xFFFF")
+        }
+
+        let consumed = Data(data[start..<offset])
+        guard consumed == encode(result) else {
+            throw WalletKitError.internalError(message: "compact-u16 encoding is not canonical")
+        }
+
+        return result
+    }
 }

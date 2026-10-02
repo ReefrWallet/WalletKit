@@ -19,11 +19,19 @@ public enum SignableMessage: Sendable {
     /// `types`/`primaryType`/`domain`/`message` JSON payload, verbatim.
     case ethereumTypedData(json: String)
 
+    /// A Solana off-chain message (`solana:signMessage`) — the raw
+    /// message bytes, signed directly with no prefix (ed25519 signing
+    /// hashes internally). The signer is not responsible for checking
+    /// this isn't actually transaction/message-header bytes in disguise
+    /// — that fail-closed check happens before signing, in
+    /// `SolanaDappProvider`.
+    case solanaMessage(Data)
+
     /// A Sui personal message (`sui:signPersonalMessage`) — the raw
     /// message bytes, not yet BCS-wrapped or intent-prefixed.
     case suiPersonal(Data)
 
-    // Later: .solanaOffchain, .tronV2, .cardanoCIP8, .bitcoinBIP322.
+    // Later: .tronV2, .cardanoCIP8, .bitcoinBIP322.
 }
 
 /// A ``Signer`` that can also sign a ``SignableMessage`` —

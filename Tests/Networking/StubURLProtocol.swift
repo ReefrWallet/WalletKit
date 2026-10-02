@@ -32,6 +32,8 @@ final class StubURLProtocol: URLProtocol {
     private struct State {
         let response: StubResponse
         let responsesByPath: [String: StubResponse]?
+        var responseSequence: [StubResponse]?
+        var sequenceIndex = 0
         var request: URLRequest?
         var body: Data?
     }
@@ -68,6 +70,21 @@ final class StubURLProtocol: URLProtocol {
         return Session(urlSession: URLSession(configuration: configuration), id: id)
     }
 
+    /// A session that serves `responseSequence` one response per request,
+    /// in order, repeating the last response once exhausted — for clients
+    /// that poll the same endpoint/method expecting the response to
+    /// change across calls (e.g. confirmation polling: "not yet
+    /// confirmed", then "confirmed").
+    static func makeSession(responseSequence: [StubResponse]) -> Session {
+        let id = UUID()
+        lock.withLock {
+            statesById[id] = State(response: .failure(.unknown), responsesByPath: nil, responseSequence: responseSequence)
+        }
+
+        let configuration = makeConfiguration(id: id)
+        return Session(urlSession: URLSession(configuration: configuration), id: id)
+    }
+
     private static func makeConfiguration(id: UUID) -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
@@ -92,13 +109,19 @@ final class StubURLProtocol: URLProtocol {
             return
         }
 
-        let response = state.responsesByPath?[request.url?.path ?? ""] ?? state.response
+        let response: StubResponse
+        if let sequence = state.responseSequence, !sequence.isEmpty {
+            response = sequence[min(state.sequenceIndex, sequence.count - 1)]
+        } else {
+            response = state.responsesByPath?[request.url?.path ?? ""] ?? state.response
+        }
 
         let body = Self.bodyData(of: request)
         let capturedRequest = request
         Self.lock.withLock {
             Self.statesById[id]?.request = capturedRequest
             Self.statesById[id]?.body = body
+            Self.statesById[id]?.sequenceIndex += 1
         }
 
         switch response {

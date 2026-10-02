@@ -43,4 +43,44 @@ struct SolanaShortVecTests {
             _ = try SolanaShortVec.decode(Data([0x80]), offset: &offset)
         }
     }
+
+    @Test(arguments: [0, 1, 127, 128, 16_383, 16_384, 65_535])
+    func decodeCanonicalAcceptsEveryEncodedValue(value: Int) throws {
+        var offset = 0
+        let decoded = try SolanaShortVec.decodeCanonical(SolanaShortVec.encode(value), offset: &offset)
+        #expect(decoded == value)
+    }
+
+    @Test func decodeCanonicalRejectsANonMinimalEncoding() {
+        // `0` canonically encodes as a single `0x00` byte; `0x80 0x00`
+        // decodes to the same value via the lenient `decode` but pads an
+        // unnecessary continuation byte.
+        #expect(throws: WalletKitError.self) {
+            var offset = 0
+            _ = try SolanaShortVec.decodeCanonical(Data([0x80, 0x00]), offset: &offset)
+        }
+    }
+
+    @Test func decodeCanonicalRejectsMoreThanThreeBytes() {
+        #expect(throws: WalletKitError.self) {
+            var offset = 0
+            _ = try SolanaShortVec.decodeCanonical(Data([0x80, 0x80, 0x80, 0x01]), offset: &offset)
+        }
+    }
+
+    @Test func decodeCanonicalRejectsAValueAbove0xFFFF() {
+        // Three bytes with every data bit set decodes to a value well
+        // above the compact-u16 ceiling.
+        #expect(throws: WalletKitError.self) {
+            var offset = 0
+            _ = try SolanaShortVec.decodeCanonical(Data([0xFF, 0xFF, 0x04]), offset: &offset)
+        }
+    }
+
+    @Test func decodeCanonicalThrowsOnTruncatedInput() {
+        #expect(throws: WalletKitError.self) {
+            var offset = 0
+            _ = try SolanaShortVec.decodeCanonical(Data([0x80]), offset: &offset)
+        }
+    }
 }

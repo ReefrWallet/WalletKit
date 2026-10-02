@@ -122,6 +122,14 @@ impl HardwareDeviceTrait for TrezorDevice {
         Err(unavailable())
     }
 
+    async fn solana_sign_message(
+        &self,
+        _path: Vec<HardwarePathSegment>,
+        _message: Vec<u8>,
+    ) -> Result<Vec<u8>, HardwareError> {
+        Err(unavailable())
+    }
+
     async fn cardano_xpub(&self, _path: Vec<HardwarePathSegment>) -> Result<String, HardwareError> {
         Err(unavailable())
     }

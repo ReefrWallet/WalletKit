@@ -97,7 +97,7 @@ public final class EthereumPKeySigner: Signer, MessageSigner {
             digest = ethereumPersonalMessageHash(message: data)
         case .ethereumTypedData(let json):
             digest = try remappingWalletKitError { try ethereumTypedDataHash(json: json) }
-        case .suiPersonal:
+        case .solanaMessage, .suiPersonal:
             throw WalletKitError.unsupportedFeature
         }
 

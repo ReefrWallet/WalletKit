@@ -8,13 +8,16 @@
 
 import Foundation
 
-/// Decodes Base58 (Bitcoin-alphabet) strings to raw bytes — the encoding
-/// Sui's gRPC API uses for object and transaction digests, as opposed to
-/// the `0x`-hex encoding used everywhere else in the API.
+/// Decodes/encodes Base58 (Bitcoin-alphabet) strings — the encoding Sui's
+/// gRPC API uses for object and transaction digests, and Solana uses for
+/// addresses, blockhashes, and transaction signatures, as opposed to the
+/// `0x`-hex encoding used elsewhere.
 ///
-/// Internal to WalletKit; consumed by ``SuiGRPCClient/ownedCoins(of:coinType:)``
-/// when decoding the `digest` field of each returned object reference.
-enum Base58 {
+/// Public so app-level code can decode a ``SolanaRPCClient/sendTransaction(_:options:)``
+/// response's Base58 transaction signature into raw bytes; internally also
+/// consumed by ``SuiGRPCClient/ownedCoins(of:coinType:)`` when decoding the
+/// `digest` field of each returned object reference.
+public enum Base58 {
     private static let alphabet = Array("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz")
     private static let indexByCharacter = Dictionary(
         uniqueKeysWithValues: alphabet.enumerated().map { ($1, $0) }
@@ -23,10 +26,10 @@ enum Base58 {
     /// Decodes `string` from Base58 to its raw bytes.
     ///
     /// - Parameter string: A Base58-encoded string, e.g. a Sui object digest
-    ///   as returned by `ListOwnedObjects`.
+    ///   as returned by `ListOwnedObjects`, or a Solana transaction signature.
     /// - Throws: ``BlockchainClientError/decodingFailed(reason:)`` if
     ///   `string` contains any character outside the Base58 alphabet.
-    static func decode(_ string: String) throws -> Data {
+    public static func decode(_ string: String) throws -> Data {
         var bytes: [Int] = [0]
         for character in string {
             guard let digit = indexByCharacter[character] else {
@@ -50,7 +53,7 @@ enum Base58 {
         return Data(repeating: 0, count: leadingZeros) + significant
     }
 
-    static func encode(_ data: Data) -> String {
+    public static func encode(_ data: Data) -> String {
         guard !data.isEmpty else {
             return ""
         }

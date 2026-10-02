@@ -314,33 +314,185 @@ extension SolanaRPCClient {
 
 // MARK: - Submission
 
+/// A commitment level a Solana RPC node can be asked to preflight
+/// against, or a caller can ask ``SolanaRPCClient/sendTransaction(_:options:)``
+/// to wait for after broadcast.
+public enum SolanaCommitment: String, Sendable {
+    case processed
+    case confirmed
+    case finalized
+
+    /// This commitment's position in Solana's own
+    /// `processed < confirmed < finalized` lockout ordering — used to
+    /// decide whether a signature status satisfies a requested commitment.
+    fileprivate var rank: Int {
+        switch self {
+        case .processed: 0
+        case .confirmed: 1
+        case .finalized: 2
+        }
+    }
+}
+
+/// Options for ``SolanaRPCClient/sendTransaction(_:options:)`` — the
+/// fields Wallet Standard's `solana:signAndSendTransaction` lets a dapp
+/// request, forwarded to the RPC node's `sendTransaction` config plus an
+/// optional post-broadcast confirmation wait this client performs itself
+/// (the RPC method has no "wait for confirmation" option of its own).
+public struct SolanaSendTransactionOptions: Sendable {
+    /// If present, ``SolanaRPCClient/sendTransaction(_:options:)`` polls
+    /// `getSignatureStatuses` until the transaction reaches this
+    /// commitment (or fails, or the wait times out) before returning.
+    public let commitment: SolanaCommitment?
+    public let maxRetries: UInt?
+    public let minContextSlot: UInt64?
+    /// Defaults (when `nil`) to `confirmed`, matching this client's
+    /// previous hardcoded behavior.
+    public let preflightCommitment: SolanaCommitment?
+    public let skipPreflight: Bool?
+
+    public init(
+        commitment: SolanaCommitment? = nil,
+        maxRetries: UInt? = nil,
+        minContextSlot: UInt64? = nil,
+        preflightCommitment: SolanaCommitment? = nil,
+        skipPreflight: Bool? = nil
+    ) {
+        self.commitment = commitment
+        self.maxRetries = maxRetries
+        self.minContextSlot = minContextSlot
+        self.preflightCommitment = preflightCommitment
+        self.skipPreflight = skipPreflight
+    }
+}
+
 extension SolanaRPCClient {
     private struct SendTransactionParams: Encodable {
         let transaction: String
+        let options: SolanaSendTransactionOptions
 
         private struct Config: Encodable {
             let encoding = "base64"
-            // Matches `latestBlockhash()`'s `confirmed` fetch — the RPC
-            // default preflight commitment is `finalized`, which lags
-            // behind and doesn't yet recognize a blockhash this recent,
-            // rejecting the transaction with "Blockhash not found".
-            let preflightCommitment = "confirmed"
+            let preflightCommitment: String
+            let skipPreflight: Bool?
+            let maxRetries: UInt?
+            let minContextSlot: UInt64?
+
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(encoding, forKey: .encoding)
+                try container.encode(preflightCommitment, forKey: .preflightCommitment)
+                try container.encodeIfPresent(skipPreflight, forKey: .skipPreflight)
+                try container.encodeIfPresent(maxRetries, forKey: .maxRetries)
+                try container.encodeIfPresent(minContextSlot, forKey: .minContextSlot)
+            }
+
+            enum CodingKeys: String, CodingKey {
+                case encoding, preflightCommitment, skipPreflight, maxRetries, minContextSlot
+            }
         }
 
         func encode(to encoder: Encoder) throws {
             var container = encoder.unkeyedContainer()
             try container.encode(transaction)
-            try container.encode(Config())
+            // Matches `latestBlockhash()`'s `confirmed` fetch — the RPC
+            // default preflight commitment is `finalized`, which lags
+            // behind and doesn't yet recognize a blockhash this recent,
+            // rejecting the transaction with "Blockhash not found".
+            try container.encode(Config(
+                preflightCommitment: options.preflightCommitment?.rawValue ?? "confirmed",
+                skipPreflight: options.skipPreflight,
+                maxRetries: options.maxRetries,
+                minContextSlot: options.minContextSlot
+            ))
         }
     }
 
     /// Submits a fully signed transaction (signature list + serialized
     /// message) and returns its signature — `sendTransaction`, `base64`
-    /// encoding.
-    func sendTransaction(_ signedTransaction: Data) async throws -> String {
-        try await rpc.call(
+    /// encoding. If `options.commitment` is set, waits for that
+    /// commitment (via `getSignatureStatuses` polling) before returning.
+    ///
+    /// - Throws: ``BlockchainClientError`` for a transport/RPC failure,
+    ///   for a transaction that lands but fails on-chain, or for a
+    ///   confirmation wait that exceeds ``confirmationTimeout``.
+    public func sendTransaction(
+        _ signedTransaction: Data, options: SolanaSendTransactionOptions = .init()
+    ) async throws -> String {
+        let signature: String = try await rpc.call(
             method: "sendTransaction",
-            params: SendTransactionParams(transaction: signedTransaction.base64EncodedString())
+            params: SendTransactionParams(transaction: signedTransaction.base64EncodedString(), options: options)
         )
+
+        if let commitment = options.commitment {
+            try await confirmTransaction(signature: signature, commitment: commitment)
+        }
+
+        return signature
     }
+
+    private struct SignatureStatusesParams: Encodable {
+        let signatures: [String]
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.unkeyedContainer()
+            try container.encode(signatures)
+        }
+    }
+
+    /// `err` is only ever checked for presence (Solana's own
+    /// `TransactionError` shape isn't consumed) — `decode` records
+    /// whether the key held anything other than `null`.
+    private struct SignatureStatus: Decodable {
+        let confirmationStatus: String?
+        let hasError: Bool
+
+        private enum CodingKeys: String, CodingKey {
+            case confirmationStatus, err
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            confirmationStatus = try container.decodeIfPresent(String.self, forKey: .confirmationStatus)
+            hasError = try container.contains(.err) && !container.decodeNil(forKey: .err)
+        }
+    }
+
+    /// Polls `getSignatureStatuses` for `signature` until it reaches
+    /// `commitment`, fails on-chain, or ``confirmationTimeout`` elapses.
+    private func confirmTransaction(signature: String, commitment: SolanaCommitment) async throws {
+        let deadline = Date().addingTimeInterval(Self.confirmationTimeout)
+
+        while true {
+            let response: SolanaRPCValue<[SignatureStatus?]> = try await rpc.call(
+                method: "getSignatureStatuses", params: SignatureStatusesParams(signatures: [signature])
+            )
+
+            if let status = response.value.first ?? nil {
+                if status.hasError {
+                    throw BlockchainClientError.rpcError(code: 0, message: "Solana transaction \(signature) failed on-chain")
+                }
+
+                if let confirmationStatus = status.confirmationStatus,
+                   let rank = SolanaCommitment(rawValue: confirmationStatus)?.rank,
+                   rank >= commitment.rank {
+                    return
+                }
+            }
+
+            guard Date() < deadline else {
+                throw BlockchainClientError.transportError(
+                    reason: "timed out waiting for Solana transaction \(signature) to reach \(commitment.rawValue)"
+                )
+            }
+            
+            try await Task.sleep(nanoseconds: Self.confirmationPollInterval)
+        }
+    }
+
+    // `internal`, not `private`, so `@testable import WalletKit` tests can
+    // shrink these for a fast confirmation-success/timeout test rather
+    // than waiting out a real 30-second timeout.
+    static var confirmationTimeout: TimeInterval = 30
+    static var confirmationPollInterval: UInt64 = 1_000_000_000
 }

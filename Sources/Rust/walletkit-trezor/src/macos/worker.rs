@@ -55,6 +55,11 @@ enum Command {
         fields: SolanaTxFields,
         reply: oneshot::Sender<Result<Vec<u8>, HardwareError>>,
     },
+    SolanaSignMessage {
+        path: Vec<HardwarePathSegment>,
+        message: Vec<u8>,
+        reply: oneshot::Sender<Result<Vec<u8>, HardwareError>>,
+    },
     CardanoXpub { path: Vec<HardwarePathSegment>, reply: oneshot::Sender<Result<String, HardwareError>> },
     CardanoSignTx { fields: CardanoTxFields, reply: oneshot::Sender<Result<Vec<CardanoWitness>, HardwareError>> },
     BitcoinXpub {
@@ -178,6 +183,11 @@ impl DeviceWorker {
                         let result = super::device::solana_sign_tx(&mut trezor, &path, fields, &delegate, &runtime);
                         let _ = reply.send(result);
                     }
+                    Command::SolanaSignMessage { path, message, reply } => {
+                        let result =
+                            super::device::solana_sign_message(&mut trezor, &path, message, &delegate, &runtime);
+                        let _ = reply.send(result);
+                    }
                     Command::CardanoXpub { path, reply } => {
                         let result = super::device::cardano_xpub(&mut trezor, &path, &delegate, &runtime);
                         let _ = reply.send(result);
@@ -294,6 +304,18 @@ impl DeviceWorker {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
             .send(Command::SolanaSignTx { path, fields, reply: reply_tx })
+            .map_err(|_| HardwareError::Disconnected)?;
+        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+    }
+
+    pub(super) async fn solana_sign_message(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        message: Vec<u8>,
+    ) -> Result<Vec<u8>, HardwareError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx
+            .send(Command::SolanaSignMessage { path, message, reply: reply_tx })
             .map_err(|_| HardwareError::Disconnected)?;
         reply_rx.await.map_err(|_| HardwareError::Disconnected)?
     }

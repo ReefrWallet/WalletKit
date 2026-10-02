@@ -42,4 +42,20 @@ struct SolanaPKeySignerTests {
             _ = try await signer.sign(transaction: Data("not json".utf8))
         }
     }
+
+    @Test func signMessageSignsTheRawBytesDirectlyWithNoPrefix() async throws {
+        let signer = try makeSigner()
+        let message = Data("Example solana:signMessage message".utf8)
+
+        let signature = try await signer.sign(message: .solanaMessage(message))
+        #expect(signature.count == 64)
+        #expect(signer.account.publicKey.verify(signature: signature, message: message))
+    }
+
+    @Test func signMessageRejectsANonSolanaMessageKind() async throws {
+        let signer = try makeSigner()
+        await #expect(throws: WalletKitError.self) {
+            _ = try await signer.sign(message: .ethereumPersonal(Data("nope".utf8)))
+        }
+    }
 }

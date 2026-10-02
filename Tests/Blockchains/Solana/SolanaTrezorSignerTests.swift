@@ -33,4 +33,47 @@ struct SolanaTrezorSignerTests {
             #expect(signer.account.publicKey.verify(signature: signature, message: message.serialize()))
         }
     }
+
+    @Test func signsAnOffChainMessageWithAConnectedDevice() async throws {
+        try await withExclusiveHardwareAccess {
+            let manager = HardwareDeviceManager()
+            let devices = try await manager.scan()
+            guard let info = devices.first else {
+                return
+            }
+
+            let device = try await manager.connect(info, delegate: RecordingHardwareDeviceDelegate())
+            let signer = try await SolanaTrezorSigner(
+                network: .devnet,
+                device: device,
+                derivationPath: try DerivationPath(string: "m/44'/501'/0'/0'")
+            )
+
+            let message = Data("Example solana:signMessage message".utf8)
+            let signature = try await signer.sign(message: .solanaMessage(message))
+            #expect(signature.count == 64)
+            #expect(signer.account.publicKey.verify(signature: signature, message: message))
+        }
+    }
+
+    @Test func signMessageRejectsANonSolanaMessageKind() async throws {
+        try await withExclusiveHardwareAccess {
+            let manager = HardwareDeviceManager()
+            let devices = try await manager.scan()
+            guard let info = devices.first else {
+                return
+            }
+
+            let device = try await manager.connect(info, delegate: RecordingHardwareDeviceDelegate())
+            let signer = try await SolanaTrezorSigner(
+                network: .devnet,
+                device: device,
+                derivationPath: try DerivationPath(string: "m/44'/501'/0'/0'")
+            )
+
+            await #expect(throws: WalletKitError.self) {
+                _ = try await signer.sign(message: .ethereumPersonal(Data("nope".utf8)))
+            }
+        }
+    }
 }

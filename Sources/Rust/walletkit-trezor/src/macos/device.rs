@@ -121,6 +121,14 @@ impl HardwareDeviceTrait for TrezorDevice {
         self.worker.solana_sign_tx(path, fields).await
     }
 
+    async fn solana_sign_message(
+        &self,
+        path: Vec<HardwarePathSegment>,
+        message: Vec<u8>,
+    ) -> Result<Vec<u8>, HardwareError> {
+        self.worker.solana_sign_message(path, message).await
+    }
+
     async fn cardano_xpub(&self, path: Vec<HardwarePathSegment>) -> Result<String, HardwareError> {
         self.worker.cardano_xpub(path).await
     }
@@ -962,6 +970,35 @@ pub(super) fn solana_sign_tx(
 
     if !resp.has_signature() {
         return Err(HardwareError::SigningFailed { reason: "Trezor returned an empty Solana signature".to_string() });
+    }
+    Ok(resp.signature().to_vec())
+}
+
+/// Runs on the device's worker thread. Sends `SolanaSignMessage` with the
+/// raw message bytes and returns the raw ed25519 signature — one round
+/// trip, no streaming, mirroring `ethereum_sign_message`'s shape rather
+/// than `solana_sign_tx`'s (which carries token-account metadata this
+/// off-chain-message flow has no equivalent of).
+pub(super) fn solana_sign_message(
+    trezor: &mut Trezor,
+    path: &[HardwarePathSegment],
+    message: Vec<u8>,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<Vec<u8>, HardwareError> {
+    let mut req = protos::SolanaSignMessage::new();
+    req.address_n = path.iter().map(HardwarePathSegment::to_address_n).collect();
+    req.set_message(message);
+
+    let resp = drive_interaction(
+        trezor.call(req, Box::new(|_, m: protos::SolanaMessageSignature| Ok(m))),
+        delegate,
+        runtime,
+        &HardwareButtonRequest::Other { description: "signing the message".to_string() },
+    )?;
+
+    if !resp.has_signature() {
+        return Err(HardwareError::SigningFailed { reason: "Trezor returned an empty Solana message signature".to_string() });
     }
     Ok(resp.signature().to_vec())
 }

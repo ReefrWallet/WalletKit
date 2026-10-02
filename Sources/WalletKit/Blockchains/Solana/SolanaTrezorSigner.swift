@@ -15,7 +15,7 @@ import Foundation
 /// its trusted screen can show an SPL transfer's mint/owner rather than
 /// the opaque token-account address on the wire) and returns the raw
 /// 64-byte ed25519 signature.
-public final class SolanaTrezorSigner: Signer {
+public final class SolanaTrezorSigner: Signer, MessageSigner {
     public typealias Address = SolanaAddress
 
     public let account: Account
@@ -61,6 +61,26 @@ public final class SolanaTrezorSigner: Signer {
 
         return try await remappingWalletKitError {
             try await device.raw.solanaSignTx(path: account.derivationPath.raw, transaction: transaction)
+        }
+    }
+
+    /// Signs a Solana off-chain message (`solana:signMessage`) on-device
+    /// — the raw bytes directly, no prefix, matching
+    /// ``SolanaPKeySigner/sign(message:)``'s software-path behavior.
+    ///
+    /// - Throws: ``WalletKitError/unsupportedFeature`` if `message` isn't
+    ///   ``SignableMessage/solanaMessage(_:)``.
+    public func sign(message: SignableMessage) async throws -> Data {
+        guard case let .solanaMessage(data) = message else {
+            throw WalletKitError.unsupportedFeature
+        }
+
+        guard device.isConnected else {
+            throw WalletKitError.deviceDisconnected
+        }
+
+        return try await remappingWalletKitError {
+            try await device.raw.solanaSignMessage(path: account.derivationPath.raw, message: data)
         }
     }
 }

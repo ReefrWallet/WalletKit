@@ -14,7 +14,7 @@ import Foundation
 /// Signs the raw serialized message bytes carried in the
 /// ``SolanaUnsignedTransaction`` envelope directly — Solana has no
 /// separate signing-hash step, and ed25519 signing hashes internally.
-public final class SolanaPKeySigner: Signer {
+public final class SolanaPKeySigner: MessageSigner {
     public typealias Address = SolanaAddress
 
     /// The account this signer signs for.
@@ -61,5 +61,19 @@ public final class SolanaPKeySigner: Signer {
     public func sign(transaction: Data) async throws -> Data {
         let envelope = try JSONDecoder().decode(SolanaUnsignedTransaction.self, from: transaction)
         return try privateKey.sign(message: envelope.message)
+    }
+
+    /// Signs a Solana off-chain message (`solana:signMessage`) with
+    /// ``account``'s key — the raw bytes directly, no prefix (unlike Sui's
+    /// distinct signing intent, Solana's Wallet Standard `signMessage`
+    /// signs exactly the bytes it's given).
+    ///
+    /// - Throws: ``WalletKitError/unsupportedFeature`` if `message` isn't
+    ///   ``SignableMessage/solanaMessage(_:)``.
+    public func sign(message: SignableMessage) async throws -> Data {
+        guard case let .solanaMessage(data) = message else {
+            throw WalletKitError.unsupportedFeature
+        }
+        return try privateKey.sign(message: data)
     }
 }
