@@ -30,9 +30,11 @@ extension Data {
             guard let byte = UInt8(hex[index..<next], radix: 16) else {
                 throw BlockchainClientError.decodingFailed(reason: "invalid hex digits in: \(hexString)")
             }
+
             data.append(byte)
             index = next
         }
+
         self = data
     }
 

@@ -70,13 +70,16 @@ enum BitcoinCoinSelector {
                 feeRateSatPerVByte: feeRateSatPerVByte,
                 inputKind: inputKind
             )
-            guard accumulated >= targetSats + feeWithChange else { continue }
+            guard accumulated >= targetSats + feeWithChange else {
+                continue
+            }
 
             let change = accumulated - targetSats - feeWithChange
             return Selection(inputs: selected, changeSats: change < dustThresholdSats ? 0 : change)
         }
 
         let total = sorted.reduce(0) { $0 + $1.valueSats }
+
         throw BlockchainTransactionBuilderError.insufficientFunds(
             reason: "need \(targetSats) sats plus fees but only \(total) sats available"
         )
@@ -95,7 +98,10 @@ enum BitcoinCoinSelector {
         var prefix: [BitcoinUTXO] = []
 
         for (attempt, utxo) in sorted.enumerated() {
-            guard attempt < 32 else { break }
+            guard attempt < 32 else {
+                break
+            }
+
             prefix.append(utxo)
             accumulated += utxo.valueSats
 
@@ -105,7 +111,9 @@ enum BitcoinCoinSelector {
                 feeRateSatPerVByte: feeRateSatPerVByte,
                 inputKind: inputKind
             )
-            guard accumulated >= targetSats + feeWithoutChange else { continue }
+            guard accumulated >= targetSats + feeWithoutChange else {
+                continue
+            }
 
             let excess = accumulated - targetSats - feeWithoutChange
             if excess < dustThresholdSats {

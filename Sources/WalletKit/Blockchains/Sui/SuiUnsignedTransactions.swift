@@ -64,7 +64,9 @@ public struct UnsignedSuiTransaction: Sendable {
         data.append(0x00) // TransactionKind::ProgrammableTransaction
 
         let amountInputs = transfers.map { BCS.byteVector(BCS.u64($0.amount)) }
+
         let recipientInputs = transfers.map { BCS.byteVector($0.recipient.rawBytes) }
+
         let inputs = amountInputs + recipientInputs
         data.append(BCS.uleb128(inputs.count))
         for input in inputs {
@@ -94,6 +96,7 @@ public struct UnsignedSuiTransaction: Sendable {
                 data.append(BCS.u16(0))
                 data.append(BCS.u16(UInt16(index)))
             }
+
             data.append(0x01) // Argument::Input, the matching recipient
             data.append(BCS.u16(UInt16(transfers.count + index)))
         }
@@ -328,6 +331,7 @@ public struct UnsignedMultiCoinMergeSplitTransfer: Sendable {
         for coin in coinObjects {
             appendImmOrOwned(&data, reference: coin)
         }
+
         data.append(0x00) // CallArg::Pure
         data.append(BCS.byteVector(BCS.u64(amount)))
         data.append(0x00) // CallArg::Pure
@@ -396,6 +400,7 @@ private func appendGasData(
         data.append(BCS.u64(reference.version))
         data.append(BCS.byteVector(reference.digest))
     }
+
     data.append(gasOwner.rawBytes)
     data.append(BCS.u64(gasPrice))
     data.append(BCS.u64(gasBudget))

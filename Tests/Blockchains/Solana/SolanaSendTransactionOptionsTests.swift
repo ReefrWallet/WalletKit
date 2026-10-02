@@ -64,7 +64,9 @@ struct SolanaSendTransactionOptionsTests {
         let stub = StubURLProtocol.makeSession(responseSequence: [
             .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":"sig123"}"#.utf8)),
             .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":{"value":[null]}}"#.utf8)),
-            .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":{"value":[{"confirmationStatus":"confirmed","err":null}]}}"#.utf8))
+            .success(body: Data(
+                #"{"jsonrpc":"2.0","id":1,"result":{"value":[{"confirmationStatus":"confirmed","err":null}]}}"#.utf8
+            ))
         ])
         let client = SolanaRPCClient(endpoint: endpoint, session: stub.urlSession)
 
@@ -79,7 +81,9 @@ struct SolanaSendTransactionOptionsTests {
         // `finalized` (a stricter commitment) must still satisfy the wait.
         let stub = StubURLProtocol.makeSession(responseSequence: [
             .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":"sig123"}"#.utf8)),
-            .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":{"value":[{"confirmationStatus":"finalized","err":null}]}}"#.utf8))
+            .success(body: Data(
+                #"{"jsonrpc":"2.0","id":1,"result":{"value":[{"confirmationStatus":"finalized","err":null}]}}"#.utf8
+            ))
         ])
         let client = SolanaRPCClient(endpoint: endpoint, session: stub.urlSession)
 
@@ -93,13 +97,17 @@ struct SolanaSendTransactionOptionsTests {
         let stub = StubURLProtocol.makeSession(responseSequence: [
             .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":"sig123"}"#.utf8)),
             .success(body: Data(
-                #"{"jsonrpc":"2.0","id":1,"result":{"value":[{"confirmationStatus":"processed","err":{"InstructionError":[0,"Custom"]}}]}}"#.utf8
+                (#"{"jsonrpc":"2.0","id":1,"result":{"value":[{"confirmationStatus":"processed","#
+                    + #""err":{"InstructionError":[0,"Custom"]}}]}}"#).utf8
             ))
         ])
         let client = SolanaRPCClient(endpoint: endpoint, session: stub.urlSession)
 
         await #expect(throws: BlockchainClientError.self) {
-            _ = try await client.sendTransaction(Data([0x01]), options: SolanaSendTransactionOptions(commitment: .confirmed))
+            _ = try await client.sendTransaction(
+                Data([0x01]),
+                options: SolanaSendTransactionOptions(commitment: .confirmed)
+            )
         }
     }
 
@@ -118,7 +126,10 @@ struct SolanaSendTransactionOptionsTests {
         let client = SolanaRPCClient(endpoint: endpoint, session: stub.urlSession)
 
         await #expect(throws: BlockchainClientError.self) {
-            _ = try await client.sendTransaction(Data([0x01]), options: SolanaSendTransactionOptions(commitment: .confirmed))
+            _ = try await client.sendTransaction(
+                Data([0x01]),
+                options: SolanaSendTransactionOptions(commitment: .confirmed)
+            )
         }
     }
 

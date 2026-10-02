@@ -41,6 +41,7 @@ actor ElectrumConnection {
         guard let endpointPort = NWEndpoint.Port(rawValue: port) else {
             preconditionFailure("invalid Electrum port \(port)")
         }
+
         connection = NWConnection(host: NWEndpoint.Host(host), port: endpointPort, using: useTLS ? .tls : .tcp)
     }
 
@@ -65,6 +66,7 @@ actor ElectrumConnection {
                     state = .connecting(waiters)
                 }
             }
+
             return
         case .idle:
             break
@@ -73,9 +75,13 @@ actor ElectrumConnection {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             state = .connecting([continuation])
             connection.stateUpdateHandler = { [weak self] newState in
-                guard let self else { return }
+                guard let self else {
+                    return
+                }
+
                 Task { await self.handleStateChange(newState) }
             }
+
             connection.start(queue: .global(qos: .userInitiated))
         }
 
@@ -101,13 +107,19 @@ actor ElectrumConnection {
         } catch {
             throw BlockchainClientError.decodingFailed(reason: "could not encode request: \(error)")
         }
+
         framed.append(0x0A)
 
         return try await withCheckedThrowingContinuation { continuation in
             pendingResponses[id] = continuation
             connection.send(content: framed, completion: .contentProcessed { [weak self] error in
-                guard let error else { return }
-                Task { await self?.failPending(id: id, error: error) }
+                guard let error else {
+                    return
+                }
+
+                Task {
+                    await self?.failPending(id: id, error: error)
+                }
             })
         }
     }
@@ -132,7 +144,10 @@ actor ElectrumConnection {
     private func handleStateChange(_ newState: NWConnection.State) {
         switch newState {
         case .ready:
-            guard case let .connecting(waiters) = state else { return }
+            guard case let .connecting(waiters) = state else {
+                return
+            }
+
             state = .ready
             for waiter in waiters { waiter.resume() }
 
@@ -141,6 +156,7 @@ actor ElectrumConnection {
             if case let .connecting(waiters) = state {
                 for waiter in waiters { waiter.resume(throwing: mapped) }
             }
+
             state = .failed(mapped)
             failAllPending(mapped)
 
@@ -149,6 +165,7 @@ actor ElectrumConnection {
             if case let .connecting(waiters) = state {
                 for waiter in waiters { waiter.resume(throwing: error) }
             }
+
             state = .idle
 
         default:
@@ -157,7 +174,10 @@ actor ElectrumConnection {
     }
 
     private func failPending(id: Int, error: Error) {
-        guard let continuation = pendingResponses.removeValue(forKey: id) else { return }
+        guard let continuation = pendingResponses.removeValue(forKey: id) else {
+            return
+        }
+
         continuation.resume(throwing: BlockchainClientError.transportError(reason: error.localizedDescription))
     }
 
@@ -165,11 +185,15 @@ actor ElectrumConnection {
         for (_, continuation) in pendingResponses {
             continuation.resume(throwing: error)
         }
+
         pendingResponses.removeAll()
     }
 
     private func receiveNext() {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
+        connection.receive(
+            minimumIncompleteLength: 1,
+            maximumLength: 64 * 1024
+        ) { [weak self] data, _, isComplete, error in
             Task { await self?.handleReceive(data: data, isComplete: isComplete, error: error) }
         }
     }
@@ -200,16 +224,23 @@ actor ElectrumConnection {
         while let newlineIndex = receiveBuffer.firstIndex(of: 0x0A) {
             let lineData = receiveBuffer[..<newlineIndex]
             receiveBuffer.removeSubrange(...newlineIndex)
-            guard !lineData.isEmpty else { continue }
+            guard !lineData.isEmpty else {
+                continue
+            }
+
             handleLine(Data(lineData))
         }
     }
 
     private func handleLine(_ line: Data) {
-        guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { return }
+        guard let object = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else {
+            return
+        }
 
         if let id = object["id"] as? Int {
-            guard let continuation = pendingResponses.removeValue(forKey: id) else { return }
+            guard let continuation = pendingResponses.removeValue(forKey: id) else {
+                return
+            }
 
             if let errorObject = object["error"] as? [String: Any] {
                 let code = errorObject["code"] as? Int ?? 0
@@ -222,6 +253,7 @@ actor ElectrumConnection {
                 continuation.resume(throwing: BlockchainClientError.invalidResponse(reason: "response missing result"))
                 return
             }
+
             continuation.resume(returning: result)
         } else if let method = object["method"] as? String, let handler = notificationHandlers[method] {
             handler(object["params"] ?? [Any]())

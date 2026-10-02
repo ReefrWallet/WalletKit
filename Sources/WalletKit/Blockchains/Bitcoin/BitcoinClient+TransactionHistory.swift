@@ -20,7 +20,7 @@ extension BitcoinClient {
     /// UTF-8 bytes; resuming re-unions and re-sorts before finding that
     /// position, so it stays correct even if new transactions have
     /// arrived since the previous page.
-    public func transactionHistory(
+    public func transactionHistory( // swiftlint:disable:this function_body_length
         _ owner: BitcoinDescriptor,
         request: BlockchainTransactionHistoryRequest
     ) async throws -> BlockchainTransactionPage {
@@ -123,7 +123,9 @@ extension BitcoinClient {
         )
     }
 
-    public nonisolated func transactionHeads(_ owner: BitcoinDescriptor) -> AsyncThrowingStream<BlockchainTransactionHead, any Swift.Error> {
+    public nonisolated func transactionHeads(
+        _ owner: BitcoinDescriptor
+    ) -> AsyncThrowingStream<BlockchainTransactionHead, any Swift.Error> {
         backend.headsStream()
     }
 
@@ -144,8 +146,14 @@ extension BitcoinClient {
     ) async throws -> BlockchainTransaction {
         let transaction = try await backend.transaction(txid: entry.txid)
 
-        let sentSats = transaction.inputs.filter { ownedScripts.contains($0.scriptPubkey) }.reduce(0) { $0 + $1.valueSats }
-        let receivedSats = transaction.outputs.filter { ownedScripts.contains($0.scriptPubkey) }.reduce(0) { $0 + $1.valueSats }
+        let sentSats = transaction.inputs
+            .filter { ownedScripts.contains($0.scriptPubkey) }
+            .reduce(0) { $0 + $1.valueSats }
+
+        let receivedSats = transaction.outputs
+            .filter { ownedScripts.contains($0.scriptPubkey) }
+            .reduce(0) { $0 + $1.valueSats }
+
         let netSats = Int64(receivedSats) - Int64(sentSats)
 
         let counterparty = transaction.inputs

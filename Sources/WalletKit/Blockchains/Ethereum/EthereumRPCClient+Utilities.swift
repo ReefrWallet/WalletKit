@@ -240,7 +240,10 @@ extension EthereumRPCClient {
                         factory: factory
                     )
 
-                    guard pool != EthereumAddress.zero else { return nil }
+                    guard pool != EthereumAddress.zero else {
+                        return nil
+                    }
+
                     return (pool, try await self.uniswapPoolLiquidity(pool))
                 }
             }
@@ -251,6 +254,7 @@ extension EthereumRPCClient {
                     found.append(candidate)
                 }
             }
+
             return found
         }
 

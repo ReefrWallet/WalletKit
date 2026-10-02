@@ -25,7 +25,7 @@ public struct SolanaTransactionBuilder: BlockchainTransactionBuilderProtocol {
         self.client = client
     }
 
-    public func buildTransfer(
+    public func buildTransfer( // swiftlint:disable:this function_body_length
         sender: SolanaAddress,
         recipient: SolanaAddress,
         amount: BigUInt,
@@ -44,24 +44,30 @@ public struct SolanaTransactionBuilder: BlockchainTransactionBuilderProtocol {
             microLamportsPrice = try await client.recentPrioritizationFee()
         }
 
-        var instructions: [SolanaInstruction] = [ComputeBudgetProgram.setComputeUnitPrice(microLamports: microLamportsPrice)]
+        var instructions: [SolanaInstruction] = [
+            ComputeBudgetProgram.setComputeUnitPrice(microLamports: microLamportsPrice)
+        ]
+
         if let limit = priorityOverride?.computeUnitLimit {
             instructions.append(ComputeBudgetProgram.setComputeUnitLimit(limit))
         }
 
         let tokenAccounts: [SolanaTokenAccountInfo]
+
         if token == nil || token == SolanaRPCClient.nativeMintPlaceholder.string {
             guard try await client.lamportBalance(of: sender) > amountU64 else {
                 throw BlockchainTransactionBuilderError.insufficientFunds(
                     reason: "need \(amountU64) lamports + fees but \(sender.string) has less"
                 )
             }
+
             instructions.append(SystemProgram.transfer(from: sender, to: recipient, lamports: amountU64))
             tokenAccounts = []
         } else {
             guard let token else {
                 throw BlockchainTransactionBuilderError.invalidToken(reason: "missing mint address")
             }
+
             let mint = try SolanaAddress(string: token)
             let (decimals, tokenProgram) = try await client.mintInfo(of: mint)
 
@@ -73,6 +79,7 @@ public struct SolanaTransactionBuilder: BlockchainTransactionBuilderProtocol {
             let owned = try await client.tokenAccounts(of: sender, tokenProgram: tokenProgram)
                 .filter { $0.mint == mint }
                 .reduce(BigUInt(0)) { $0 + $1.amount }
+
             guard owned >= amount else {
                 throw BlockchainTransactionBuilderError.insufficientFunds(
                     reason: "need \(amount) of \(token) but \(sender.string) only has \(owned)"
@@ -82,6 +89,7 @@ public struct SolanaTransactionBuilder: BlockchainTransactionBuilderProtocol {
             instructions.append(AssociatedTokenProgram.createIdempotent(
                 payer: sender, associatedAccount: destination, owner: recipient, mint: mint, tokenProgram: tokenProgram
             ))
+
             instructions.append(TokenProgram.transferChecked(
                 source: source,
                 mint: mint,
@@ -91,6 +99,7 @@ public struct SolanaTransactionBuilder: BlockchainTransactionBuilderProtocol {
                 decimals: decimals,
                 tokenProgram: tokenProgram
             ))
+
             tokenAccounts = [
                 SolanaTokenAccountInfo(
                     baseAddress: sender.string, tokenProgram: tokenProgram.string,
@@ -119,6 +128,7 @@ private extension [BlockchainTransactionBuilderOptions] {
                 return (microLamports, limit)
             }
         }
+
         return nil
     }
 }

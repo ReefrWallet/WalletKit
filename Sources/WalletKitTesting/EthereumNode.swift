@@ -369,6 +369,7 @@ public final class EthereumNode {
             ) {
                 return receipt
             }
+
             try? await Task.sleep(for: .milliseconds(100))
         }
 

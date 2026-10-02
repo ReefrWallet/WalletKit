@@ -42,7 +42,9 @@ extension EthereumRPCClient {
         tokens: [EthereumAddress],
         owner: EthereumAddress
     ) async throws -> [String: BigUInt] {
-        guard !tokens.isEmpty else { return [:] }
+        guard !tokens.isEmpty else {
+            return [:]
+        }
 
         let callData = tokens.map { _ in
             EthereumABI.encodeCall(
@@ -52,6 +54,7 @@ extension EthereumRPCClient {
         }
 
         let calls = zip(tokens, callData).map { (target: $0.0, allowFailure: true, callData: $0.1) }
+
         let multicall = try multicall3Address()
 
         do {
@@ -84,6 +87,7 @@ extension EthereumRPCClient {
                     ).hexEncoded
                 )
             }
+
             let fallback: [String?] = try await rpc.callBatch(method: "eth_call", params: params)
             return fallback.enumerated().reduce(into: [:]) { result, item in
                 guard let value = item.element else {

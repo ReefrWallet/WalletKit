@@ -98,6 +98,7 @@ public struct EthereumTransactionBuilder: BlockchainTransactionBuilderProtocol {
                     for: FeeEstimateRequest(from: sender, to: recipient, value: amount)
                 )
             }
+
             return buildNativeCall(
                 sender: sender,
                 to: recipient,
@@ -191,6 +192,7 @@ private extension EthereumTransactionBuilder {
                 chainId: client.chainId
             ).signingData
         }
+
         return UnsignedEIP1559Transaction(
             nonce: BigUInt(nonce),
             maxPriorityFeePerGas: feeOverride?.maxPriorityFeePerGas ?? fee.maxPriorityFeePerGas ?? fee.gasPrice,
@@ -266,7 +268,9 @@ private extension EthereumTransactionBuilder {
 private extension Array where Element == BlockchainTransactionBuilderOptions {
     /// Returns `true` when the array contains a `.legacyEip155` option.
     var containsLegacyEip155: Bool {
-        contains { if case .legacyEip155 = $0 { return true }; return false }
+        contains { if case .legacyEip155 = $0 {
+            return true
+        }; return false }
     }
 
     /// Extracts the first `.ethereumFeeOverride` from the options array, or
@@ -277,6 +281,7 @@ private extension Array where Element == BlockchainTransactionBuilderOptions {
                 return (maxFee, maxPriority, gasLimit)
             }
         }
+
         return nil
     }
 }

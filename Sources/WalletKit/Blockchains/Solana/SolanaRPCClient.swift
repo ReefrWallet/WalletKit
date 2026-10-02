@@ -71,6 +71,7 @@ extension SolanaRPCClient {
         let programId: String
 
         private struct Filter: Encodable { let programId: String }
+
         private struct Config: Encodable { let encoding = "jsonParsed"; let commitment = "confirmed" }
 
         func encode(to encoder: Encoder) throws {
@@ -109,6 +110,12 @@ extension SolanaRPCClient {
         }
     }
 
+    struct OwnedTokenAccount {
+        let amount: BigUInt
+        let mint: SolanaAddress
+        let tokenAccount: SolanaAddress
+    }
+
     /// Returns every SPL token account `owner` holds under `tokenProgram`
     /// — `getTokenAccountsByOwner`, `jsonParsed` encoding.
     ///
@@ -118,7 +125,7 @@ extension SolanaRPCClient {
     func tokenAccounts(
         of owner: SolanaAddress,
         tokenProgram: SolanaAddress
-    ) async throws -> [(tokenAccount: SolanaAddress, mint: SolanaAddress, amount: BigUInt)] {
+    ) async throws -> [OwnedTokenAccount] {
         let response: SolanaRPCValue<[TokenAccountEntry]> = try await rpc.call(
             method: "getTokenAccountsByOwner",
             params: TokenAccountsParams(owner: owner.string, programId: tokenProgram.string)
@@ -128,10 +135,11 @@ extension SolanaRPCClient {
             guard let amount = BigUInt(info.tokenAmount.amount) else {
                 throw BlockchainClientError.decodingFailed(reason: "invalid SPL token amount: \(info.tokenAmount.amount)")
             }
-            return (
-                tokenAccount: try SolanaAddress(string: entry.pubkey),
+
+            return OwnedTokenAccount(
+                amount: amount,
                 mint: try SolanaAddress(string: info.mint),
-                amount: amount
+                tokenAccount: try SolanaAddress(string: entry.pubkey)
             )
         }
     }
@@ -168,6 +176,7 @@ extension SolanaRPCClient {
         guard let info = response.value, let base64 = info.data.first, let data = Data(base64Encoded: base64) else {
             return nil
         }
+
         return (data, try SolanaAddress(string: info.owner))
     }
 
@@ -194,6 +203,7 @@ extension SolanaRPCClient {
         guard let (data, tokenProgram) = try await rawAccountInfo(of: mint), data.count >= 45 else {
             throw BlockchainClientError.decodingFailed(reason: "\(mint.string) is not a token mint account")
         }
+
         return (data[44], tokenProgram)
     }
 
@@ -213,11 +223,17 @@ extension SolanaRPCClient {
 
         var offset = 1 + 32 + 32
         func readString() -> String? {
-            guard offset + 4 <= data.count else { return nil }
+            guard offset + 4 <= data.count else {
+                return nil
+            }
+
             let length = Int(data[offset]) | Int(data[offset + 1]) << 8 | Int(data[offset + 2]) << 16
                 | Int(data[offset + 3]) << 24
             offset += 4
-            guard length >= 0, offset + length <= data.count else { return nil }
+            guard length >= 0, offset + length <= data.count else {
+                return nil
+            }
+
             let stringData = data[offset..<(offset + length)]
             offset += length
             return String(data: stringData, encoding: .utf8)?.trimmingCharacters(in: .controlCharacters)
@@ -226,6 +242,7 @@ extension SolanaRPCClient {
         guard let name = readString(), let symbol = readString() else {
             return nil
         }
+
         return (name, symbol)
     }
 }
@@ -265,6 +282,7 @@ extension SolanaRPCClient {
         guard decoded.count == 32 else {
             throw BlockchainClientError.decodingFailed(reason: "invalid blockhash: \(response.value.blockhash)")
         }
+
         return (decoded, response.value.lastValidBlockHeight)
     }
 
@@ -307,7 +325,10 @@ extension SolanaRPCClient {
             method: "getRecentPrioritizationFees", params: [String]()
         )
         let nonZero = entries.map(\.prioritizationFee).filter { $0 > 0 }.sorted()
-        guard !nonZero.isEmpty else { return 0 }
+        guard !nonZero.isEmpty else {
+            return 0
+        }
+
         return nonZero[nonZero.count / 2]
     }
 }
@@ -485,7 +506,7 @@ extension SolanaRPCClient {
                     reason: "timed out waiting for Solana transaction \(signature) to reach \(commitment.rawValue)"
                 )
             }
-            
+
             try await Task.sleep(nanoseconds: Self.confirmationPollInterval)
         }
     }
@@ -495,4 +516,4 @@ extension SolanaRPCClient {
     // than waiting out a real 30-second timeout.
     static var confirmationTimeout: TimeInterval = 30
     static var confirmationPollInterval: UInt64 = 1_000_000_000
-}
+} // swiftlint:disable:this file_length

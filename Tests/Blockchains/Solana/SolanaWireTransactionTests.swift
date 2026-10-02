@@ -28,6 +28,7 @@ struct SolanaWireTransactionTests {
         for signature in signatures {
             tx.append(signature)
         }
+
         tx.append(messageBytes)
         return tx
     }
@@ -67,7 +68,9 @@ struct SolanaWireTransactionTests {
     @Test func parsesARealLegacyTransactionBuiltFromSolanaMessage() throws {
         let (messageBytes, payer) = try validLegacyMessageBytes()
         let signature = Data(repeating: 0xAA, count: 64)
-        let tx = try SolanaWireTransaction(parsing: wrapAsTransaction(messageBytes: messageBytes, signatures: [signature]))
+        let tx = try SolanaWireTransaction(
+            parsing: wrapAsTransaction(messageBytes: messageBytes, signatures: [signature])
+        )
 
         #expect(tx.version == .legacy)
         #expect(tx.signatures == [signature])
@@ -81,7 +84,9 @@ struct SolanaWireTransactionTests {
     @Test func parsesAHandBuiltV0TransactionWithLookupIndexes() throws {
         let (messageBytes, payer) = try validV0MessageBytes()
         let signature = Data(repeating: 0xBB, count: 64)
-        let tx = try SolanaWireTransaction(parsing: wrapAsTransaction(messageBytes: messageBytes, signatures: [signature]))
+        let tx = try SolanaWireTransaction(
+            parsing: wrapAsTransaction(messageBytes: messageBytes, signatures: [signature])
+        )
 
         #expect(tx.version == .v0)
         #expect(tx.staticAccountKeys == [payer, SolanaProgram.system])
@@ -93,7 +98,10 @@ struct SolanaWireTransactionTests {
 
     @Test func sharedParserAgreesWithWireTransactionForLegacyAndV0Messages() throws {
         for (messageBytes, _) in [try validLegacyMessageBytes(), try validV0MessageBytes()] {
-            let tx = try SolanaWireTransaction(parsing: wrapAsTransaction(messageBytes: messageBytes, signatures: [Data(repeating: 1, count: 64)]))
+            let signatures = [Data(repeating: 1, count: 64)]
+            let tx = try SolanaWireTransaction(
+                parsing: wrapAsTransaction(messageBytes: messageBytes, signatures: signatures)
+            )
             let standalone = try SolanaParsedMessage(validating: messageBytes)
             #expect(tx.parsedMessage == standalone)
         }
@@ -157,7 +165,10 @@ struct SolanaWireTransactionTests {
 
     @Test func rejectsAnUnknownVersionPrefix() {
         // 0x81 signals version 1, which isn't supported.
-        let data = Data([0x81, 0, 0, 0]) + SolanaShortVec.encode(0) + Data(repeating: 0, count: 32) + SolanaShortVec.encode(0)
+        let data = Data([0x81, 0, 0, 0])
+            + SolanaShortVec.encode(0)
+            + Data(repeating: 0, count: 32)
+            + SolanaShortVec.encode(0)
         #expect(throws: WalletKitError.self) {
             _ = try SolanaParsedMessage(validating: data)
         }
@@ -241,7 +252,11 @@ struct SolanaWireTransactionTests {
 
     // MARK: - signed(by:)
 
-    private func twoSignerLegacyMessageBytes() throws -> (bytes: Data, signerA: SolanaAddress, signerB: SolanaAddress) {
+    private func twoSignerLegacyMessageBytes() throws -> ( // swiftlint:disable:this large_tuple
+        bytes: Data,
+        signerA: SolanaAddress,
+        signerB: SolanaAddress
+    ) {
         let signerA = try address(1)
         let signerB = try address(2)
         var data = Data([2, 0, 0]) // 2 required signers, both writable
@@ -257,7 +272,9 @@ struct SolanaWireTransactionTests {
         let (messageBytes, _, signerB) = try twoSignerLegacyMessageBytes()
         let sigA = Data(repeating: 0x11, count: 64)
         let sigB = Data(repeating: 0x22, count: 64)
-        let tx = try SolanaWireTransaction(parsing: wrapAsTransaction(messageBytes: messageBytes, signatures: [sigA, sigB]))
+        let tx = try SolanaWireTransaction(
+            parsing: wrapAsTransaction(messageBytes: messageBytes, signatures: [sigA, sigB])
+        )
 
         let newSigB = Data(repeating: 0x33, count: 64)
         let updatedBytes = try tx.signed(by: signerB, signature: newSigB)
@@ -269,8 +286,9 @@ struct SolanaWireTransactionTests {
 
     @Test func signedRejectsAnAddressThatIsNotARequiredSigner() throws {
         let (messageBytes, _, _) = try twoSignerLegacyMessageBytes()
+        let signatures = [Data(repeating: 1, count: 64), Data(repeating: 2, count: 64)]
         let tx = try SolanaWireTransaction(
-            parsing: wrapAsTransaction(messageBytes: messageBytes, signatures: [Data(repeating: 1, count: 64), Data(repeating: 2, count: 64)])
+            parsing: wrapAsTransaction(messageBytes: messageBytes, signatures: signatures)
         )
         let outsider = try address(9)
         #expect(throws: WalletKitError.self) {
@@ -280,8 +298,9 @@ struct SolanaWireTransactionTests {
 
     @Test func signedRejectsANonSixtyFourByteSignature() throws {
         let (messageBytes, signerA, _) = try twoSignerLegacyMessageBytes()
+        let signatures = [Data(repeating: 1, count: 64), Data(repeating: 2, count: 64)]
         let tx = try SolanaWireTransaction(
-            parsing: wrapAsTransaction(messageBytes: messageBytes, signatures: [Data(repeating: 1, count: 64), Data(repeating: 2, count: 64)])
+            parsing: wrapAsTransaction(messageBytes: messageBytes, signatures: signatures)
         )
         #expect(throws: WalletKitError.self) {
             _ = try tx.signed(by: signerA, signature: Data(repeating: 3, count: 10))

@@ -78,7 +78,11 @@ final class StubURLProtocol: URLProtocol {
     static func makeSession(responseSequence: [StubResponse]) -> Session {
         let id = UUID()
         lock.withLock {
-            statesById[id] = State(response: .failure(.unknown), responsesByPath: nil, responseSequence: responseSequence)
+            statesById[id] = State(
+                response: .failure(.unknown),
+                responsesByPath: nil,
+                responseSequence: responseSequence
+            )
         }
 
         let configuration = makeConfiguration(id: id)
@@ -146,9 +150,14 @@ final class StubURLProtocol: URLProtocol {
     // been handed to `URLSession` for delivery — the body only survives as
     // `httpBodyStream` by this point.
     private static func bodyData(of request: URLRequest) -> Data? {
-        if let body = request.httpBody { return body }
+        if let body = request.httpBody {
+            return body
+        }
 
-        guard let stream = request.httpBodyStream else { return nil }
+        guard let stream = request.httpBodyStream else {
+            return nil
+        }
+
         stream.open()
         defer { stream.close() }
 
@@ -156,9 +165,13 @@ final class StubURLProtocol: URLProtocol {
         var buffer = [UInt8](repeating: 0, count: 4096)
         while stream.hasBytesAvailable {
             let bytesRead = stream.read(&buffer, maxLength: buffer.count)
-            guard bytesRead > 0 else { break }
+            guard bytesRead > 0 else {
+                break
+            }
+
             data.append(buffer, count: bytesRead)
         }
+
         return data
     }
 }

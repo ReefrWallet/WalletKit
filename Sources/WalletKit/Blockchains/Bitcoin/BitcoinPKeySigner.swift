@@ -73,6 +73,7 @@ public final class BitcoinPKeySigner: Signer {
     ///   `seed` doesn't match the descriptor that built this PSBT).
     public func sign(transaction: Data) async throws -> Data {
         let derivations = try remappingWalletKitError { try bitcoinPsbtInputDerivations(psbt: transaction) }
+
         let masterKey = try seed.masterKey(curve: .secp256k1)
 
         let keys: [PrivateKey] = try derivations.map { derivation in
@@ -82,6 +83,7 @@ public final class BitcoinPKeySigner: Signer {
 
         let signer = BitcoinSignerFfi()
         let signed = try remappingWalletKitError { try signer.signPsbt(psbt: transaction, keys: keys.map(\.raw)) }
+
         return try remappingWalletKitError { try signer.finalizePsbt(psbt: signed) }
     }
 }

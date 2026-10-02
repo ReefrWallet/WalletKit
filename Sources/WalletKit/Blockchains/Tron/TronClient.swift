@@ -2,7 +2,7 @@ import BigInt
 import Foundation
 
 /// Minimal HTTP client for Tron FullNode-compatible endpoints.
-public struct TronClient: BlockchainClientProtocol, Sendable {
+public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disable:this type_body_length
     public typealias Address = TronAddress
 
     private let apiKey: String?
@@ -124,8 +124,10 @@ public struct TronClient: BlockchainClientProtocol, Sendable {
         )
 
         let (nativeResponse, tokenResponse) = try await (native, tokens)
-        let nativeTransactions = (nativeResponse["data"] as? [[String: Any]] ?? []).compactMap(Self.transaction(from:))
-        let tokenTransactions = (tokenResponse["data"] as? [[String: Any]] ?? []).compactMap(Self.tokenTransaction(from:))
+        let nativeTransactions = (nativeResponse["data"] as? [[String: Any]] ?? [])
+            .compactMap(Self.transaction(from:))
+        let tokenTransactions = (tokenResponse["data"] as? [[String: Any]] ?? [])
+            .compactMap(Self.tokenTransaction(from:))
         let transactions = Self.merging(nativeTransactions + tokenTransactions)
 
         let nextCursor = HistoryCursor(
@@ -216,9 +218,18 @@ public struct TronClient: BlockchainClientProtocol, Sendable {
         var components = URLComponents(url: endpoint.appending(path: path), resolvingAgainstBaseURL: false)
 
         var items = [
-            URLQueryItem(name: "only_confirmed", value: "true"),
-            URLQueryItem(name: "limit", value: "\(min(request.limit, 200))"),
-            URLQueryItem(name: "order_by", value: request.direction == .ascending ? "block_timestamp,asc" : "block_timestamp,desc")
+            URLQueryItem(
+                name: "only_confirmed",
+                value: "true"
+            ),
+            URLQueryItem(
+                name: "limit",
+                value: "\(min(request.limit, 200))"
+            ),
+            URLQueryItem(
+                name: "order_by",
+                value: request.direction == .ascending ? "block_timestamp,asc" : "block_timestamp,desc"
+            )
         ]
 
         if let fingerprint {
@@ -331,6 +342,7 @@ public struct TronClient: BlockchainClientProtocol, Sendable {
         let blockHeight = (value["blockNumber"] as? NSNumber)?.uint64Value
         let timestamp = (value["block_timestamp"] as? NSNumber)
             .map { Date(timeIntervalSince1970: $0.doubleValue / 1_000) }
+
         let contracts = ((value["raw_data"] as? [String: Any])?["contract"] as? [[String: Any]]) ?? []
         let transfer = contracts.first(where: { ($0["type"] as? String) == "TransferContract" })
         let payload = ((transfer?["parameter"] as? [String: Any])?["value"] as? [String: Any])
@@ -361,7 +373,9 @@ public struct TronClient: BlockchainClientProtocol, Sendable {
             return nil
         }
 
-        let timestamp = (value["block_timestamp"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1_000) }
+        let timestamp = (value["block_timestamp"] as? NSNumber)
+            .map { Date(timeIntervalSince1970: $0.doubleValue / 1_000) }
+
         let sender = value["from"] as? String
         let recipient = value["to"] as? String
 
@@ -396,6 +410,7 @@ public struct TronClient: BlockchainClientProtocol, Sendable {
             if groups[transaction.identifier] == nil {
                 identifiers.append(transaction.identifier)
             }
+
             groups[transaction.identifier, default: []].append(transaction)
         }
 

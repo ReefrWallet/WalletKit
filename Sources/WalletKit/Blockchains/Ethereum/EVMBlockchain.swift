@@ -91,16 +91,19 @@ public extension EVMBlockchain {
             case .mainnet: 0xa4b1
             case .sepolia: 0x66eee
             }
+
         case let .bsc(network):
             switch network {
             case .mainnet: 0x38
             case .testnet: 0x61
             }
+
         case let .ethereum(network):
             switch network {
             case .mainnet: 0x1
             case .sepolia: 0xaa36a7
             }
+
         case let .custom(chainId):
             chainId
         }
@@ -179,16 +182,19 @@ public extension EVMBlockchain {
             case .mainnet: URL(string: "https://arbitrum-one-rpc.publicnode.com")!
             case .sepolia: URL(string: "https://arbitrum-sepolia-rpc.publicnode.com")!
             }
+
         case let .bsc(network):
             switch network {
             case .mainnet: URL(string: "https://bsc-rpc.publicnode.com")!
             case .testnet: URL(string: "https://bsc-testnet-rpc.publicnode.com")!
             }
+
         case let .ethereum(network):
             switch network {
             case .mainnet: URL(string: "https://ethereum-rpc.publicnode.com")!
             case .sepolia: URL(string: "https://ethereum-sepolia-rpc.publicnode.com")!
             }
+
         case .custom:
             URL(string: "https://localhost")!
         }

@@ -23,21 +23,26 @@ public final class CardanoTrezorSigner {
 
         let unsigned = try JSONDecoder().decode(CardanoUnsignedTransaction.self, from: transaction)
         let inputs = unsigned.inputs.map { CardanoInputFfi(outputIndex: $0.outputIndex, txHash: $0.txHash) }
+
         let outputs = try unsigned.outputs.map { output in
             CardanoOutputFfi(
                 address: output.address,
                 assets: try output.assets.map { asset in
                     guard let quantity = UInt64(asset.quantity) else {
-                        throw WalletKitError.signingFailed(reason: "Cardano native asset quantity exceeds Trezor's supported range.")
+                        throw WalletKitError
+                            .signingFailed(reason: "Cardano native asset quantity exceeds Trezor's supported range.")
                     }
+
                     return HardwareCardanoAssetFfi(name: asset.name, policyId: asset.policyId, quantity: quantity)
                 },
                 lovelace: try lovelace(output.lovelace)
             )
         }
+
         let witnessPaths = try unsigned.signingPaths.map { path in
             try DerivationPath(string: "\(accountPath.string)/\(path.role)/\(path.index)")
         }
+
         let request = CardanoSignTxFfi(
             bodyHash: try unsigned.transactionBodyHash(),
             fee: try lovelace(unsigned.fee),
@@ -51,6 +56,7 @@ public final class CardanoTrezorSigner {
         let witnesses = try await remappingWalletKitError {
             try await device.raw.cardanoSignTx(tx: request)
         }
+
         return try unsigned.assembled(witnesses: witnesses)
     }
 
@@ -58,6 +64,7 @@ public final class CardanoTrezorSigner {
         guard let value = UInt64(value) else {
             throw WalletKitError.signingFailed(reason: "Cardano lovelace amount exceeds Trezor's supported range.")
         }
+
         return value
     }
 }

@@ -16,6 +16,7 @@ extension EthereumRPCClient: BlockchainClientProtocol {
 
     public func getBalances(_ owner: EthereumAddress, tokens: [String]) async throws -> [String: BigUInt] {
         let addresses = try tokens.map { try EthereumAddress(string: $0) }
+
         return try await erc20Balances(tokens: addresses, owner: owner)
     }
 
@@ -32,6 +33,7 @@ extension EthereumRPCClient: BlockchainClientProtocol {
         guard let token else {
             return EVMBlockchain(chainId: chainId).nativeToken
         }
+
         let address = try EthereumAddress(string: token)
         return try await erc20TokenInfo(token: address)
     }

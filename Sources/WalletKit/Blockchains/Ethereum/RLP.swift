@@ -22,6 +22,7 @@ public enum RLP {
         if bytes.count == 1, let byte = bytes.first, byte < 0x80 {
             return bytes
         }
+
         return encodeHeader(base: 0x80, longBase: 0xB7, count: bytes.count) + bytes
     }
 
@@ -46,6 +47,7 @@ public enum RLP {
             lengthBytes.insert(UInt8(remaining & 0xFF), at: 0)
             remaining >>= 8
         }
+
         return Data([longBase + UInt8(lengthBytes.count)]) + lengthBytes
     }
 }

@@ -56,10 +56,15 @@ struct ElectrumBackend: BitcoinBackend {
         for input in decoded.inputs {
             let previous = try await client.transaction(txid: input.txid)
             guard input.vout < previous.outputs.count else {
-                throw BlockchainClientError.decodingFailed(reason: "input vout out of range for its previous transaction")
+                throw BlockchainClientError
+                    .decodingFailed(reason: "input vout out of range for its previous transaction")
             }
+
             let spentOutput = previous.outputs[Int(input.vout)]
-            inputs.append((scriptPubkey: try Data(hexString: spentOutput.scriptPubkeyHex), valueSats: spentOutput.valueSats))
+            inputs.append((
+                scriptPubkey: try Data(hexString: spentOutput.scriptPubkeyHex),
+                valueSats: spentOutput.valueSats
+            ))
         }
 
         let outputs = try decoded.outputs.map { output in
@@ -73,7 +78,13 @@ struct ElectrumBackend: BitcoinBackend {
         // `blockchain.scripthash.get_history`'s own entry (for height) or
         // do without (Electrum has no timestamp source outside a block
         // header fetch, not implemented here).
-        return BitcoinBackendTransaction(txid: decoded.txid, height: nil, blockTime: nil, inputs: inputs, outputs: outputs)
+        return BitcoinBackendTransaction(
+            txid: decoded.txid,
+            height: nil,
+            blockTime: nil,
+            inputs: inputs,
+            outputs: outputs
+        )
     }
 
     func rawTransaction(txid: String) async throws -> Data {
@@ -102,8 +113,14 @@ struct ElectrumBackend: BitcoinBackend {
                     let height = try await client.subscribeHeaders()
                     continuation.yield(BlockchainTransactionHead(height: height))
                     await client.connection.onNotification(method: "blockchain.headers.subscribe") { params in
-                        guard let array = params as? [[String: Any]], let first = array.first,
-                              let height = (first["height"] as? NSNumber)?.uint64Value else { return }
+                        guard
+                            let array = params as? [[String: Any]],
+                            let first = array.first,
+                            let height = (first["height"] as? NSNumber)?.uint64Value
+                        else {
+                            return
+                        }
+
                         continuation.yield(BlockchainTransactionHead(height: height, hash: first["hex"] as? String))
                     }
                 } catch {

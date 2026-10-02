@@ -68,7 +68,7 @@ public struct SolanaMessage: Equatable, Sendable {
     /// - Throws: ``WalletKitError/internalError(message:)`` if
     ///   `recentBlockhash` isn't 32 bytes, or if account/instruction
     ///   counts overflow the wire format's 8-bit/16-bit fields.
-    public static func compile(
+    public static func compile( // swiftlint:disable:this function_body_length
         payer: SolanaAddress,
         instructions: [SolanaInstruction],
         recentBlockhash: Data
@@ -96,6 +96,7 @@ public struct SolanaMessage: Equatable, Sendable {
             for account in instruction.accounts {
                 upsert(account.address, isSigner: account.isSigner, isWritable: account.isWritable)
             }
+
             upsert(instruction.programId, isSigner: false, isWritable: false)
         }
 
@@ -141,6 +142,7 @@ public struct SolanaMessage: Equatable, Sendable {
             guard instruction.accounts.count <= 255 else {
                 throw WalletKitError.internalError(message: "Solana instruction references more than 255 accounts")
             }
+
             return SolanaCompiledInstruction(
                 programIdIndex: indexByAddress[instruction.programId.rawBytes]!,
                 accountIndexes: instruction.accounts.map { indexByAddress[$0.address.rawBytes]! },
@@ -172,6 +174,7 @@ public struct SolanaMessage: Equatable, Sendable {
         for key in accountKeys {
             data.append(key.rawBytes)
         }
+
         data.append(recentBlockhash)
         data.append(SolanaShortVec.encode(instructions.count))
         for instruction in instructions {
@@ -181,6 +184,7 @@ public struct SolanaMessage: Equatable, Sendable {
             data.append(SolanaShortVec.encode(instruction.data.count))
             data.append(instruction.data)
         }
+
         return data
     }
 
@@ -189,7 +193,7 @@ public struct SolanaMessage: Equatable, Sendable {
     ///
     /// - Throws: ``WalletKitError/internalError(message:)`` if `data` is
     ///   truncated or malformed.
-    public init(serialized data: Data) throws {
+    public init(serialized data: Data) throws { // swiftlint:disable:this function_body_length
         func fail(_ message: String) -> WalletKitError {
             .internalError(message: "Solana message: \(message)")
         }
@@ -197,6 +201,7 @@ public struct SolanaMessage: Equatable, Sendable {
         guard data.count >= 3 else {
             throw fail("too short for a header")
         }
+
         var offset = 0
         let numRequiredSignatures = data[offset]; offset += 1
         let numReadonlySignedAccounts = data[offset]; offset += 1
@@ -204,29 +209,46 @@ public struct SolanaMessage: Equatable, Sendable {
 
         let accountKeyCount = try SolanaShortVec.decode(data, offset: &offset)
         var accountKeys: [SolanaAddress] = []
+
         for _ in 0..<accountKeyCount {
-            guard offset + 32 <= data.count else { throw fail("truncated account key") }
+            guard offset + 32 <= data.count else {
+                throw fail("truncated account key")
+            }
+
             accountKeys.append(try SolanaAddress(rawBytes: Data(data[offset..<(offset + 32)])))
             offset += 32
         }
 
-        guard offset + 32 <= data.count else { throw fail("truncated recent blockhash") }
+        guard offset + 32 <= data.count else {
+            throw fail("truncated recent blockhash")
+        }
+
         let recentBlockhash = Data(data[offset..<(offset + 32)])
         offset += 32
 
         let instructionCount = try SolanaShortVec.decode(data, offset: &offset)
         var instructions: [SolanaCompiledInstruction] = []
-        for _ in 0..<instructionCount {
-            guard offset < data.count else { throw fail("truncated instruction") }
-            let programIdIndex = data[offset]; offset += 1
 
+        for _ in 0..<instructionCount {
+            guard offset < data.count else {
+                throw fail("truncated instruction")
+            }
+
+            let programIdIndex = data[offset]; offset += 1
             let accountIndexCount = try SolanaShortVec.decode(data, offset: &offset)
-            guard offset + accountIndexCount <= data.count else { throw fail("truncated instruction accounts") }
+
+            guard offset + accountIndexCount <= data.count else {
+                throw fail("truncated instruction accounts")
+            }
+
             let accountIndexes = Array(data[offset..<(offset + accountIndexCount)])
             offset += accountIndexCount
-
             let dataLength = try SolanaShortVec.decode(data, offset: &offset)
-            guard offset + dataLength <= data.count else { throw fail("truncated instruction data") }
+
+            guard offset + dataLength <= data.count else {
+                throw fail("truncated instruction data")
+            }
+
             let instructionData = Data(data[offset..<(offset + dataLength)])
             offset += dataLength
 
@@ -240,6 +262,7 @@ public struct SolanaMessage: Equatable, Sendable {
             numReadonlySignedAccounts: numReadonlySignedAccounts,
             numReadonlyUnsignedAccounts: numReadonlyUnsignedAccounts
         )
+
         self.accountKeys = accountKeys
         self.recentBlockhash = recentBlockhash
         self.instructions = instructions

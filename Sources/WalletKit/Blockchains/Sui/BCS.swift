@@ -29,6 +29,7 @@ public enum BCS {
             if remaining != 0 {
                 byte |= 0x80
             }
+
             out.append(byte)
         } while remaining != 0
         return out

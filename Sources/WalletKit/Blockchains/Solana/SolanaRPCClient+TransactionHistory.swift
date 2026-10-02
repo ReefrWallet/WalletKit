@@ -166,6 +166,7 @@ extension SolanaRPCClient {
         }
 
         let timestamp = response.blockTime.map { Date(timeIntervalSince1970: TimeInterval($0)) }
+
         let status: BlockchainTransactionStatus = (response.meta?.err == nil) ? .confirmed : .failed
 
         var effects: [BlockchainTransactionEffect] = []
@@ -190,7 +191,10 @@ extension SolanaRPCClient {
             for mint in Set(preByMint.keys).union(postByMint.keys) {
                 let pre = BigUInt(preByMint[mint]?.uiTokenAmount.amount ?? "0") ?? 0
                 let post = BigUInt(postByMint[mint]?.uiTokenAmount.amount ?? "0") ?? 0
-                guard pre != post else { continue }
+                guard pre != post else {
+                    continue
+                }
+
                 let delta = post >= pre ? post - pre : pre - post
                 effects.append(BlockchainTransactionEffect(
                     index: UInt64(effects.count),
@@ -322,6 +326,7 @@ extension SolanaRPCClient {
         request: BlockchainTransactionHistoryRequest
     ) async throws -> BlockchainTransactionPage {
         let cursor = request.cursor.flatMap { try? JSONDecoder().decode(Cursor.self, from: $0) }
+
         let (signatures, states) = try await signaturePages(of: owner, cursor: cursor, request: request)
 
         // One transaction usually appears in both the wallet's own list and

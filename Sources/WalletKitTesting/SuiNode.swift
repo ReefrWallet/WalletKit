@@ -278,6 +278,7 @@ public final class SuiNode {
             if let height = try? await checkpointHeight(), height > 0 {
                 return
             }
+
             try? await Task.sleep(for: .milliseconds(200))
         }
 

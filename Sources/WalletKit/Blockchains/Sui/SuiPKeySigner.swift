@@ -46,6 +46,7 @@ public final class SuiPKeySigner: MessageSigner {
         guard privateKey.curve == curve else {
             throw WalletKitError.unsupportedCurve(curve: privateKey.curve)
         }
+
         self.curve = curve
         self.privateKey = privateKey
         raw = SuiSignerFfi(curve: curve.raw)

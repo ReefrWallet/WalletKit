@@ -59,7 +59,16 @@ public struct SolanaAddress: BlockchainAddress {
         guard publicKey.curve == .ed25519 else {
             throw WalletKitError.unsupportedCurve(curve: publicKey.curve)
         }
+
         raw = try remappingWalletKitError { try SolanaAddressFfi(rawBytes: publicKey.rawBytes) }
+    }
+
+    static func known(_ string: String) -> SolanaAddress {
+        do {
+            return try SolanaAddress(string: string)
+        } catch {
+            preconditionFailure("Invalid built-in Solana address: \(string)")
+        }
     }
 
     public static func == (lhs: SolanaAddress, rhs: SolanaAddress) -> Bool {

@@ -371,6 +371,7 @@ private func makeEthSigner(privateKeyHex: String, chainId: UInt64) throws -> Eth
         data.append(UInt8(hex[index..<next], radix: 16)!)
         index = next
     }
+
     let privateKey = try PrivateKey(curve: .secp256k1, rawBytes: data)
     return try EthereumPKeySigner(
         chainId: chainId,

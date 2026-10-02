@@ -134,6 +134,7 @@ public final class EthereumTrezorSigner: Signer, MessageSigner {
         if transaction.first == 0x02 {
             // EIP-1559 path
             let tx = try remappingWalletKitError { try raw.decodeEip1559SigningData(signingData: transaction) }
+
             let ffiSignature = try await remappingWalletKitError {
                 try await device.raw.ethereumSignTxEip1559(path: account.derivationPath.raw, tx: tx)
             }
@@ -149,9 +150,11 @@ public final class EthereumTrezorSigner: Signer, MessageSigner {
 
         // Legacy EIP-155 path
         let tx = try remappingWalletKitError { try raw.decodeSigningData(signingData: transaction) }
+
         let ffiSignature = try await remappingWalletKitError {
             try await device.raw.ethereumSignTx(path: account.derivationPath.raw, tx: tx)
         }
+
         let signature = EthereumSignature(v: ffiSignature.v, r: ffiSignature.r, s: ffiSignature.s)
         return try signedTransaction(transaction, signature: signature)
     }
@@ -177,11 +180,14 @@ public final class EthereumTrezorSigner: Signer, MessageSigner {
             return try await remappingWalletKitError {
                 try await device.raw.ethereumSignMessage(path: account.derivationPath.raw, message: data)
             }
+
         case .ethereumTypedData(let json):
             let fields = try remappingWalletKitError { try ethereumTypedDataFields(json: json) }
+
             return try await remappingWalletKitError {
                 try await device.raw.ethereumSignTypedData(path: account.derivationPath.raw, fields: fields)
             }
+
         case .solanaMessage, .suiPersonal:
             throw WalletKitError.unsupportedFeature
         }

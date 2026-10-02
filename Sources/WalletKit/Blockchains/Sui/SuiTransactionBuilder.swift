@@ -114,6 +114,7 @@ private extension SuiTransactionBuilder {
                     reason: "need \(amount) MIST + \(budget) MIST gas budget but \(sender.string) only has \(totalSUI) MIST"
                 )
             }
+
             return UnsignedSuiTransaction(
                 sender: sender, transfers: [(recipient: recipient, amount: amount)],
                 gasPayment: gasCoins.map(\.reference), gasOwner: sender,
@@ -149,8 +150,10 @@ private extension SuiTransactionBuilder {
                     gasPrice: gasPrice, gasBudget: gasOverride?.budget ?? budget
                 ).transactionDataBcs
             }
+
             gasCoins = refined
         }
+
         throw BlockchainTransactionBuilderError.gasSelectionFailed(
             reason: "gas coin set grew on every iteration for \(sender.string)"
         )
@@ -175,6 +178,7 @@ private extension SuiTransactionBuilder {
         // amount — avoids bloating the PTB with redundant inputs.
         guard let tokenCoins = selectCoins(from: allTokenCoins, needed: amount) else {
             let total = allTokenCoins.reduce(UInt64(0)) { $0 &+ $1.balance }
+
             throw BlockchainTransactionBuilderError.insufficientFunds(
                 reason: "requested \(amount) but \(sender.string) only has \(total) of \(coinType)"
             )
@@ -196,6 +200,7 @@ private extension SuiTransactionBuilder {
                     reason: "need \(budget) MIST gas budget but \(sender.string) only has \(totalSUI) MIST SUI"
                 )
             }
+
             return makeCoinTransferBcs(
                 sender: sender, tokenCoins: tokenCoins, amount: amount, recipient: recipient,
                 gasCoins: gasCoins.map(\.reference), gasOwner: sender,
@@ -227,8 +232,10 @@ private extension SuiTransactionBuilder {
                     gasPrice: gasPrice, gasBudget: gasOverride?.budget ?? budget
                 )
             }
+
             gasCoins = refined
         }
+
         throw BlockchainTransactionBuilderError.gasSelectionFailed(
             reason: "gas coin set grew on every iteration for \(sender.string)"
         )
@@ -247,6 +254,7 @@ private extension SuiTransactionBuilder {
         coins: [SuiCoinObject]
     ) async throws -> (coins: [SuiCoinObject], budget: UInt64) {
         let coinsTotal = coins.reduce(UInt64(0)) { $0 &+ $1.balance }
+
         let (gas, underflow) = coinsTotal.subtractingReportingOverflow(amount)
         let capBudget = underflow ? 0 : min(SuiTransactionBuilder.simulationBudget, gas)
         let simTx = UnsignedSuiTransaction(
@@ -261,6 +269,7 @@ private extension SuiTransactionBuilder {
                 reason: "need \(amount) MIST + gas but \(sender.string) only has \(totalSUI) MIST"
             )
         }
+
         return (refined, budget)
     }
 
@@ -278,6 +287,7 @@ private extension SuiTransactionBuilder {
         coins: [SuiCoinObject]
     ) async throws -> (coins: [SuiCoinObject], budget: UInt64) {
         let coinsTotal = coins.reduce(UInt64(0)) { $0 &+ $1.balance }
+
         let capBudget = min(SuiTransactionBuilder.simulationBudget, coinsTotal)
         let simTx = makeCoinTransferBcs(
             sender: sender, tokenCoins: tokenCoins, amount: amount, recipient: recipient,
@@ -290,6 +300,7 @@ private extension SuiTransactionBuilder {
                 reason: "need gas but \(sender.string) only has \(totalSUI) MIST SUI"
             )
         }
+
         return (refined, budget)
     }
 
@@ -340,8 +351,11 @@ private extension SuiTransactionBuilder {
             selected.append(coin)
             let (sum, overflow) = accumulated.addingReportingOverflow(coin.balance)
             accumulated = overflow ? .max : sum
-            if accumulated >= needed { return selected }
+            if accumulated >= needed {
+                return selected
+            }
         }
+
         return nil
     }
 
@@ -369,6 +383,7 @@ private extension Array where Element == BlockchainTransactionBuilderOptions {
                 return (budget, price)
             }
         }
+
         return nil
     }
 }

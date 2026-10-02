@@ -23,7 +23,10 @@ private func word(_ value: BigUInt) -> Data {
 /// "verify against an independent computation" principle the Sui address
 /// tests use.
 private func word(_ value: BigInt) -> Data {
-    guard value.sign == .minus else { return word(value.magnitude) }
+    guard value.sign == .minus else {
+        return word(value.magnitude)
+    }
+
     return word((BigUInt(1) << 256) - value.magnitude)
 }
 

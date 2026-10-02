@@ -12,10 +12,6 @@ import WalletKitRust
 struct ElectrumClient: Sendable {
     let connection: ElectrumConnection
 
-    init(connection: ElectrumConnection) {
-        self.connection = connection
-    }
-
     struct Balance {
         let confirmed: Int64
         let unconfirmed: Int64
@@ -59,6 +55,7 @@ struct ElectrumClient: Sendable {
               let unconfirmed = (dictionary["unconfirmed"] as? NSNumber)?.int64Value else {
             throw BlockchainClientError.decodingFailed(reason: "malformed get_balance response")
         }
+
         return Balance(confirmed: confirmed, unconfirmed: unconfirmed)
     }
 
@@ -69,10 +66,12 @@ struct ElectrumClient: Sendable {
         guard let array = result as? [[String: Any]] else {
             throw BlockchainClientError.decodingFailed(reason: "malformed get_history response")
         }
+
         return try array.map { entry in
             guard let txid = entry["tx_hash"] as? String, let height = (entry["height"] as? NSNumber)?.int64Value else {
                 throw BlockchainClientError.decodingFailed(reason: "malformed get_history entry")
             }
+
             return HistoryEntry(txid: txid, height: height > 0 ? UInt64(height) : nil)
         }
     }
@@ -83,6 +82,7 @@ struct ElectrumClient: Sendable {
         guard let array = result as? [[String: Any]] else {
             throw BlockchainClientError.decodingFailed(reason: "malformed listunspent response")
         }
+
         return try array.map { entry in
             guard let txid = entry["tx_hash"] as? String,
                   let vout = (entry["tx_pos"] as? NSNumber)?.uint32Value,
@@ -90,6 +90,7 @@ struct ElectrumClient: Sendable {
                   let value = (entry["value"] as? NSNumber)?.uint64Value else {
                 throw BlockchainClientError.decodingFailed(reason: "malformed listunspent entry")
             }
+
             return Unspent(txid: txid, vout: vout, height: height > 0 ? UInt64(height) : nil, valueSats: value)
         }
     }
@@ -98,8 +99,7 @@ struct ElectrumClient: Sendable {
     /// raw bytes, via `bitcoinDecodeTransaction`, rather than trusting the
     /// server's own verbose JSON decoding (`blockchain.transaction.get`
     /// with `verbose: true`) — Blockstream's `electrs` never implemented
-    /// that mode (`// FIXME: implement verbose support` in its own
-    /// source), so relying on it breaks against a very common real
+    /// that mode, so relying on it breaks against a very common real
     /// Electrum server. The cost: no confirmation count or block time,
     /// which verbose mode used to report — callers needing a
     /// transaction's height should prefer `history(scripthash:)`'s own
@@ -111,8 +111,12 @@ struct ElectrumClient: Sendable {
 
         return DecodedTransaction(
             txid: decoded.txid,
-            inputs: decoded.inputs.map { DecodedInput(txid: $0.txid, vout: $0.vout) },
-            outputs: decoded.outputs.map { DecodedOutput(scriptPubkeyHex: $0.scriptPubkey.bitcoinHexEncoded, valueSats: $0.valueSats) }
+            inputs: decoded.inputs.map {
+                DecodedInput(txid: $0.txid, vout: $0.vout)
+            },
+            outputs: decoded.outputs.map {
+                DecodedOutput(scriptPubkeyHex: $0.scriptPubkey.bitcoinHexEncoded, valueSats: $0.valueSats)
+            }
         )
     }
 
@@ -123,6 +127,7 @@ struct ElectrumClient: Sendable {
         guard let hex = result as? String else {
             throw BlockchainClientError.decodingFailed(reason: "malformed transaction.get response")
         }
+
         return try Data(hexString: hex)
     }
 
@@ -132,6 +137,7 @@ struct ElectrumClient: Sendable {
         guard let txid = result as? String else {
             throw BlockchainClientError.decodingFailed(reason: "malformed broadcast response")
         }
+
         return txid
     }
 
@@ -141,7 +147,11 @@ struct ElectrumClient: Sendable {
         guard let btcPerKvB = (result as? NSNumber)?.doubleValue else {
             throw BlockchainClientError.decodingFailed(reason: "malformed estimatefee response")
         }
-        guard btcPerKvB > 0 else { return 0 }
+
+        guard btcPerKvB > 0 else {
+            return 0
+        }
+
         return btcPerKvB * 100_000_000 / 1_000
     }
 
@@ -150,9 +160,13 @@ struct ElectrumClient: Sendable {
     /// ``ElectrumConnection/onNotification(method:handler:)``.
     func subscribeHeaders() async throws -> UInt64 {
         let result = try await connection.call(method: "blockchain.headers.subscribe", params: [])
-        guard let dictionary = result as? [String: Any], let height = (dictionary["height"] as? NSNumber)?.uint64Value else {
+        guard
+            let dictionary = result as? [String: Any],
+            let height = (dictionary["height"] as? NSNumber)?.uint64Value
+        else {
             throw BlockchainClientError.decodingFailed(reason: "malformed headers.subscribe response")
         }
+
         return height
     }
 

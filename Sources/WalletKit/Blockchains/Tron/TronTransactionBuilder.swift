@@ -21,6 +21,7 @@ public struct TronTransactionBuilder: BlockchainTransactionBuilderProtocol {
             if case let .tronFeeLimit(value) = option {
                 return value
             }
+
             return nil
         }.first
         return try await client.buildTransfer(

@@ -13,6 +13,7 @@ struct CardanoTrezorSignerTests {
             guard let device = try await connectedDevice() else {
                 return
             }
+
             let descriptor = try await descriptor(device: device)
 
             #expect(descriptor.network == .preprod)
@@ -25,6 +26,7 @@ struct CardanoTrezorSignerTests {
             guard let device = try await connectedDevice() else {
                 return
             }
+
             let descriptor = try await descriptor(device: device)
             let recipient = try descriptor.address(role: 0, index: 1)
             let asset = CardanoAssetFfi(
@@ -76,8 +78,10 @@ private extension CardanoTrezorSignerTests {
             if ProcessInfo.processInfo.environment["TREZOR_INTEGRATION_REQUIRED"] == "1" {
                 Issue.record("No Trezor is visible to HardwareDeviceManager.scan().")
             }
+
             return nil
         }
+
         return try await manager.connect(info, delegate: RecordingHardwareDeviceDelegate())
     }
 

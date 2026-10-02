@@ -23,6 +23,7 @@ private extension String {
             data.append(UInt8(hex[index..<next], radix: 16)!)
             index = next
         }
+
         return data
     }
 }
@@ -68,8 +69,10 @@ struct SuiTransactionDataDecoderRealVectorTests {
 // MARK: - Round-trip against this repo's own builders (necessary, not sufficient)
 
 struct SuiTransactionDataDecoderRoundTripTests {
-    private static let account = try! SuiAddress(rawBytes: Data(repeating: 0x11, count: 32)) // swiftlint:disable:this force_try
-    private static let recipient = try! SuiAddress(rawBytes: Data(repeating: 0x22, count: 32)) // swiftlint:disable:this force_try
+    // swiftlint:disable:next force_try
+    private static let account = try! SuiAddress(rawBytes: Data(repeating: 0x11, count: 32))
+    // swiftlint:disable:next force_try
+    private static let recipient = try! SuiAddress(rawBytes: Data(repeating: 0x22, count: 32))
     private static let coinA = SuiObjectReference(
         objectId: Data(repeating: 0x33, count: 32), version: 1, digest: Data(repeating: 0x44, count: 32)
     )
@@ -173,6 +176,24 @@ struct SuiTransactionDataDecoderAdversarialTests {
         #expect(summary.commandCount == 0)
     }
 
+    @Test func moveCallDecodesAndNamesTheCalledFunction() throws {
+        let package = Data(repeating: 0x02, count: 32)
+        var commands = Data([0x00]) // Command::MoveCall
+        commands += package
+        commands += BCS.byteVector(Data("clock".utf8)) // module
+        commands += BCS.byteVector(Data("timestamp_ms".utf8)) // function
+        commands += BCS.uleb128(0) // typeArguments: none
+        commands += BCS.uleb128(0) // arguments: none
+
+        let data = Self.validTransaction(commandCount: 1, commands: commands)
+        let summary = try #require(SuiTransactionDataDecoder.summarize(data))
+        #expect(summary.commandCount == 1)
+        #expect(summary.moveCalls.count == 1)
+        #expect(summary.moveCalls.first?.package.rawBytes == package)
+        #expect(summary.moveCalls.first?.module == "clock")
+        #expect(summary.moveCalls.first?.function == "timestamp_ms")
+    }
+
     @Test func wrongTransactionDataVariantFailsClosed() {
         var data = Self.validTransaction(commandCount: 0, commands: Data())
         data[0] = 0x01 // not V1
@@ -196,10 +217,22 @@ struct SuiTransactionDataDecoderAdversarialTests {
         #expect(SuiTransactionDataDecoder.summarize(data) == nil)
     }
 
-    @Test func unknownCommandTagFailsClosed() {
-        // MoveCall (tag 0) — a real Sui command, but not one this
-        // decoder implements.
+    @Test func truncatedMoveCallFailsClosed() {
+        // MoveCall (tag 0) with no package/module/function/... after it.
         let data = Self.validTransaction(commandCount: 1, commands: Data([0x00]))
+        #expect(SuiTransactionDataDecoder.summarize(data) == nil)
+    }
+
+    @Test func moveCallWithTypeArgumentsFailsClosed() {
+        // A generic MoveCall (one non-empty TypeTag) isn't implemented.
+        var commands = Data([0x00]) // Command::MoveCall
+        commands += Data(repeating: 0x02, count: 32) // package
+        commands += BCS.byteVector(Data("clock".utf8)) // module
+        commands += BCS.byteVector(Data("timestamp_ms".utf8)) // function
+        commands += BCS.uleb128(1) // typeArguments: one
+        commands += Data([0x03]) // TypeTag::U64 (irrelevant — rejected before this is read)
+        commands += BCS.uleb128(0) // arguments: none
+        let data = Self.validTransaction(commandCount: 1, commands: commands)
         #expect(SuiTransactionDataDecoder.summarize(data) == nil)
     }
 

@@ -47,6 +47,7 @@ public enum MoveTypeTag {
                 current.append(character)
             }
         }
+
         arguments.append(current.trimmingCharacters(in: .whitespaces))
 
         return arguments

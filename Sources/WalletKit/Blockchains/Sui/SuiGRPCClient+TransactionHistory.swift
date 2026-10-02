@@ -25,6 +25,7 @@ extension SuiGRPCClient {
         request: BlockchainTransactionHistoryRequest
     ) async throws -> BlockchainTransactionPage {
         let savedCursor = try request.cursor.map { try JSONDecoder().decode(SuiHistoryCursor.self, from: $0) }
+
         let direction = savedCursor?.direction ?? request.direction
         let head = try await suiTransactionHead()
         let lowerBound = savedCursor?.lowerBound ?? request.lowerBound ?? 0
@@ -53,6 +54,7 @@ extension SuiGRPCClient {
                         }
                     }
                 }
+
                 $0.readMask.paths = [
                     "digest", "transaction.sender", "checkpoint", "timestamp", "balance_changes", "effects"
                 ]
@@ -70,13 +72,16 @@ extension SuiGRPCClient {
                     if message.hasTransaction {
                         transactions.append(message.transaction)
                     }
+
                     if message.watermark.hasCursor {
                         watermark = message.watermark.cursor
                     }
+
                     if message.hasEnd {
                         reachedBoundary = message.end.reason != .itemLimit && message.end.reason != .scanLimit
                     }
                 }
+
                 return (transactions, watermark, reachedBoundary)
             }
         }
@@ -115,6 +120,7 @@ extension SuiGRPCClient {
                             $0.filter = Self.transactionFilter(owner)
                             $0.readMask.paths = ["digest", "checkpoint"]
                         }
+
                         try await service.subscribeTransactions(
                             request: ClientRequest(message: request),
                             options: .defaults
@@ -132,11 +138,13 @@ extension SuiGRPCClient {
                             }
                         }
                     }
+
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
+
             continuation.onTermination = { _ in task.cancel() }
         }
     }
@@ -166,6 +174,7 @@ private extension SuiGRPCClient {
                         $0.affectedAddress.address = owner.string
                     }]
                 }
+
             ]
         }
     }
@@ -190,6 +199,7 @@ private extension SuiGRPCClient {
                 to: change.address
             )
         }
+
         return BlockchainTransaction(
             identifier: transaction.digest,
             blockHeight: transaction.hasCheckpoint ? transaction.checkpoint : nil,

@@ -58,7 +58,10 @@ final class HardwareDeviceDelegateAdapter: HardwareDeviceDelegateFfi, @unchecked
     }
 
     func needsInput(request: HardwareInputRequest) async -> String? {
-        guard let delegate, let device else { return nil }
+        guard let delegate, let device else {
+            return nil
+        }
+
         return await delegate.hardwareDevice(device, needsInput: request)
     }
 
@@ -66,6 +69,7 @@ final class HardwareDeviceDelegateAdapter: HardwareDeviceDelegateFfi, @unchecked
         guard let delegate, let device else {
             return
         }
+
         await delegate.hardwareDevice(device, waitingForConfirmation: request)
     }
 
@@ -73,6 +77,7 @@ final class HardwareDeviceDelegateAdapter: HardwareDeviceDelegateFfi, @unchecked
         guard let delegate, let device else {
             return
         }
+
         delegate.hardwareDeviceDidDisconnect(device)
     }
 }

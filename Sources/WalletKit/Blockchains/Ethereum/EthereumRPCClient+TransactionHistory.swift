@@ -82,6 +82,7 @@ extension EthereumRPCClient {
         request: BlockchainTransactionHistoryRequest
     ) async throws -> BlockchainTransactionPage {
         let cursor = try request.cursor.map { try JSONDecoder().decode(EVMHistoryCursor.self, from: $0) }
+
         let currentHead = try await blockHeight()
         let lowerBound = cursor?.lowerBound ?? request.lowerBound ?? 0
         let upperBound = cursor?.upperBound ?? request.upperBound ?? currentHead
@@ -265,6 +266,7 @@ extension EthereumRPCClient {
                     continuation.finish(throwing: error)
                 }
             }
+
             continuation.onTermination = { _ in task.cancel() }
         }
     }
@@ -462,12 +464,17 @@ private extension EthereumRPCClient {
 
     func address(_ topic: String) -> String? {
         let value = topic.drop0xPrefix()
-        guard value.count == 64 else { return nil }
+        guard value.count == 64 else {
+            return nil
+        }
+
         return "0x" + String(value.suffix(40))
     }
 
     var websocketEndpoint: URL? {
-        guard var components = URLComponents(url: rpc.endpoint, resolvingAgainstBaseURL: false) else { return nil }
+        guard var components = URLComponents(url: rpc.endpoint, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
 
         switch components.scheme?.lowercased() {
         case "https": components.scheme = "wss"
@@ -494,4 +501,4 @@ private func parseEVMQuantity(_ value: String) throws -> UInt64 {
     }
 
     return quantity
-}
+} // swiftlint:disable:this file_length

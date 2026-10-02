@@ -48,6 +48,7 @@ actor BitcoinAddressResolver {
         } else {
             try await refreshTrailingUnused(chain: chain)
         }
+
         return discovered[chain] ?? []
     }
 
@@ -79,6 +80,7 @@ actor BitcoinAddressResolver {
             guard let only = existing.first else {
                 throw WalletKitError.internalError(message: "single-address descriptor discovered no address")
             }
+
             return only
         }
 
@@ -97,8 +99,15 @@ actor BitcoinAddressResolver {
     func allUTXOs() async throws -> [BitcoinUTXO] {
         var result: [BitcoinUTXO] = []
         for derived in try await allAddresses() where derived.isUsed {
-            result.append(contentsOf: try await backend.utxos(of: derived.address, chain: derived.chain, index: derived.index))
+            result.append(
+                contentsOf: try await backend.utxos(
+                    of: derived.address,
+                    chain: derived.chain,
+                    index: derived.index
+                )
+            )
         }
+
         return result
     }
 
@@ -120,24 +129,43 @@ actor BitcoinAddressResolver {
             // in the used → used direction, so nothing to refresh once
             // it's already marked used; if still unused, re-check it in
             // case it was funded since the last call.
-            guard let only = discovered[chain]?.first, !only.isUsed else { return }
+            guard let only = discovered[chain]?.first, !only.isUsed else {
+                return
+            }
+
             let history = try await backend.history(of: only.address)
-            guard !history.isEmpty else { return }
+            guard !history.isEmpty else {
+                return
+            }
+
             discovered[chain] = [DerivedAddress(address: only.address, chain: chain, index: 0, isUsed: true)]
             return
         }
 
-        guard var addresses = discovered[chain] else { return }
+        guard var addresses = discovered[chain] else {
+            return
+        }
+
         var becameUsed = false
 
         for i in addresses.indices where !addresses[i].isUsed {
             let history = try await backend.history(of: addresses[i].address)
-            guard !history.isEmpty else { continue }
-            addresses[i] = DerivedAddress(address: addresses[i].address, chain: chain, index: addresses[i].index, isUsed: true)
+            guard !history.isEmpty else {
+                continue
+            }
+
+            addresses[i] = DerivedAddress(
+                address: addresses[i].address,
+                chain: chain,
+                index: addresses[i].index,
+                isUsed: true
+            )
+
             becameUsed = true
         }
 
         discovered[chain] = addresses
+
         if becameUsed {
             try await extend(chain: chain)
         }
@@ -148,9 +176,13 @@ actor BitcoinAddressResolver {
     /// addresses have been found past the last used one.
     private func extend(chain: UInt32) async throws {
         if descriptor.scriptType == .singleAddress {
-            guard discovered[chain] == nil else { return }
+            guard discovered[chain] == nil else {
+                return
+            }
+
             let address = try descriptor.deriveAddress(chain: chain, index: 0)
             let history = try await backend.history(of: address)
+
             discovered[chain] = [DerivedAddress(address: address, chain: chain, index: 0, isUsed: !history.isEmpty)]
             return
         }
@@ -160,7 +192,10 @@ actor BitcoinAddressResolver {
 
         var consecutiveUnused: UInt32 = 0
         for derived in addresses.reversed() {
-            guard !derived.isUsed else { break }
+            guard !derived.isUsed else {
+                break
+            }
+
             consecutiveUnused += 1
         }
 

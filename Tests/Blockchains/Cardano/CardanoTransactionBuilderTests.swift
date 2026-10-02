@@ -52,7 +52,9 @@ struct CardanoTransactionBuilderTests {
         let transaction = try JSONDecoder().decode(CardanoUnsignedTransaction.self, from: envelope)
 
         #expect(transaction.outputs.contains { output in output.assets.contains { $0.quantity == "3" } })
-        #expect(transaction.outputs.contains { output in output.isChange && output.assets.contains { $0.quantity == "7" } })
+        #expect(transaction.outputs.contains { output in
+            output.isChange && output.assets.contains { $0.quantity == "7" }
+        })
     }
 
     @Test func rejectsARecipientFromAnotherNetworkBeforeRequestingUtxos() async throws {

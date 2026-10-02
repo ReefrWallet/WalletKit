@@ -76,6 +76,7 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
                 guard asset.unit != "lovelace", let parsed = CardanoAssetId(unit: asset.unit) else {
                     return nil
                 }
+
                 return CardanoAssetFfi(name: parsed.name, policyId: parsed.policyId, quantity: asset.quantity)
             }
 
@@ -95,6 +96,7 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
             guard let asset = CardanoAssetId(unit: token) else {
                 throw WalletKitError.invalidAddress(reason: "Invalid Cardano asset identifier")
             }
+
             selectedAsset = asset.ffi(quantity: amount.description)
         } else {
             selectedAsset = nil
@@ -127,6 +129,7 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
                 guard let quantity = BigUInt(amount.quantity) else {
                     continue
                 }
+
                 balances[amount.unit, default: 0] += quantity
             }
         }
@@ -307,7 +310,6 @@ private extension CardanoClient {
             page += 1
         }
     }
-
 }
 
 // Internal rather than private: `CardanoClient+TransactionHistory` reads

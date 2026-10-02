@@ -66,8 +66,10 @@ struct EstimateGasParams: Encodable {
         func encode(to encoder: Encoder) throws {
             var container = encoder.container(keyedBy: CodingKeys.self)
             if let from { try container.encode(from, forKey: .from) }
+
             try container.encode(to, forKey: .to)
             if let value { try container.encode(value, forKey: .value) }
+
             if let data { try container.encode(data, forKey: .data) }
         }
     }

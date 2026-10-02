@@ -5,7 +5,8 @@ import Testing
 
 struct TronClientTests {
     private let endpoint = URL(string: "https://example.com")!
-    private let owner = try! TronAddress(string: "TGtcCdz2aV9vvCEtQL5BY8z2BnLi4oJ3sK") // swiftlint:disable:this force_try
+    // swiftlint:disable:next force_try
+    private let owner = try! TronAddress(string: "TGtcCdz2aV9vvCEtQL5BY8z2BnLi4oJ3sK")
 
     @Test func buildNativeTransferSendsVisibleTronGridRequest() async throws {
         let stub = StubURLProtocol.makeSession(response: .success(body: Data(#"{"raw_data_hex":"00"}"#.utf8)))
@@ -38,7 +39,8 @@ struct TronClientTests {
     }
 
     @Test func getTRC20BalanceEncodesBalanceOfCall() async throws {
-        let stub = StubURLProtocol.makeSession(response: .success(body: Data(#"{"constant_result":["000000000000000000000000000000000000000000000000000000000000002a"]}"#.utf8)))
+        let response = #"{"constant_result":["000000000000000000000000000000000000000000000000000000000000002a"]}"#
+        let stub = StubURLProtocol.makeSession(response: .success(body: Data(response.utf8)))
         let client = TronClient(endpoint: endpoint, session: stub.urlSession)
         let token = "TXYZopYRdj2D9XRtbG411XZZ3kM5VkAeBf"
 

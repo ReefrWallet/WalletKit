@@ -34,6 +34,7 @@ enum SolanaShortVec {
                 out.append(byte)
             }
         }
+
         return out
     }
 
@@ -49,14 +50,17 @@ enum SolanaShortVec {
             guard offset < data.count else {
                 throw WalletKitError.internalError(message: "compact-u16 ran out of bytes")
             }
+
             let byte = data[offset]
             offset += 1
             result |= Int(byte & 0x7F) << shift
             if byte & 0x80 == 0 {
                 break
             }
+
             shift += 7
         }
+
         return result
     }
 

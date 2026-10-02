@@ -100,7 +100,7 @@ public struct SolanaParsedMessage: Equatable, Sendable {
     ///   count, an instruction whose `programIdIndex` isn't a static
     ///   account or whose account indexes overflow the total account
     ///   count, or an unrecognized version prefix.
-    public init(validating data: Data) throws {
+    public init(validating data: Data) throws { // swiftlint:disable:this function_body_length
         func fail(_ message: String) -> WalletKitError {
             .internalError(message: "Solana message: \(message)")
         }
@@ -144,7 +144,10 @@ public struct SolanaParsedMessage: Equatable, Sendable {
         var staticAccountKeys: [SolanaAddress] = []
         staticAccountKeys.reserveCapacity(staticAccountKeyCount)
         for _ in 0..<staticAccountKeyCount {
-            guard offset + 32 <= data.count else { throw fail("truncated account key") }
+            guard offset + 32 <= data.count else {
+                throw fail("truncated account key")
+            }
+
             staticAccountKeys.append(try SolanaAddress(rawBytes: Data(data[offset..<(offset + 32)])))
             offset += 32
         }
@@ -157,7 +160,10 @@ public struct SolanaParsedMessage: Equatable, Sendable {
             throw fail("header account-privilege counts are inconsistent with the static account key count")
         }
 
-        guard offset + 32 <= data.count else { throw fail("truncated recent blockhash") }
+        guard offset + 32 <= data.count else {
+            throw fail("truncated recent blockhash")
+        }
+
         let recentBlockhash = Data(data[offset..<(offset + 32)])
         offset += 32
 
@@ -184,7 +190,10 @@ public struct SolanaParsedMessage: Equatable, Sendable {
             offset += accountIndexCount
 
             let dataLength = try SolanaShortVec.decodeCanonical(data, offset: &offset)
-            guard offset + dataLength <= data.count else { throw fail("truncated instruction data") }
+            guard offset + dataLength <= data.count else {
+                throw fail("truncated instruction data")
+            }
+
             let instructionData = Data(data[offset..<(offset + dataLength)])
             offset += dataLength
 
@@ -201,17 +210,26 @@ public struct SolanaParsedMessage: Equatable, Sendable {
             addressTableLookups.reserveCapacity(lookupCount)
 
             for _ in 0..<lookupCount {
-                guard offset + 32 <= data.count else { throw fail("truncated address table lookup key") }
+                guard offset + 32 <= data.count else {
+                    throw fail("truncated address table lookup key")
+                }
+
                 let accountKey = try SolanaAddress(rawBytes: Data(data[offset..<(offset + 32)]))
                 offset += 32
 
                 let writableCount = try SolanaShortVec.decodeCanonical(data, offset: &offset)
-                guard offset + writableCount <= data.count else { throw fail("truncated writable lookup indexes") }
+                guard offset + writableCount <= data.count else {
+                    throw fail("truncated writable lookup indexes")
+                }
+
                 let writableIndexes = Array(data[offset..<(offset + writableCount)])
                 offset += writableCount
 
                 let readonlyCount = try SolanaShortVec.decodeCanonical(data, offset: &offset)
-                guard offset + readonlyCount <= data.count else { throw fail("truncated readonly lookup indexes") }
+                guard offset + readonlyCount <= data.count else {
+                    throw fail("truncated readonly lookup indexes")
+                }
+
                 let readonlyIndexes = Array(data[offset..<(offset + readonlyCount)])
                 offset += readonlyCount
 
@@ -226,6 +244,7 @@ public struct SolanaParsedMessage: Equatable, Sendable {
         }
 
         let loadedCount = addressTableLookups.reduce(0) { $0 + $1.writableIndexes.count + $1.readonlyIndexes.count }
+
         let totalAccountCount = staticAccountKeys.count + loadedCount
 
         guard totalAccountCount <= Self.maxTotalAccountCount else {
@@ -262,12 +281,19 @@ public struct SolanaWireTransaction: Equatable, Sendable {
     let parsedMessage: SolanaParsedMessage
 
     public var messageBytes: Data { parsedMessage.messageBytes }
+
     public var version: SolanaMessageVersion { parsedMessage.version }
+
     public var header: SolanaMessageHeader { parsedMessage.header }
+
     public var staticAccountKeys: [SolanaAddress] { parsedMessage.staticAccountKeys }
+
     public var instructions: [SolanaCompiledInstruction] { parsedMessage.instructions }
+
     public var addressTableLookups: [SolanaAddressTableLookup] { parsedMessage.addressTableLookups }
+
     public var addressTableLookupCount: Int { parsedMessage.addressTableLookups.count }
+
     public var totalAccountCount: Int { parsedMessage.totalAccountCount }
 
     /// Parses and fully validates `data` as a complete transaction:
@@ -288,7 +314,10 @@ public struct SolanaWireTransaction: Equatable, Sendable {
         var signatures: [Data] = []
         signatures.reserveCapacity(signatureCount)
         for _ in 0..<signatureCount {
-            guard offset + 64 <= data.count else { throw fail("truncated signature") }
+            guard offset + 64 <= data.count else {
+                throw fail("truncated signature")
+            }
+
             signatures.append(Data(data[offset..<(offset + 64)]))
             offset += 64
         }

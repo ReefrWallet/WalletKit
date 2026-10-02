@@ -58,6 +58,7 @@ private extension String {
             data.append(UInt8(hex[index..<next], radix: 16)!)
             index = next
         }
+
         return data
     }
 }
@@ -74,7 +75,10 @@ private extension SuiPtbTxVector {
     /// `MergeCoins`) isn't a split-and-transfer — `UnsignedSuiTransaction`
     /// deliberately doesn't model those.
     var transaction: UnsignedSuiTransaction? {
-        guard let transferVectors = unsignedPtb.transfers else { return nil }
+        guard let transferVectors = unsignedPtb.transfers else {
+            return nil
+        }
+
         // swiftlint:disable force_try
         return UnsignedSuiTransaction(
             sender: try! SuiAddress(string: unsignedPtb.sender),

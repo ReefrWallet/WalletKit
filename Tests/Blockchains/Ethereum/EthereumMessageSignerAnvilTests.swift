@@ -41,6 +41,7 @@ private func makeAnvilDefaultSigner(chainId: UInt64) throws -> EthereumPKeySigne
         data.append(UInt8(hex[index..<next], radix: 16)!)
         index = next
     }
+
     let privateKey = try PrivateKey(curve: .secp256k1, rawBytes: data)
     return try EthereumPKeySigner(
         chainId: chainId,

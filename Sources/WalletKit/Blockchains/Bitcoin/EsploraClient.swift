@@ -113,6 +113,7 @@ struct EsploraClient: Sendable {
         guard let hex = String(data: data, encoding: .utf8) else {
             throw BlockchainClientError.decodingFailed(reason: "raw transaction response is not UTF-8 text")
         }
+
         return try Data(hexString: hex.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
@@ -132,6 +133,7 @@ struct EsploraClient: Sendable {
               let height = UInt64(text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             throw BlockchainClientError.decodingFailed(reason: "malformed /blocks/tip/height response")
         }
+
         return height
     }
 
@@ -147,6 +149,7 @@ struct EsploraClient: Sendable {
         guard let txid = String(data: data, encoding: .utf8) else {
             throw BlockchainClientError.decodingFailed(reason: "broadcast response is not UTF-8 text")
         }
+
         return txid.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -180,6 +183,7 @@ struct EsploraClient: Sendable {
         guard let http = response as? HTTPURLResponse else {
             throw BlockchainClientError.invalidResponse(reason: "not an HTTP response")
         }
+
         guard (200 ..< 300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
             throw BlockchainClientError.invalidResponse(reason: "HTTP \(http.statusCode): \(body)")

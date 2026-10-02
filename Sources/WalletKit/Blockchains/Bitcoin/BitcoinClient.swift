@@ -38,6 +38,7 @@ public actor BitcoinClient {
         if let existing = resolvers[descriptor.string] {
             return existing
         }
+
         let resolver = BitcoinAddressResolver(descriptor: descriptor, backend: backend)
         resolvers[descriptor.string] = resolver
         return resolver

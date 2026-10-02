@@ -81,6 +81,7 @@ public struct CardanoTransactionBuilder: BlockchainTransactionBuilderProtocol, S
             guard case let .cardanoRecipientLovelace(value) = option else {
                 return nil
             }
+
             return value
         }.last
 

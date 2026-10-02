@@ -37,11 +37,15 @@ extension BitcoinClient: BlockchainClientProtocol {
             let (confirmed, unconfirmed) = try await backend.balance(of: derived.address)
             total += Int64(confirmed) + unconfirmed
         }
+
         return BigUInt(max(0, total))
     }
 
     public func getTokenInfo(_ token: String?) async throws -> TokenInfo {
-        guard token == nil else { throw WalletKitError.unsupportedFeature }
+        guard token == nil else {
+            throw WalletKitError.unsupportedFeature
+        }
+
         return .bitcoin
     }
 
@@ -80,6 +84,7 @@ extension BitcoinClient: BlockchainClientProtocol {
         }
 
         let fee = try remappingWalletKitError { try bitcoinPsbtFee(psbt: psbt) }
+
         return FeeEstimate(gasPrice: gasPrice, estimatedFee: BigUInt(fee))
     }
 

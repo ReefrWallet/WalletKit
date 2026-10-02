@@ -22,12 +22,12 @@ extension CardanoClient {
         // Pinned for every page of one pass — see `historyQuery`.
         let from = cursor?.from ?? request.lowerBound.flatMap { $0 > 0 ? "\($0)" : nil }
 
+        let addresses = (try? await ownedAddresses(owner)).map { Set($0) } ?? []
+
         let transactions: [AccountTransaction] = try await get(
             "accounts/\(owner.stakeAddress)/transactions",
             query: historyQuery(request: request, count: count, from: from, page: page)
         )
-
-        let addresses = (try? await ownedAddresses(owner)).map { Set($0) } ?? []
 
         let reachedBoundary = transactions.count < count
         let nextCursor: HistoryCursor?
@@ -208,7 +208,6 @@ private extension CardanoClient {
         }
     }
 
-
     /// What ``CardanoClient/transactionHistory(_:request:)`` persists between
     /// pages: Blockfrost's ordinal `page` number within the pass in progress,
     /// and the `from` bound that pass pinned its window to.
@@ -233,7 +232,7 @@ private extension CardanoClient {
             // A cursor persisted before this carried anything but a page
             // number, so an in-flight backfill resumes where it left off
             // instead of restarting from Blockfrost's first page.
-            guard let page = Int(String(decoding: data, as: UTF8.self)) else {
+            guard let strPage = String(bytes: data, encoding: .utf8), let page = Int(strPage) else {
                 return nil
             }
 

@@ -29,6 +29,7 @@ public struct EthereumSignTx {
         gasPrice = BigUInt(raw.gasPrice)!
         gasLimit = BigUInt(raw.gasLimit)!
         to = try raw.to.map { try EthereumAddress(rawBytes: $0) }
+
         value = BigUInt(raw.value)!
         data = raw.data
         chainId = raw.chainId
@@ -85,6 +86,7 @@ public struct EthereumEIP1559SignTx {
         maxFeePerGas = BigUInt(raw.maxFeePerGas)!
         gasLimit = BigUInt(raw.gasLimit)!
         to = try raw.to.map { try EthereumAddress(rawBytes: $0) }
+
         value = BigUInt(raw.value)!
         data = raw.data
         chainId = raw.chainId

@@ -80,6 +80,7 @@ public final class EthereumPKeySigner: Signer, MessageSigner {
                 try raw.signEip1559(signingData: transaction, privateKey: privateKey.raw)
             }
         }
+
         return try remappingWalletKitError { try raw.sign(signingData: transaction, privateKey: privateKey.raw) }
     }
 
@@ -97,6 +98,7 @@ public final class EthereumPKeySigner: Signer, MessageSigner {
             digest = ethereumPersonalMessageHash(message: data)
         case .ethereumTypedData(let json):
             digest = try remappingWalletKitError { try ethereumTypedDataHash(json: json) }
+
         case .solanaMessage, .suiPersonal:
             throw WalletKitError.unsupportedFeature
         }

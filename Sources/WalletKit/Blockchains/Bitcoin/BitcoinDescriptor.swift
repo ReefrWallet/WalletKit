@@ -28,6 +28,7 @@ public struct BitcoinDescriptor: BlockchainAddress {
         guard publicKey.curve == .secp256k1 else {
             throw WalletKitError.unsupportedCurve(curve: publicKey.curve)
         }
+
         return try remappingWalletKitError { try bitcoinFingerprint(publicKey: publicKey.rawBytes) }
     }
 
@@ -108,7 +109,9 @@ public struct BitcoinDescriptor: BlockchainAddress {
     ///
     /// - Throws: ``WalletKitError/invalidAddress(reason:)``.
     public init(address: String, network: BitcoinNetwork) throws {
-        raw = try remappingWalletKitError { try BitcoinDescriptorFfi.fromAddress(address: address, network: network.raw) }
+        raw = try remappingWalletKitError {
+            try BitcoinDescriptorFfi.fromAddress(address: address, network: network.raw)
+        }
     }
 
     /// Wraps `rawBytes` (UTF-8 descriptor text) as a descriptor — the
@@ -120,6 +123,7 @@ public struct BitcoinDescriptor: BlockchainAddress {
         guard let string = String(data: rawBytes, encoding: .utf8) else {
             throw WalletKitError.invalidAddress(reason: "Bitcoin descriptor bytes are not valid UTF-8")
         }
+
         try self.init(string: string)
     }
 

@@ -50,38 +50,49 @@ public struct AnyBlockchainClient: Sendable {
             let owner = try makeAddress(ownerString)
             return try await client.getAllBalances(owner)
         }
+
         _getBalances = { ownerString, tokens in
             let owner = try makeAddress(ownerString)
             return try await client.getBalances(owner, tokens: tokens)
         }
+
         _getBalance = { ownerString, token in
             let owner = try makeAddress(ownerString)
             return try await client.getBalance(owner, token: token)
         }
+
         _getNativeBalance = { ownerString in
             let owner = try makeAddress(ownerString)
             return try await client.getNativeBalance(owner)
         }
+
         _getTokenInfo = { token in
             try await client.getTokenInfo(token)
         }
+
         _getTokenPrice = { token in
             try await client.getTokenPrice(token)
         }
+
         _isActiveAccount = { ownerString in
             let owner = try makeAddress(ownerString)
             return try await client.isActiveAccount(owner)
         }
+
         _isSupported = { feature in
             client.isSupported(feature)
         }
+
         _estimateFee = { anyRequest in
             guard let anyRequest else {
                 return try await client.estimateFee(for: nil)
             }
+
             // Bridge String addresses → C.Address, forwarding nil as nil.
             let typedFrom = try anyRequest.from.map { try makeAddress($0) }
+
             let typedTo = try anyRequest.to.map { try makeAddress($0) }
+
             let typedRequest = FeeEstimateRequest<C.Address>(
                 from: typedFrom,
                 to: typedTo,
@@ -90,19 +101,23 @@ public struct AnyBlockchainClient: Sendable {
             )
             return try await client.estimateFee(for: typedRequest)
         }
+
         _broadcast = { transaction, signature in
             try await client.broadcast(transaction: transaction, signature: signature)
         }
+
         _transactionHistory = { ownerString, request in
             let owner = try makeAddress(ownerString)
             return try await client.transactionHistory(owner, request: request)
         }
+
         _transactionHeads = { ownerString in
             guard let owner = try? makeAddress(ownerString) else {
                 return AsyncThrowingStream { continuation in
                     continuation.finish(throwing: WalletKitError.invalidAddress(reason: "Invalid account address"))
                 }
             }
+
             return client.transactionHeads(owner)
         }
     }

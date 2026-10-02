@@ -127,7 +127,10 @@ struct JSONRPCClient {
             throw BlockchainClientError.invalidResponse(reason: "unexpected HTTP status \(status)")
         }
 
-        guard let envelope = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) as? [String: Any] else {
+        guard let envelope = try? JSONSerialization.jsonObject(
+            with: data,
+            options: [.fragmentsAllowed]
+        ) as? [String: Any] else {
             throw BlockchainClientError.decodingFailed(reason: "response was not a JSON object")
         }
 
@@ -152,7 +155,9 @@ struct JSONRPCClient {
         method: String,
         params: [Params]
     ) async throws -> [Result?] {
-        guard !params.isEmpty else { return [] }
+        guard !params.isEmpty else {
+            return []
+        }
 
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -185,6 +190,7 @@ struct JSONRPCClient {
         for envelope in envelopes where envelope.id > 0 && envelope.id <= params.count {
             results[envelope.id - 1] = envelope.error == nil ? envelope.result : nil
         }
+
         return results
     }
 }

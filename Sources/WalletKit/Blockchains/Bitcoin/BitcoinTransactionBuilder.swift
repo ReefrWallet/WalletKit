@@ -60,6 +60,7 @@ public struct BitcoinTransactionBuilder: BlockchainTransactionBuilderProtocol {
         guard token == nil else {
             throw BlockchainTransactionBuilderError.invalidToken(reason: "Bitcoin has no secondary tokens")
         }
+
         guard let amountSats = UInt64(exactly: amount) else {
             throw BlockchainTransactionBuilderError.amountTooLarge
         }
@@ -90,7 +91,9 @@ public struct BitcoinTransactionBuilder: BlockchainTransactionBuilderProtocol {
         var outputs = [BitcoinPsbtOutputFfi(scriptPubkey: recipientScript, valueSats: amountSats)]
         if selection.changeSats > 0 {
             let change = try await resolver.firstUnused(chain: 1)
-            outputs.append(BitcoinPsbtOutputFfi(scriptPubkey: change.address.scriptPubkey(), valueSats: selection.changeSats))
+            outputs.append(
+                BitcoinPsbtOutputFfi(scriptPubkey: change.address.scriptPubkey(), valueSats: selection.changeSats)
+            )
         }
 
         var inputs: [BitcoinPsbtInputFfi] = []
@@ -132,6 +135,7 @@ private extension Array where Element == BlockchainTransactionBuilderOptions {
                 return rate
             }
         }
+
         return nil
     }
 }

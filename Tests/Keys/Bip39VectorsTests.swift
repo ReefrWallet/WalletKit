@@ -42,6 +42,7 @@ private extension String {
             data.append(UInt8(self[index..<next], radix: 16)!)
             index = next
         }
+
         return data
     }
 }

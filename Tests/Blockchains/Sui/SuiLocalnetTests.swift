@@ -51,6 +51,7 @@ private extension String {
             data.append(UInt8(hex[index..<next], radix: 16)!)
             index = next
         }
+
         return data
     }
 }

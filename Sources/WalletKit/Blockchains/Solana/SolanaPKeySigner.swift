@@ -37,6 +37,7 @@ public final class SolanaPKeySigner: MessageSigner {
         guard privateKey.curve == .ed25519 else {
             throw WalletKitError.unsupportedCurve(curve: privateKey.curve)
         }
+
         self.privateKey = privateKey
         account = Account(
             blockchain: .solana(network),
@@ -74,6 +75,7 @@ public final class SolanaPKeySigner: MessageSigner {
         guard case let .solanaMessage(data) = message else {
             throw WalletKitError.unsupportedFeature
         }
+
         return try privateKey.sign(message: data)
     }
 }

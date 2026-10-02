@@ -51,7 +51,7 @@ private let walletKit: Target = .target(
         .post(
             script: """
                     $HOME/.local/bin/mise -C $SRCROOT x swiftlint -- \\
-                    swiftlint --quiet --config ../.swiftlint.yml Sources/Static Project.swift
+                    swiftlint --quiet --config ../.swiftlint.yml Sources/WalletKit Project.swift
                     """,
             name: "SwiftLint",
             basedOnDependencyAnalysis: false
@@ -74,7 +74,16 @@ private let walletKitTesting: Target = .target(
     deploymentTargets: .macOS("15.0"),
     infoPlist: .extendingDefault(with: Project.commonInfoPlist),
     buildableFolders: ["Sources/WalletKitTesting"],
-    dependencies: [
+    scripts: [
+        .post(
+            script: """
+                    $HOME/.local/bin/mise -C $SRCROOT x swiftlint -- \\
+                    swiftlint --quiet --config ../.swiftlint.yml Sources/WalletKitTesting Project.swift
+                    """,
+            name: "SwiftLint",
+            basedOnDependencyAnalysis: false
+        )
+    ], dependencies: [
         .external(name: "BigInt"),
         .external(name: "GRPCCore"),
         .external(name: "GRPCNIOTransportHTTP2Posix"),

@@ -35,7 +35,10 @@ private actor MockBitcoinBackend: BitcoinBackend {
     }
 
     func history(of address: BitcoinAddressFfi) async throws -> [BitcoinBackendHistoryEntry] {
-        guard let utxos = utxosByScript[address.scriptPubkey()], !utxos.isEmpty else { return [] }
+        guard let utxos = utxosByScript[address.scriptPubkey()], !utxos.isEmpty else {
+            return []
+        }
+
         return [BitcoinBackendHistoryEntry(txid: String(repeating: "a", count: 64), height: 100)]
     }
 
@@ -51,6 +54,7 @@ private actor MockBitcoinBackend: BitcoinBackend {
         guard let raw = rawTransactionsByTxid[txid] else {
             throw BlockchainClientError.invalidResponse(reason: "no raw transaction seeded for \(txid)")
         }
+
         return raw
     }
 
@@ -82,7 +86,11 @@ private actor MockBitcoinBackend: BitcoinBackend {
 private func makeAccount(
     network: BitcoinNetwork,
     scriptType: BitcoinScriptType
-) throws -> (descriptor: BitcoinDescriptor, seed: Seed, accountDerivationPath: DerivationPath) {
+) throws -> ( // swiftlint:disable:this large_tuple
+    descriptor: BitcoinDescriptor,
+    seed: Seed,
+    accountDerivationPath: DerivationPath
+) {
     let seed = Mnemonic.generate().toSeed()
     let masterKey = try seed.masterKey(curve: .secp256k1)
     let masterFingerprint = try BitcoinDescriptor.fingerprint(of: masterKey.publicKey)

@@ -67,12 +67,15 @@ public enum EthereumABI {
                 + call.callData
                 + Data(repeating: 0, count: paddedLength - call.callData.count)
         }
+
         let offsets = calls.indices.reduce(into: Data()) { result, index in
             // Dynamic-array element offsets are relative to the array's length
             // word, so the first element follows the length plus all offsets.
             let offset = 32 + calls.count * 32 + encodedCalls[..<index].reduce(0) { $0 + $1.count }
+
             result += word(BigUInt(offset))
         }
+
         return encodeCall(selector: selector("aggregate3((address,bool,bytes)[])"))
             + word(32)
             + word(BigUInt(calls.count))
@@ -87,11 +90,13 @@ public enum EthereumABI {
         else {
             throw BlockchainClientError.decodingFailed(reason: "aggregate3 response has an invalid array offset")
         }
+
         let arrayStart = data.startIndex + arrayOffset
         let count = Int(exactly: decodeUInt256(data[arrayStart..<arrayStart + 32])) ?? -1
         guard count >= 0 else {
             throw BlockchainClientError.decodingFailed(reason: "aggregate3 response has an invalid result count")
         }
+
         let headsStart = arrayStart + 32
         guard headsStart + count * 32 <= data.endIndex else {
             throw BlockchainClientError.decodingFailed(reason: "aggregate3 response has truncated result heads")
@@ -105,6 +110,7 @@ public enum EthereumABI {
             guard relativeOffset >= 0, tupleStart + 64 <= data.endIndex else {
                 throw BlockchainClientError.decodingFailed(reason: "aggregate3 response has an invalid tuple offset")
             }
+
             let success = decodeBool(data[tupleStart..<tupleStart + 32])
             let bytesOffset = Int(exactly: decodeUInt256(data[tupleStart + 32..<tupleStart + 64])) ?? -1
             let lengthStart = tupleStart + bytesOffset
@@ -113,11 +119,13 @@ public enum EthereumABI {
                     reason: "aggregate3 response has an invalid return-data offset"
                 )
             }
+
             let length = Int(exactly: decodeUInt256(data[lengthStart..<lengthStart + 32])) ?? -1
             let bytesStart = lengthStart + 32
             guard length >= 0, bytesStart + length <= data.endIndex else {
                 throw BlockchainClientError.decodingFailed(reason: "aggregate3 response has truncated return data")
             }
+
             return (success, Data(data[bytesStart..<bytesStart + length]))
         }
     }

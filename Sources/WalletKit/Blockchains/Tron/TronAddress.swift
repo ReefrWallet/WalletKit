@@ -15,6 +15,7 @@ public struct TronAddress: BlockchainAddress {
         guard rawBytes.count == 21, rawBytes.first == 0x41 else {
             throw WalletKitError.invalidAddress(reason: "A Tron address must be 21 bytes beginning with 0x41.")
         }
+
         bytes = rawBytes
     }
 
@@ -28,6 +29,7 @@ public struct TronAddress: BlockchainAddress {
         guard Self.checksum(for: address) == Data(decoded.suffix(4)) else {
             throw WalletKitError.invalidAddress(reason: "Invalid Tron Base58Check checksum.")
         }
+
         try self.init(rawBytes: address)
     }
 

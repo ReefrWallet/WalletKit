@@ -56,7 +56,11 @@ struct SolanaMessageTests {
             )
         ]
 
-        let message = try SolanaMessage.compile(payer: payer, instructions: instructions, recentBlockhash: Data(repeating: 0, count: 32))
+        let message = try SolanaMessage.compile(
+            payer: payer,
+            instructions: instructions,
+            recentBlockhash: Data(repeating: 0, count: 32)
+        )
 
         let payerIndex = try #require(message.accountKeys.firstIndex(of: payer))
         #expect(payerIndex == 0)
@@ -64,7 +68,9 @@ struct SolanaMessageTests {
 
         // A writable-signer account (tier 0) must never fall inside the
         // readonly-signer/readonly-unsigned tiers.
-        let writableSignerCount = Int(message.header.numRequiredSignatures) - Int(message.header.numReadonlySignedAccounts)
+        let requiredSignatures = Int(message.header.numRequiredSignatures)
+        let readonlySignedAccounts = Int(message.header.numReadonlySignedAccounts)
+        let writableSignerCount = requiredSignatures - readonlySignedAccounts
         #expect(payerIndex < writableSignerCount)
     }
 

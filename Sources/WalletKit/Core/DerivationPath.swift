@@ -60,9 +60,10 @@ public struct DerivationPath: Codable, Equatable, Hashable, Sendable {
             case .secp256k1:
                 purpose = 54
             }
+
             try self.init(string: "m/\(purpose)'/784'/0'/0'/\(accountIndex)'")
         case .bitcoin:
-            throw WalletKitError.internalError(
+            throw WalletKitError.internalError( // swiftlint:disable:next line_length
                 message: "Bitcoin has no single derivation path — use DerivationPath.bitcoinAccount(network:scriptType:accountIndex:) instead"
             )
         default:
@@ -98,6 +99,7 @@ public struct DerivationPath: Codable, Equatable, Hashable, Sendable {
         case .singleAddress:
             throw WalletKitError.internalError(message: "SingleAddress descriptors have no derivation path")
         }
+
         let coinType: UInt32 = network == .mainnet ? 0 : 1
         return try DerivationPath(string: "m/\(purpose)'/\(coinType)'/\(accountIndex)'")
     }
@@ -123,6 +125,7 @@ public struct DerivationPath: Codable, Equatable, Hashable, Sendable {
             guard !part.isEmpty else {
                 throw WalletKitError.invalidDerivationPath(path: string)
             }
+
             let hardened = part.hasSuffix("'") || part.hasSuffix("h") || part.hasSuffix("H")
             let digits = hardened ? String(part.dropLast()) : part
             guard let index = UInt32(digits) else {

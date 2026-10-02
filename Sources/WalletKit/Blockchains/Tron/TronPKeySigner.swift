@@ -12,6 +12,7 @@ public final class TronPKeySigner: Signer {
         guard privateKey.curve == .secp256k1 else {
             throw WalletKitError.unsupportedCurve(curve: privateKey.curve)
         }
+
         self.privateKey = privateKey
         account = Account(
             blockchain: .tron(network),
@@ -31,6 +32,7 @@ public final class TronPKeySigner: Signer {
         let rawData = try Data(hexString: request.rawDataHex)
         let digest = Data(SHA256.hash(data: rawData))
         let signature = try remappingWalletKitError { try privateKey.raw.signPrehashedRecoverable(digest: digest) }
+
         // Tron transaction signatures use Ethereum's historical 27-based
         // recovery byte on the wire, not the raw 0/1 secp256k1 value.
         return signature.compact + Data([signature.recoveryId + 27])

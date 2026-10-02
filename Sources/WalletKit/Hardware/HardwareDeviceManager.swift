@@ -56,6 +56,7 @@ public final class HardwareDeviceManager: HardwareDeviceManagerProtocol {
         let infos = try await remappingWalletKitError {
             try await raw.scan(vendors: vendors.map(\.raw), transports: transports.map(\.rawValue))
         }
+
         return infos.map(HardwareDeviceInfo.init(raw:))
     }
 
@@ -74,6 +75,7 @@ public final class HardwareDeviceManager: HardwareDeviceManagerProtocol {
     public func connect(_ info: HardwareDeviceInfo, delegate: HardwareDeviceDelegate) async throws -> HardwareDevice {
         let adapter = HardwareDeviceDelegateAdapter(delegate: delegate)
         let rawDevice = try await remappingWalletKitError { try await raw.connect(info: info.raw, delegate: adapter) }
+
         let device = HardwareDevice(raw: rawDevice, delegateAdapter: adapter)
         adapter.device = device
         return device

@@ -27,7 +27,10 @@ extension BigUInt {
     /// - Returns: `nil` if `ffi.negative` is `true` — a negative value has
     ///   no unsigned representation.
     init?(_ ffi: BigIntFfi) {
-        guard !ffi.negative else { return nil }
+        guard !ffi.negative else {
+            return nil
+        }
+
         self.init(ffi.magnitudeBeBytes)
     }
 }

@@ -33,6 +33,7 @@ private func freeTCPPorts(_ count: Int) throws -> [UInt16] {
         guard fd >= 0 else {
             throw BitcoinLaunchError(description: "socket() failed while allocating a free port")
         }
+
         fds.append(fd)
 
         var addr = sockaddr_in()
@@ -45,6 +46,7 @@ private func freeTCPPorts(_ count: Int) throws -> [UInt16] {
                 bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
+
         guard bindResult == 0 else {
             throw BitcoinLaunchError(description: "bind() failed while allocating a free port")
         }
@@ -55,6 +57,7 @@ private func freeTCPPorts(_ count: Int) throws -> [UInt16] {
                 getsockname(fd, $0, &len)
             }
         }
+
         guard getResult == 0 else {
             throw BitcoinLaunchError(description: "getsockname() failed while allocating a free port")
         }
@@ -63,6 +66,101 @@ private func freeTCPPorts(_ count: Int) throws -> [UInt16] {
     }
 
     return ports
+}
+
+/// The five ports ``BitcoinNode/start()`` allocates for one `bitcoind`/`electrs` pair.
+private struct AllocatedPorts {
+    let p2p: UInt16
+    let rpc: UInt16
+    let electrum: UInt16
+    let http: UInt16
+    let monitoring: UInt16
+}
+
+/// `bitcoind` quietly binds an extra loopback listener at `p2pPort + 1`
+/// (confirmed empirically with several distinct `-port` values — e.g.
+/// `-port=42222` always also logs "Bound to 127.0.0.1:42223" — with no
+/// `-bind` flag asking for it) — reroll the other four ports if the
+/// kernel's ephemeral allocator (which hands out nearby ports for quick
+/// successive binds far more often than true randomness would) happens
+/// to pick that exact value for one of them.
+private func allocatePorts() throws -> AllocatedPorts {
+    let p2pPort = try freeTCPPorts(1)[0]
+    let reservedPort = p2pPort + 1
+
+    var otherPorts = try freeTCPPorts(4)
+    var rerollAttempts = 0
+    while otherPorts.contains(reservedPort), rerollAttempts < 5 {
+        otherPorts = try freeTCPPorts(4)
+        rerollAttempts += 1
+    }
+
+    guard !otherPorts.contains(reservedPort) else {
+        throw BitcoinLaunchError(description: "could not allocate ports avoiding bitcoind's reserved port \(reservedPort)")
+    }
+
+    return AllocatedPorts(
+        p2p: p2pPort,
+        rpc: otherPorts[0],
+        electrum: otherPorts[1],
+        http: otherPorts[2],
+        monitoring: otherPorts[3]
+    )
+}
+
+/// Launches `bitcoind -regtest` against `ports`, already running by the time this returns.
+private func launchBitcoind(
+    dataDirectory: URL,
+    path: String,
+    ports: AllocatedPorts
+) throws -> (process: Process, logHandle: FileHandle) {
+    let logHandle = try makeLogHandle(at: dataDirectory.appendingPathComponent("bitcoind.log"))
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: path)
+    process.arguments = [
+        "-regtest",
+        "-datadir=\(dataDirectory.path)",
+        "-rpcport=\(ports.rpc)",
+        "-port=\(ports.p2p)",
+        "-fallbackfee=0.0001",
+        "-printtoconsole"
+    ]
+    process.standardOutput = logHandle
+    process.standardError = logHandle
+
+    do {
+        try process.run()
+    } catch {
+        throw BitcoinLaunchError(description: "failed to launch bitcoind at \(path): \(error.localizedDescription)")
+    }
+
+    return (process, logHandle)
+}
+
+/// Builds (but doesn't yet run) the `electrs` process against `ports` —
+/// ``BitcoinNode/start()`` only starts it once `bitcoind`'s genesis
+/// blocks are mined, so its initial sync has a non-empty chain to index.
+private func makeElectrsProcess(
+    dataDirectory: URL,
+    dbDirectory: URL,
+    path: String,
+    ports: AllocatedPorts
+) throws -> (process: Process, logHandle: FileHandle) {
+    let logHandle = try makeLogHandle(at: dataDirectory.appendingPathComponent("electrs.log"))
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: path)
+    process.arguments = [
+        "--network", "regtest",
+        "--daemon-dir", dataDirectory.path,
+        "--daemon-rpc-addr", "127.0.0.1:\(ports.rpc)",
+        "--db-dir", dbDirectory.path,
+        "--electrum-rpc-addr", "127.0.0.1:\(ports.electrum)",
+        "--http-addr", "127.0.0.1:\(ports.http)",
+        "--monitoring-addr", "127.0.0.1:\(ports.monitoring)"
+    ]
+    process.standardOutput = logHandle
+    process.standardError = logHandle
+    return (process, logHandle)
 }
 
 /// A local `bitcoind -regtest` node fronted by `electrs` (Blockstream's
@@ -130,28 +228,7 @@ public final class BitcoinNode {
     ///   been run yet, either process fails to launch, or `electrs` never
     ///   finishes its initial sync within 15 seconds.
     public static func start() async throws -> BitcoinNode {
-        // `bitcoind` quietly binds an extra loopback listener at
-        // `p2pPort + 1` (confirmed empirically with several distinct
-        // `-port` values — e.g. `-port=42222` always also logs "Bound to
-        // 127.0.0.1:42223" — with no `-bind` flag asking for it) —
-        // reroll the other four ports if the kernel's ephemeral allocator
-        // (which hands out nearby ports for quick successive binds far
-        // more often than true randomness would) happens to pick that
-        // exact value for one of them.
-        let p2pPort = try freeTCPPorts(1)[0]
-        let reservedPort = p2pPort + 1
-
-        var otherPorts = try freeTCPPorts(4)
-        var rerollAttempts = 0
-        while otherPorts.contains(reservedPort), rerollAttempts < 5 {
-            otherPorts = try freeTCPPorts(4)
-            rerollAttempts += 1
-        }
-        guard !otherPorts.contains(reservedPort) else {
-            throw BitcoinLaunchError(description: "could not allocate ports avoiding bitcoind's reserved port \(reservedPort)")
-        }
-        let (rpcPort, electrumPort, httpPort, monitoringPort) = (otherPorts[0], otherPorts[1], otherPorts[2], otherPorts[3])
-
+        let ports = try allocatePorts()
         let (bitcoindPath, bitcoinCLIPath, electrsPath) = try resolveProvisionedBinaries()
 
         let dataDirectory = FileManager.default.temporaryDirectory
@@ -160,48 +237,25 @@ public final class BitcoinNode {
         try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: dbDirectory, withIntermediateDirectories: true)
 
-        let bitcoindLogHandle = try makeLogHandle(at: dataDirectory.appendingPathComponent("bitcoind.log"))
-        let bitcoindProcess = Process()
-        bitcoindProcess.executableURL = URL(fileURLWithPath: bitcoindPath)
-        bitcoindProcess.arguments = [
-            "-regtest",
-            "-datadir=\(dataDirectory.path)",
-            "-rpcport=\(rpcPort)",
-            "-port=\(p2pPort)",
-            "-fallbackfee=0.0001",
-            "-printtoconsole"
-        ]
-        bitcoindProcess.standardOutput = bitcoindLogHandle
-        bitcoindProcess.standardError = bitcoindLogHandle
-
-        do {
-            try bitcoindProcess.run()
-        } catch {
-            throw BitcoinLaunchError(description: "failed to launch bitcoind at \(bitcoindPath): \(error.localizedDescription)")
-        }
-
+        let (bitcoindProcess, bitcoindLogHandle) = try launchBitcoind(
+            dataDirectory: dataDirectory,
+            path: bitcoindPath,
+            ports: ports
+        )
         try await waitForCookie(dataDirectory: dataDirectory, process: bitcoindProcess)
 
-        let electrsLogHandle = try makeLogHandle(at: dataDirectory.appendingPathComponent("electrs.log"))
-        let electrsProcess = Process()
-        electrsProcess.executableURL = URL(fileURLWithPath: electrsPath)
-        electrsProcess.arguments = [
-            "--network", "regtest",
-            "--daemon-dir", dataDirectory.path,
-            "--daemon-rpc-addr", "127.0.0.1:\(rpcPort)",
-            "--db-dir", dbDirectory.path,
-            "--electrum-rpc-addr", "127.0.0.1:\(electrumPort)",
-            "--http-addr", "127.0.0.1:\(httpPort)",
-            "--monitoring-addr", "127.0.0.1:\(monitoringPort)"
-        ]
-        electrsProcess.standardOutput = electrsLogHandle
-        electrsProcess.standardError = electrsLogHandle
+        let (electrsProcess, electrsLogHandle) = try makeElectrsProcess(
+            dataDirectory: dataDirectory,
+            dbDirectory: dbDirectory,
+            path: electrsPath,
+            ports: ports
+        )
 
-        let esploraEndpoint = URL(string: "http://127.0.0.1:\(httpPort)")!
+        let esploraEndpoint = URL(string: "http://127.0.0.1:\(ports.http)")!
         let node = BitcoinNode(
             bitcoinCLIPath: bitcoinCLIPath,
-            rpcPort: rpcPort,
-            electrumPort: electrumPort,
+            rpcPort: ports.rpc,
+            electrumPort: ports.electrum,
             esploraEndpoint: esploraEndpoint,
             dataDirectory: dataDirectory,
             bitcoindProcess: bitcoindProcess,
@@ -251,9 +305,11 @@ public final class BitcoinNode {
         if electrsProcess.isRunning {
             electrsProcess.terminate()
         }
+
         if bitcoindProcess.isRunning {
             bitcoindProcess.terminate()
         }
+
         try? FileManager.default.removeItem(at: dataDirectory)
     }
 
@@ -298,6 +354,7 @@ public final class BitcoinNode {
             if let height = try? await esploraTipHeight(), height >= targetHeight {
                 return
             }
+
             try? await Task.sleep(for: .milliseconds(100))
         }
 
@@ -312,6 +369,7 @@ public final class BitcoinNode {
               let text = String(data: data, encoding: .utf8), let height = Int(text) else {
             throw BitcoinLaunchError(description: "malformed /blocks/tip/height response")
         }
+
         return height
     }
 
@@ -321,10 +379,12 @@ public final class BitcoinNode {
             if (try? await esploraTipHeight()) != nil {
                 return
             }
+
             try? await Task.sleep(for: .milliseconds(200))
         }
 
-        let log = (try? String(contentsOf: dataDirectory.appendingPathComponent("electrs.log"), encoding: .utf8)) ?? "(no log)"
+        let logURL = dataDirectory.appendingPathComponent("electrs.log")
+        let log = (try? String(contentsOf: logURL, encoding: .utf8)) ?? "(no log)"
         throw BitcoinLaunchError(description: "electrs never became ready within 15s. Log tail:\n\(log.suffix(2000))")
     }
 
@@ -338,10 +398,12 @@ public final class BitcoinNode {
             if FileManager.default.fileExists(atPath: cookiePath) {
                 return
             }
+
             try? await Task.sleep(for: .milliseconds(100))
         }
 
-        let log = (try? String(contentsOf: dataDirectory.appendingPathComponent("bitcoind.log"), encoding: .utf8)) ?? "(no log)"
+        let logURL = dataDirectory.appendingPathComponent("bitcoind.log")
+        let log = (try? String(contentsOf: logURL, encoding: .utf8)) ?? "(no log)"
         let status = process.isRunning ? "still running" : "exited with status \(process.terminationStatus)"
         throw BitcoinLaunchError(description: "bitcoind never wrote its cookie file within 15s (\(status)). Log tail:\n\(log.suffix(2000))")
     }
@@ -362,6 +424,7 @@ public final class BitcoinNode {
         } catch {
             throw BitcoinLaunchError(description: "failed to run bitcoin-cli \(arguments.joined(separator: " ")): \(error.localizedDescription)")
         }
+
         process.waitUntilExit()
 
         let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
@@ -387,7 +450,11 @@ public final class BitcoinNode {
 ///
 /// - Throws: ``BitcoinLaunchError`` naming the missing binary and
 ///   pointing at `make bitcoin-testing`, if it hasn't been run yet.
-private func resolveProvisionedBinaries() throws -> (bitcoind: String, bitcoinCLI: String, electrs: String) {
+private func resolveProvisionedBinaries() throws -> ( // swiftlint:disable:this large_tuple
+    bitcoind: String,
+    bitcoinCLI: String,
+    electrs: String
+) {
     let sourceRoot = ProcessInfo.processInfo.environment["SRCROOT"]
         ?? URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // WalletKitTesting/

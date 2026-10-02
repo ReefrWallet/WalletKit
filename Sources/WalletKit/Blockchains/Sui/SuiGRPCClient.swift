@@ -14,7 +14,7 @@ import SwiftProtobuf
 import WalletKitGRPC
 
 /// A client for Sui's gRPC full-node API.
-public struct SuiGRPCClient: Sendable {
+public struct SuiGRPCClient: Sendable { // swiftlint:disable:this type_body_length
     private let host: String
     private let port: Int
     private let useTLS: Bool
@@ -133,10 +133,12 @@ public struct SuiGRPCClient: Sendable {
             let request = Sui_Rpc_V2_ListOwnedObjectsRequest.with {
                 $0.owner = owner.string
             }
+
             let response = try await client.listOwnedObjects(
                 request: ClientRequest(message: request),
                 options: self.callOptions
             )
+
             return response.objects
         }
     }
@@ -167,11 +169,155 @@ public struct SuiGRPCClient: Sendable {
                     $0.readMask = Google_Protobuf_FieldMask.with { $0.paths = readMask }
                 }
             }
+
             let response = try await client.getObject(
                 request: ClientRequest(message: request),
                 options: self.callOptions
             )
+
             return response.object
+        }
+    }
+
+    /// Fetches multiple objects in one round trip via
+    /// `LedgerService.batchGetObjects` — used to resolve a dapp
+    /// transaction's unresolved object inputs (owner kind, shared
+    /// `initial_shared_version`) before it can be built into BCS.
+    ///
+    /// - Parameters:
+    ///   - ids: The objects' IDs. The node imposes its own cap on
+    ///     request count; callers should batch at a reasonable size
+    ///     (e.g. 50) themselves.
+    ///   - readMask: Which fields to populate. Defaults to
+    ///     `object_id,version,digest,owner`.
+    /// - Returns: One object per input id, in the same order as `ids`.
+    /// - Throws: ``BlockchainClientError`` on a transport, RPC, or
+    ///   decoding failure, or if any individual object lookup failed
+    ///   (e.g. the object doesn't exist) — there is no partial result.
+    public func objects(ids: [String]) async throws -> [SuiObjectInfo] {
+        try await withLedgerServiceClient { client in
+            let request = Sui_Rpc_V2_BatchGetObjectsRequest.with {
+                $0.requests = ids.map { id in
+                    Sui_Rpc_V2_GetObjectRequest.with {
+                        $0.objectID = id
+                        $0.readMask = Google_Protobuf_FieldMask.with {
+                            $0.paths = ["object_id", "version", "digest", "owner"]
+                        }
+                    }
+                }
+            }
+
+            let response = try await client.batchGetObjects(
+                request: ClientRequest(message: request),
+                options: self.callOptions
+            )
+
+            return try response.objects.map { result in
+                guard case .object(let object)? = result.result else {
+                    throw BlockchainClientError.decodingFailed(reason: "object lookup failed: \(result.error.message)")
+                }
+
+                let owner: SuiObjectInfo.Owner
+
+                switch object.owner.kind {
+                case .address:
+                    owner = .address(try SuiAddress(string: object.owner.address))
+                case .object:
+                    owner = .object(try SuiAddress(string: object.owner.address))
+                case .immutable:
+                    owner = .immutable
+                case .shared:
+                    owner = .shared(initialSharedVersion: object.owner.version)
+                case .unknown, .consensusAddress, .UNRECOGNIZED:
+                    owner = .unsupported
+                }
+
+                return SuiObjectInfo(
+                    objectId: try Data(hexString: object.objectID),
+                    version: object.version,
+                    digest: try Base58.decode(object.digest),
+                    owner: owner
+                )
+            }
+        }
+    }
+
+    /// Reads a Move function's signature via
+    /// `MovePackageService.getFunction` — used to resolve a dapp
+    /// transaction's untyped `MoveCall` arguments (pure-value BCS
+    /// encoding, shared-object mutability) before it can be built into
+    /// BCS.
+    ///
+    /// - Parameters:
+    ///   - package: The function's package ID.
+    ///   - module: The function's module name.
+    ///   - name: The function name.
+    /// - Returns: The function's descriptor, including its parameter
+    ///   types.
+    /// - Throws: ``BlockchainClientError`` on a transport, RPC, or
+    ///   decoding failure.
+    public func moveFunction(package: String, module: String, name: String) async throws -> SuiMoveFunctionSignature {
+        try await withMovePackageServiceClient { client in
+            let request = Sui_Rpc_V2_GetFunctionRequest.with {
+                $0.packageID = package
+                $0.moduleName = module
+                $0.name = name
+            }
+
+            let response = try await client.getFunction(
+                request: ClientRequest(message: request),
+                options: self.callOptions
+            )
+
+            return SuiMoveFunctionSignature(parameters: response.function.parameters.map(Self.convert))
+        }
+    }
+
+    private static func convert(_ signature: Sui_Rpc_V2_OpenSignature) -> SuiMoveParameter {
+        let reference: SuiMoveParameter.Reference
+
+        switch signature.reference {
+        case .immutable:
+            reference = .immutable
+        case .mutable:
+            reference = .mutable
+        case .unknown, .UNRECOGNIZED:
+            reference = .none
+        }
+
+        return SuiMoveParameter(reference: reference, body: convert(signature.body))
+    }
+
+    private static func convert(_ body: Sui_Rpc_V2_OpenSignatureBody) -> SuiMoveTypeBody {
+        switch body.type {
+        case .address:
+            return .address
+        case .bool:
+            return .bool
+        case .u8:
+            return .u8
+        case .u16:
+            return .u16
+        case .u32:
+            return .u32
+        case .u64:
+            return .u64
+        case .u128:
+            return .u128
+        case .u256:
+            return .u256
+        case .datatype:
+            return .datatype(typeName: body.typeName, typeParameters: body.typeParameterInstantiation.map(convert))
+        case .parameter:
+            return .typeParameter(Int(body.typeParameter))
+        case .vector:
+            guard let element = body.typeParameterInstantiation.first else {
+                return .unsupported
+            }
+
+            return .vector(convert(element))
+        case .unknown, .UNRECOGNIZED:
+            return .unsupported
         }
     }
 
@@ -264,20 +410,25 @@ public struct SuiGRPCClient: Sendable {
                 $0.transaction = Sui_Rpc_V2_Transaction.with {
                     $0.bcs = Sui_Rpc_V2_Bcs.with { $0.value = transactionData }
                 }
+
                 $0.signatures = [
                     Sui_Rpc_V2_UserSignature.with {
                         $0.bcs = Sui_Rpc_V2_Bcs.with { $0.value = signature }
                     }
+
                 ]
+
                 // The default read mask (`effects.status,checkpoint`) omits
                 // `digest` entirely, so without this the returned digest is
                 // empty and unusable for a follow-up `GetTransaction` call.
                 $0.readMask.paths = ["digest"]
             }
+
             let response = try await client.executeTransaction(
                 request: ClientRequest(message: request),
                 options: self.callOptions
             )
+
             return response.transaction.digest
         }
     }
@@ -310,17 +461,22 @@ public struct SuiGRPCClient: Sendable {
                 $0.transaction = Sui_Rpc_V2_Transaction.with {
                     $0.bcs = Sui_Rpc_V2_Bcs.with { $0.value = transactionData }
                 }
+
                 $0.signatures = [
                     Sui_Rpc_V2_UserSignature.with {
                         $0.bcs = Sui_Rpc_V2_Bcs.with { $0.value = signature }
                     }
+
                 ]
+
                 $0.readMask.paths = ["digest", "transaction.effects.bcs"]
             }
+
             let response = try await client.executeTransaction(
                 request: ClientRequest(message: request),
                 options: self.callOptions
             )
+
             return (digest: response.transaction.digest, effects: response.transaction.effects.bcs.value)
         }
     }
@@ -346,6 +502,7 @@ public struct SuiGRPCClient: Sendable {
         try await withStateServiceClient { stateClient in
             var coins: [SuiCoinObject] = []
             var pageToken = Data()
+
             repeat {
                 let pageRequest = Sui_Rpc_V2_ListOwnedObjectsRequest.with {
                     $0.owner = address.string
@@ -353,12 +510,15 @@ public struct SuiGRPCClient: Sendable {
                     $0.readMask = Google_Protobuf_FieldMask.with {
                         $0.paths = ["object_id", "version", "digest", "balance"]
                     }
+
                     if !pageToken.isEmpty { $0.pageToken = pageToken }
                 }
+
                 let response = try await stateClient.listOwnedObjects(
                     request: ClientRequest(message: pageRequest),
                     options: self.callOptions
                 )
+
                 let page = try response.objects.map { object in
                     SuiCoinObject(
                         reference: SuiObjectReference(
@@ -369,10 +529,14 @@ public struct SuiGRPCClient: Sendable {
                         balance: object.balance
                     )
                 }
+
                 coins.append(contentsOf: page)
                 pageToken = response.nextPageToken
             } while !pageToken.isEmpty
-            return coins.sorted { $0.balance > $1.balance }
+
+            return coins.sorted {
+                $0.balance > $1.balance
+            }
         }
     }
 
@@ -408,14 +572,17 @@ public struct SuiGRPCClient: Sendable {
         }
 
         let gasCost = try await simulateGasCost(transactionData: txBytes)
+
         // Gross = computation + storage (before rebate). The rebate is
         // credited after execution, so the gas budget must cover the gross
         // cost; base any budget calculation on grossFee, not estimatedFee.
         let grossFee = BigUInt(gasCost.computationCost) + BigUInt(gasCost.storageCost)
+
         // Net fee = computation + storage − rebate, floored at 0. A negative
         // net is possible if the rebate exceeds both cost components (e.g. a
         // transaction that deletes many coin objects).
         let rawCost = Int64(bitPattern: gasCost.computationCost &+ gasCost.storageCost) - Int64(gasCost.storageRebate)
+
         let estimatedFee = BigUInt(max(0, rawCost))
         let gasLimit: BigUInt? = gasPrice > 0 ? BigUInt(gasCost.computationCost / gasPrice) : nil
 
@@ -429,39 +596,58 @@ public struct SuiGRPCClient: Sendable {
 
     /// Fetches the current epoch's `reference_gas_price` (MIST per gas unit)
     /// via `LedgerService.getEpoch` with a narrow read mask.
-    func referenceGasPrice() async throws -> UInt64 {
+    public func referenceGasPrice() async throws -> UInt64 {
         try await withLedgerServiceClient { ledger in
             let request = Sui_Rpc_V2_GetEpochRequest.with {
                 $0.readMask = Google_Protobuf_FieldMask.with { $0.paths = ["reference_gas_price"] }
             }
+
             let response = try await ledger.getEpoch(
                 request: ClientRequest(message: request),
                 options: self.callOptions
             )
+
             return response.epoch.referenceGasPrice
         }
+    }
+
+    /// ``simulateGasCost(transactionData:)``, converted to
+    /// ``SuiGasCostSummary`` — the dapp bridge's entry point for sizing
+    /// a transaction's gas budget, kept distinct from
+    /// ``estimateFee(for:)`` (which also fetches the reference gas
+    /// price and computes a net, rebate-adjusted fee this budget-sizing
+    /// use has no need for).
+    public func gasCostSummary(transactionData: Data) async throws -> SuiGasCostSummary {
+        let cost = try await simulateGasCost(transactionData: transactionData)
+        return SuiGasCostSummary(
+            computationCost: cost.computationCost, storageCost: cost.storageCost, storageRebate: cost.storageRebate
+        )
     }
 
     /// Simulates `transactionData` via
     /// `TransactionExecutionService.simulateTransaction` and returns the
     /// resulting `GasCostSummary` (`computation_cost`, `storage_cost`,
-    /// `storage_rebate`, `non_refundable_storage_fee`).
+    /// `storage_rebate`, `non_refundable_storage_fee`) — used both by
+    /// ``estimateFee(for:)`` and ``gasCostSummary(transactionData:)``.
     func simulateGasCost(transactionData: Data) async throws -> Sui_Rpc_V2_GasCostSummary {
         try await withTransactionExecutionServiceClient { client in
             let request = Sui_Rpc_V2_SimulateTransactionRequest.with {
                 $0.transaction = Sui_Rpc_V2_Transaction.with {
                     $0.bcs = Sui_Rpc_V2_Bcs.with { $0.value = transactionData }
                 }
+
                 // Request only the gas summary — avoids deserialising the
                 // full object/event lists the node would otherwise populate.
                 $0.readMask = Google_Protobuf_FieldMask.with {
                     $0.paths = ["transaction.effects.gas_used"]
                 }
             }
+
             let response = try await client.simulateTransaction(
                 request: ClientRequest(message: request),
                 options: self.callOptions
             )
+
             return response.transaction.effects.gasUsed
         }
     }
@@ -493,6 +679,16 @@ public struct SuiGRPCClient: Sendable {
         try await withRemappedErrors {
             try await withGRPCClient(transport: try transport()) { grpcClient in
                 try await body(Sui_Rpc_V2_LedgerService.Client(wrapping: grpcClient))
+            }
+        }
+    }
+
+    func withMovePackageServiceClient<Result: Sendable>(
+        _ body: @escaping (Sui_Rpc_V2_MovePackageService.Client<HTTP2ClientTransport.Posix>) async throws -> Result
+    ) async throws -> Result {
+        try await withRemappedErrors {
+            try await withGRPCClient(transport: try transport()) { grpcClient in
+                try await body(Sui_Rpc_V2_MovePackageService.Client(wrapping: grpcClient))
             }
         }
     }

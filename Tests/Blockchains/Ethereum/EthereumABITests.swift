@@ -26,7 +26,10 @@ private func word(_ value: BigUInt) -> Data {
 /// A 32-byte ABI word encoding `value` as a two's-complement signed integer
 /// — computed independently of `EthereumABI.decodeInt256`.
 private func word(_ value: BigInt) -> Data {
-    guard value.sign == .minus else { return word(value.magnitude) }
+    guard value.sign == .minus else {
+        return word(value.magnitude)
+    }
+
     return word((BigUInt(1) << 256) - value.magnitude)
 }
 

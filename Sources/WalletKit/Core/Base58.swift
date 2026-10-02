@@ -37,17 +37,20 @@ public enum Base58 {
                     reason: "'\(string)' is not valid Base58 (bad character '\(character)')"
                 )
             }
+
             var carry = digit
             for index in 0..<bytes.count {
                 let value = bytes[index] * 58 + carry
                 bytes[index] = value & 0xFF
                 carry = value >> 8
             }
+
             while carry > 0 {
                 bytes.append(carry & 0xFF)
                 carry >>= 8
             }
         }
+
         let leadingZeros = string.prefix(while: { $0 == "1" }).count
         let significant = Data(bytes.reversed().map { UInt8($0) })
         return Data(repeating: 0, count: leadingZeros) + significant
@@ -66,6 +69,7 @@ public enum Base58 {
                 digits[index] = value % 58
                 carry = value / 58
             }
+
             while carry > 0 {
                 digits.append(carry % 58)
                 carry /= 58
@@ -74,6 +78,7 @@ public enum Base58 {
 
         let leadingZeros = data.prefix(while: { $0 == 0 }).count
         let encoded = digits.reversed().map { alphabet[$0] }
+
         return String(repeating: "1", count: leadingZeros) + String(encoded)
     }
 }

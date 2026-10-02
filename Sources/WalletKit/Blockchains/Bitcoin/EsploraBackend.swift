@@ -32,13 +32,21 @@ struct EsploraBackend: BitcoinBackend {
         var entries: [BitcoinBackendHistoryEntry] = []
 
         let firstPage = try await client.addressTransactions(addressString)
-        entries.append(contentsOf: firstPage.map { BitcoinBackendHistoryEntry(txid: $0.txid, height: $0.status.blockHeight) })
+        entries.append(contentsOf: firstPage.map {
+            BitcoinBackendHistoryEntry(txid: $0.txid, height: $0.status.blockHeight)
+        })
 
         var cursor = firstPage.count < 25 ? nil : firstPage.last?.txid
         while let lastSeenTxid = cursor {
             let page = try await client.addressTransactions(addressString, after: lastSeenTxid)
-            guard !page.isEmpty else { break }
-            entries.append(contentsOf: page.map { BitcoinBackendHistoryEntry(txid: $0.txid, height: $0.status.blockHeight) })
+            guard !page.isEmpty else {
+                break
+            }
+
+            entries.append(contentsOf: page.map {
+                BitcoinBackendHistoryEntry(txid: $0.txid, height: $0.status.blockHeight)
+            })
+
             cursor = page.count < 25 ? nil : page.last?.txid
         }
 
@@ -66,12 +74,17 @@ struct EsploraBackend: BitcoinBackend {
 
         let inputs: [(scriptPubkey: Data, valueSats: UInt64)] = try tx.vin.map { input in
             // A coinbase input has no real prevout to attribute value to.
-            guard let prevout = input.prevout else { return (scriptPubkey: Data(), valueSats: 0) }
+            guard let prevout = input.prevout else {
+                return (scriptPubkey: Data(), valueSats: 0)
+            }
+
             return (scriptPubkey: try Data(hexString: prevout.scriptpubkey), valueSats: prevout.value)
         }
+
         let outputs: [(scriptPubkey: Data, valueSats: UInt64)] = try tx.vout.map { output in
             (scriptPubkey: try Data(hexString: output.scriptpubkey), valueSats: output.value)
         }
+
         let blockTime = tx.status.blockTime.map { Date(timeIntervalSince1970: TimeInterval($0)) }
 
         return BitcoinBackendTransaction(
@@ -101,6 +114,7 @@ struct EsploraBackend: BitcoinBackend {
               let value = estimates["\(fallbackTarget)"] else {
             throw BlockchainClientError.decodingFailed(reason: "fee-estimates response has no usable entry")
         }
+
         return value
     }
 

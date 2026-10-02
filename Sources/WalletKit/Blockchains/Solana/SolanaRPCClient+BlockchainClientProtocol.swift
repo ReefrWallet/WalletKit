@@ -16,22 +16,30 @@ extension SolanaRPCClient: BlockchainClientProtocol {
     /// Wrapped SOL's real mint address, used here purely as a sentinel
     /// key/token-identifier for native SOL — never queried as an actual
     /// SPL mint.
-    static let nativeMintPlaceholder = try! SolanaAddress(string: "So11111111111111111111111111111111111111112")
+    static let nativeMintPlaceholder = SolanaAddress.known("So11111111111111111111111111111111111111112")
 
     public func getAllBalances(_ owner: SolanaAddress) async throws -> [String: BigUInt] {
-        var balances: [String: BigUInt] = [Self.nativeMintPlaceholder.string: BigUInt(try await lamportBalance(of: owner))]
-        for (_, mint, amount) in try await tokenAccounts(of: owner, tokenProgram: SolanaProgram.token) {
-            balances[mint.string, default: 0] += amount
+        var balances: [String: BigUInt] = [
+            Self.nativeMintPlaceholder.string: BigUInt(try await lamportBalance(of: owner))
+        ]
+
+        for account in try await tokenAccounts(of: owner, tokenProgram: SolanaProgram.token) {
+            balances[account.mint.string, default: 0] += account.amount
         }
-        for (_, mint, amount) in try await tokenAccounts(of: owner, tokenProgram: SolanaProgram.token2022) {
-            balances[mint.string, default: 0] += amount
+
+        for account in try await tokenAccounts(of: owner, tokenProgram: SolanaProgram.token2022) {
+            balances[account.mint.string, default: 0] += account.amount
         }
+
         return balances
     }
 
     public func getBalances(_ owner: SolanaAddress, tokens: [String]) async throws -> [String: BigUInt] {
         let all = try await getAllBalances(owner)
-        guard !tokens.isEmpty else { return all }
+        guard !tokens.isEmpty else {
+            return all
+        }
+
         return all.filter { tokens.contains($0.key) }
     }
 
@@ -39,9 +47,11 @@ extension SolanaRPCClient: BlockchainClientProtocol {
         if token == Self.nativeMintPlaceholder.string {
             return BigUInt(try await lamportBalance(of: owner))
         }
+
         let mint = try SolanaAddress(string: token)
         let accounts = try await tokenAccounts(of: owner, tokenProgram: SolanaProgram.token)
             + tokenAccounts(of: owner, tokenProgram: SolanaProgram.token2022)
+
         return accounts.filter { $0.mint == mint }.reduce(0) { $0 + $1.amount }
     }
 
@@ -53,12 +63,15 @@ extension SolanaRPCClient: BlockchainClientProtocol {
         guard let token, token != Self.nativeMintPlaceholder.string else {
             return .solana
         }
+
         let mint = try SolanaAddress(string: token)
         let decimals = try await mintDecimals(of: mint)
+
         guard let metadata = try? await metaplexTokenInfo(of: mint) else {
             let short = mint.string.prefix(4) + "…" + mint.string.suffix(4)
             return TokenInfo(decimals: decimals, name: String(short), isNative: false, symbol: String(short))
         }
+
         return TokenInfo(decimals: decimals, name: metadata.name, isNative: false, symbol: metadata.symbol)
     }
 
@@ -72,8 +85,10 @@ extension SolanaRPCClient: BlockchainClientProtocol {
 
     public func isSupported(_ feature: BlockchainClientFeature) -> Bool {
         switch feature {
-        case .multipleBalances, .allBalances, .feeEstimation, .transactionHistory: true
-        case .transactionSubscription: false
+        case .multipleBalances, .allBalances, .feeEstimation, .transactionHistory:
+            true
+        case .transactionSubscription:
+            false
         }
     }
 
@@ -127,10 +142,13 @@ extension SolanaRPCClient: BlockchainClientProtocol {
         guard signature.count == 64 else {
             throw WalletKitError.signingFailed(reason: "A Solana signature must be 64 bytes.")
         }
+
         let envelope = try JSONDecoder().decode(SolanaUnsignedTransaction.self, from: transaction)
         var wire = SolanaShortVec.encode(1)
+
         wire.append(signature)
         wire.append(envelope.message)
+
         return try await sendTransaction(wire)
     }
 
@@ -140,21 +158,30 @@ extension SolanaRPCClient: BlockchainClientProtocol {
     private static func computeBudget(in message: SolanaMessage) -> (limit: UInt32?, microLamports: UInt64) {
         var limit: UInt32?
         var microLamports: UInt64 = 0
-        let computeBudgetIndex = message.accountKeys.firstIndex { $0 == SolanaProgram.computeBudget }
+
+        let computeBudgetIndex = message
+            .accountKeys
+            .firstIndex { $0 == SolanaProgram.computeBudget }
+
         guard let computeBudgetIndex, let programIndex = UInt8(exactly: computeBudgetIndex) else {
             return (nil, 0)
         }
 
         for instruction in message.instructions where instruction.programIdIndex == programIndex {
-            guard !instruction.data.isEmpty else { continue }
+            guard !instruction.data.isEmpty else {
+                continue
+            }
+
             let discriminant = instruction.data[0]
             let payload = Array(instruction.data.dropFirst())
+
             if discriminant == 2, payload.count == 4 {
                 limit = littleEndian(payload)
             } else if discriminant == 3, payload.count == 8 {
                 microLamports = littleEndian(payload)
             }
         }
+
         return (limit, microLamports)
     }
 

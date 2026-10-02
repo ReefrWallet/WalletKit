@@ -23,6 +23,7 @@ extension SuiGRPCClient: BlockchainClientProtocol {
                 balances[balance.coinType] = BigUInt(balance.balance)
             }
         }
+
         return balances
     }
 
@@ -35,7 +36,10 @@ extension SuiGRPCClient: BlockchainClientProtocol {
     }
 
     public func getTokenInfo(_ token: String?) async throws -> TokenInfo {
-        guard let token else { return .sui }
+        guard let token else {
+            return .sui
+        }
+
         return try await coinInfo(coinType: token)
     }
 

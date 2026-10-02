@@ -95,6 +95,7 @@ public struct EthereumRPCClient: Sendable {
         guard let nonce = UInt64(exactly: value) else {
             throw BlockchainClientError.decodingFailed(reason: "nonce overflows UInt64: \(hex)")
         }
+
         return nonce
     }
 
@@ -146,7 +147,9 @@ public struct EthereumRPCClient: Sendable {
         // ETH `value` and ABI `data` are encoded as 0x-prefixed hex strings
         // in the call object, consistent with the rest of the JSON-RPC API.
         let valueHex = request.value.map { "0x" + String($0, radix: 16) }
+
         let dataHex = request.data.map { $0.hexEncoded }
+
         let estimateParams = EstimateGasParams(
             from: request.from?.string,
             to: to.string,
@@ -192,6 +195,7 @@ public struct EthereumRPCClient: Sendable {
         guard let value = BigUInt(body, radix: 16) else {
             throw BlockchainClientError.decodingFailed(reason: "invalid quantity hex: \(hex)")
         }
+
         return value
     }
 }

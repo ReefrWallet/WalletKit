@@ -22,6 +22,7 @@ private actor HardwareDeviceLock {
             isLocked = true
             return
         }
+
         await withCheckedContinuation { waiters.append($0) }
     }
 

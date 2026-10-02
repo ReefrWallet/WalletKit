@@ -31,6 +31,7 @@ private func freeTCPPorts(_ count: Int) throws -> [UInt16] {
         guard fd >= 0 else {
             throw SolanaLaunchError(description: "socket() failed while allocating a free port")
         }
+
         fds.append(fd)
 
         var addr = sockaddr_in()
@@ -43,6 +44,7 @@ private func freeTCPPorts(_ count: Int) throws -> [UInt16] {
                 bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
+
         guard bindResult == 0 else {
             throw SolanaLaunchError(description: "bind() failed while allocating a free port")
         }
@@ -53,6 +55,7 @@ private func freeTCPPorts(_ count: Int) throws -> [UInt16] {
                 getsockname(fd, $0, &len)
             }
         }
+
         guard getResult == 0 else {
             throw SolanaLaunchError(description: "getsockname() failed while allocating a free port")
         }
@@ -63,19 +66,17 @@ private func freeTCPPorts(_ count: Int) throws -> [UInt16] {
     return ports
 }
 
-/// A local `solana-test-validator` node for integration tests that need a
-/// real backend behind ``SolanaRPCClient`` rather than a mock. Unlike
-/// `bitcoind`/`electrs` (two processes) or Sui's `sui start`, one binary
-/// serves both RPC and the airdrop faucet, and the SPL Token/Token-2022/
-/// Associated-Token-Account programs are already present in its default
-/// genesis — no `--bpf-program`/`--clone` setup needed.
+/// A local `solana-test-validator` node for integration tests that need a real backend behind
+/// ``SolanaRPCClient`` rather than a mock. Unlike `bitcoind`/`electrs` (two processes) or Sui's
+/// `sui start`, one binary serves both RPC and the airdrop faucet, and the SPL Token/Token-2022/
+/// Associated-Token-Account programs are already present in its default genesis — no
+/// `--bpf-program`/`--clone` setup needed.
 ///
-/// No `mise` registry entry exists for any of the Agave binaries this
-/// wraps (checked: `mise registry` has no `solana` backend), so — like
-/// `BitcoinNode` — this isn't provisioned lazily: `make solana-testing`
-/// downloads the official release tarball into
-/// `WalletKit/.build/solana-testing/bin/` once; ``start()`` only resolves
-/// that already-provisioned path.
+/// No `mise` registry entry exists for any of the Agave binaries this wraps (checked: `mise
+/// registry` has no `solana` backend), so — like `BitcoinNode` — this isn't provisioned lazily:
+/// `make solana-testing` downloads the official release tarball into
+/// `WalletKit/.build/solana-testing/bin/` once; ``start()`` only resolves that already-provisioned
+/// path.
 public final class SolanaNode {
     /// The local validator's JSON-RPC endpoint.
     public let rpcURL: URL
@@ -152,6 +153,7 @@ public final class SolanaNode {
         if process.isRunning {
             process.terminate()
         }
+
         try? FileManager.default.removeItem(at: ledgerDirectory)
     }
 
@@ -167,6 +169,7 @@ public final class SolanaNode {
             let method = "requestAirdrop"
             let params: [AnyEncodableParam]
         }
+
         struct AnyEncodableParam: Encodable {
             let string: String?
             let integer: UInt64?
@@ -175,10 +178,12 @@ public final class SolanaNode {
                 if let string { try container.encode(string) } else if let integer { try container.encode(integer) }
             }
         }
+
         struct Response: Decodable {
             let result: String?
             let error: RPCError?
         }
+
         struct RPCError: Decodable {
             let message: String
         }
@@ -196,12 +201,9 @@ public final class SolanaNode {
         return signature
     }
 
-    /// Creates a new SPL mint with `decimals`, mints `amount` of it into
-    /// `owner`'s associated token account (created if needed), and
-    /// returns the mint's address — via the `spl-token` CLI, using an
-    /// ephemeral, freshly airdropped keypair as the CLI's own fee-payer/
-    /// mint-authority (unrelated to any WalletKit-derived key under
-    /// test).
+    /// Creates a new SPL mint with `decimals`, mints `amount` of it into `owner`'s associated
+    /// token account (created if needed), using an ephemeral, freshly airdropped keypair as the
+    /// `spl-token` CLI's own fee-payer/mint-authority (unrelated to any WalletKit-derived key).
     ///
     /// - Returns: The new mint's address.
     public func mintSPLToken(decimals: UInt8, to owner: SolanaAddress, amount: UInt64) async throws -> SolanaAddress {
@@ -218,6 +220,7 @@ public final class SolanaNode {
               let mintAddress = mintAddressLine.split(separator: " ").last else {
             throw SolanaLaunchError(description: "could not parse mint address from spl-token output:\n\(createTokenOutput)")
         }
+
         let mint = try SolanaAddress(string: String(mintAddress))
         // `spl-token` reports success once its transaction is merely
         // "confirmed"; a subsequent `getAccountInfo` at the RPC's default
@@ -255,6 +258,7 @@ public final class SolanaNode {
             let method = "getAccountInfo"
             let params: AccountInfoParams
         }
+
         struct AccountInfoParams: Encodable {
             let pubkey: String
 
@@ -274,12 +278,15 @@ public final class SolanaNode {
                 try container.encode(Config())
             }
         }
+
         struct Response: Decodable {
             let result: ResultValue?
         }
+
         struct ResultValue: Decodable {
             let value: AccountInfoValue?
         }
+
         struct AccountInfoValue: Decodable {
             let lamports: UInt64
         }
@@ -291,6 +298,7 @@ public final class SolanaNode {
             if response.result?.value != nil {
                 return
             }
+
             try? await Task.sleep(for: .milliseconds(200))
         }
 
@@ -309,18 +317,22 @@ public final class SolanaNode {
             let method = "getSignatureStatuses"
             let params: [[String]]
         }
+
         struct IgnoredValue: Decodable {
             init(from decoder: Decoder) throws {
                 _ = try decoder.singleValueContainer()
             }
         }
+
         struct StatusValue: Decodable {
             let confirmationStatus: String?
             let err: IgnoredValue?
         }
+
         struct Response: Decodable {
             let result: ResultValue?
         }
+
         struct ResultValue: Decodable {
             let value: [StatusValue?]
         }
@@ -332,6 +344,7 @@ public final class SolanaNode {
                 if status.err != nil {
                     throw SolanaLaunchError(description: "transaction \(signature) failed on-chain")
                 }
+
                 // Waits for "confirmed" (or better) specifically, not
                 // just any non-nil status — "processed" alone doesn't
                 // guarantee the cluster has converged on this block, and
@@ -344,6 +357,7 @@ public final class SolanaNode {
                     return
                 }
             }
+
             try? await Task.sleep(for: .milliseconds(200))
         }
 
@@ -364,9 +378,11 @@ private extension SolanaNode {
                 let id = 1
                 let method = "getHealth"
             }
+
             if let response: HealthResponse = try? await call(Envelope()), response.result == "ok" {
                 return
             }
+
             try? await Task.sleep(for: .milliseconds(200))
         }
 
@@ -388,9 +404,13 @@ private extension SolanaNode {
     /// Formats `amount` (in the mint's smallest unit) as the decimal
     /// token-amount string `spl-token mint` expects on its command line.
     func decimalAmount(_ amount: UInt64, decimals: UInt8) -> String {
-        guard decimals > 0 else { return "\(amount)" }
+        guard decimals > 0 else {
+            return "\(amount)"
+        }
+
         var divisor: UInt64 = 1
         for _ in 0..<decimals { divisor *= 10 }
+
         let whole = amount / divisor
         let fraction = amount % divisor
         return "\(whole).\(String(format: "%0\(decimals)d", fraction))"
@@ -403,7 +423,8 @@ private extension SolanaNode {
 
     @discardableResult
     func splToken(_ arguments: [String]) throws -> String {
-        try runProcess(binDirectory.appendingPathComponent("spl-token").path, arguments + ["--url", rpcURL.absoluteString])
+        let splTokenPath = binDirectory.appendingPathComponent("spl-token").path
+        return try runProcess(splTokenPath, arguments + ["--url", rpcURL.absoluteString])
     }
 
     @discardableResult
@@ -424,6 +445,7 @@ private extension SolanaNode {
                 description: "failed to run \(executablePath) \(arguments.joined(separator: " ")): \(error.localizedDescription)"
             )
         }
+
         process.waitUntilExit()
 
         let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?

@@ -52,7 +52,7 @@ private func send(
 // `.serialized`: each test spins up its own full local validator process
 // — see `SuiLocalnetTests`' identical note on why concurrent instances
 // blow past a tight per-test time limit.
-@Suite(.timeLimit(.minutes(2)), .serialized)
+@Suite(.timeLimit(.minutes(1)), .serialized)
 struct SolanaLocalnetTests {
     @Test func estimateFeeRatesOnlyReturnsARecentPriorityFee() async throws {
         let node = try await SolanaNode.start()

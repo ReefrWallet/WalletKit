@@ -141,6 +141,7 @@ private func makeSuiSigner(privateKeyHex: String) throws -> SuiPKeySigner {
         data.append(UInt8(hex[index..<next], radix: 16)!)
         index = next
     }
+
     let privateKey = try PrivateKey(curve: .ed25519, rawBytes: data)
     return try SuiPKeySigner(
         curve: .ed25519,
