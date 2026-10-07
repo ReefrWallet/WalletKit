@@ -106,6 +106,7 @@ extension EthereumRPCClient {
             limit: blockLimit,
             upperBound: upperBound
         )
+
         let fetchedBlocks: [EVMHistoryBlock?] = try await rpc.callBatch(
             method: "eth_getBlockByNumber",
             params: blocks.map {
@@ -115,6 +116,7 @@ extension EthereumRPCClient {
                 )
             }
         )
+
         let effectsByBlock: [UInt64: [(transactionHash: String, effect: BlockchainTransactionEffect)]]
 
         do {

@@ -26,6 +26,13 @@ public struct BitcoinTransactionBuilder: BlockchainTransactionBuilderProtocol {
         self.client = client
     }
 
+    /// Parses `string` with the backing client's
+    /// ``BitcoinClient/makeAddress(_:)``, so a plain recipient address is
+    /// accepted alongside a sender descriptor.
+    public func makeAddress(_ string: String) throws -> BitcoinDescriptor {
+        try client.makeAddress(string)
+    }
+
     /// Builds unsigned PSBT bytes for a transfer of `amount` sats from
     /// `sender` to `recipient`.
     ///
@@ -69,8 +76,7 @@ public struct BitcoinTransactionBuilder: BlockchainTransactionBuilderProtocol {
         if let overrideRate = options.bitcoinFeeOverrideRate {
             feeRate = overrideRate
         } else {
-            let estimated = try await client.backend.estimateFeeRate(blocks: 3)
-            feeRate = UInt64(max(1, estimated.rounded(.up)))
+            feeRate = try await client.feeRate()
         }
 
         let inputKind: BitcoinInputKindFfi = sender.scriptType == .p2tr ? .p2tr : .p2wpkh

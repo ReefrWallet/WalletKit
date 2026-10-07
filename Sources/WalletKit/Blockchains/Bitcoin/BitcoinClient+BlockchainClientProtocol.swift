@@ -62,30 +62,9 @@ extension BitcoinClient: BlockchainClientProtocol {
         switch feature {
         case .multipleBalances: false
         case .allBalances: false
-        case .feeEstimation: true
         case .transactionHistory: true
         case .transactionSubscription: backend is ElectrumBackend
         }
-    }
-
-    /// Current network fee rate (``FeeEstimate/gasPrice``, sat/vB). When
-    /// `request.data` carries an already-built PSBT (see
-    /// ``BitcoinTransactionBuilder``, which already ran coin selection at
-    /// this same rate), ``FeeEstimate/estimatedFee`` is that PSBT's real
-    /// implied fee (`bitcoinPsbtFee`) rather than a rates-only estimate —
-    /// `from`/`to`/`value` are ignored, matching Sui's convention of
-    /// carrying the whole unsigned transaction in `data`.
-    public func estimateFee(for request: FeeEstimateRequest<BitcoinDescriptor>?) async throws -> FeeEstimate {
-        let feeRate = try await backend.estimateFeeRate(blocks: 3)
-        let gasPrice = BigUInt(UInt64(max(1, feeRate.rounded(.up))))
-
-        guard let psbt = request?.data else {
-            return FeeEstimate(gasPrice: gasPrice)
-        }
-
-        let fee = try remappingWalletKitError { try bitcoinPsbtFee(psbt: psbt) }
-
-        return FeeEstimate(gasPrice: gasPrice, estimatedFee: BigUInt(fee))
     }
 
     /// Broadcasts a signed transaction.

@@ -45,19 +45,19 @@ struct LatestBlock: Decodable {
     let baseFeePerGas: String?
 }
 
-/// `eth_estimateGas`'s `[{from?, to, value?, data?}]` params — a single-
+/// `eth_estimateGas`'s `[{from?, to?, value?, data?}]` params — a single-
 /// element array containing a call object. `nil` fields are omitted from the
 /// encoded output so the node uses its own defaults (e.g. zero address for
 /// `from`, zero value for `value`).
 struct EstimateGasParams: Encodable {
     let from: String?
-    let to: String
+    let to: String?
     let value: String?
     let data: String?
 
     private struct CallObject: Encodable {
         let from: String?
-        let to: String
+        let to: String?
         let value: String?
         let data: String?
 
@@ -67,7 +67,8 @@ struct EstimateGasParams: Encodable {
             var container = encoder.container(keyedBy: CodingKeys.self)
             if let from { try container.encode(from, forKey: .from) }
 
-            try container.encode(to, forKey: .to)
+            if let to { try container.encode(to, forKey: .to) }
+
             if let value { try container.encode(value, forKey: .value) }
 
             if let data { try container.encode(data, forKey: .data) }

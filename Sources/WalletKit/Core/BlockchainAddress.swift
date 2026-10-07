@@ -11,8 +11,7 @@ import WalletKitRust
 /// A validated, chain-specific address (e.g. ``EthereumAddress``, ``SuiAddress``).
 ///
 /// All conformers are expected to be value types (`struct`), so `Sendable`
-/// is required — this lets `FeeEstimateRequest<Address>` and
-/// `AnyBlockchainClient`'s closures be `Sendable` without extra constraints.
+/// is required.
 public protocol BlockchainAddress: Equatable, Sendable {
     /// The chain's canonical string encoding of this address (e.g.
     /// EIP-55 checksummed hex for Ethereum).

@@ -106,13 +106,21 @@ struct ElectrumBackend: BitcoinBackend {
         try await client.subscribeHeaders()
     }
 
+    /// Subscribes to `blockchain.headers.subscribe` pushes on the shared
+    /// connection. Several streams can be active at once; each finishes
+    /// with an error when the connection drops (the server forgets the
+    /// subscription with it) and unsubscribes when its consumer stops.
     func headsStream() -> AsyncThrowingStream<BlockchainTransactionHead, any Swift.Error> {
-        AsyncThrowingStream { continuation in
-            Task {
-                do {
-                    let height = try await client.subscribeHeaders()
-                    continuation.yield(BlockchainTransactionHead(height: height))
-                    await client.connection.onNotification(method: "blockchain.headers.subscribe") { params in
+        let method = "blockchain.headers.subscribe"
+        let client = client
+
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                // Register before subscribing so no push is missed between
+                // the subscribe response and the handler being in place.
+                let subscriberId = await client.connection.addSubscriber(
+                    method: method,
+                    onNotification: { params in
                         guard
                             let array = params as? [[String: Any]],
                             let first = array.first,
@@ -122,10 +130,33 @@ struct ElectrumBackend: BitcoinBackend {
                         }
 
                         continuation.yield(BlockchainTransactionHead(height: height, hash: first["hex"] as? String))
+                    },
+                    onFailure: { error in
+                        continuation.finish(throwing: error)
                     }
+                )
+
+                continuation.onTermination = { _ in
+                    Task { await client.connection.removeSubscriber(method: method, id: subscriberId) }
+                }
+
+                // The consumer may have stopped before the handler above was
+                // installed.
+                guard !Task.isCancelled else {
+                    await client.connection.removeSubscriber(method: method, id: subscriberId)
+                    return
+                }
+
+                do {
+                    let height = try await client.subscribeHeaders()
+                    continuation.yield(BlockchainTransactionHead(height: height))
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+
+            continuation.onTermination = { _ in
+                task.cancel()
             }
         }
     }

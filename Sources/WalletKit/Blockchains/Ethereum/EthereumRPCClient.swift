@@ -99,34 +99,14 @@ public struct EthereumRPCClient: Sendable {
         return nonce
     }
 
-    /// Returns current EIP-1559 fee rates and, when `request` is non-nil,
-    /// a per-transaction gas estimate via `eth_estimateGas`.
+    /// Returns current fee rates. Fetches `eth_gasPrice`,
+    /// `eth_maxPriorityFeePerGas` and the latest block's `baseFeePerGas`
+    /// concurrently; ``EthereumFeeRates/maxFeePerGas`` is
+    /// `baseFee × 2 + maxPriorityFeePerGas`.
     ///
-    /// Three RPC calls are issued concurrently to fetch the current rates:
-    /// - `eth_gasPrice` → ``FeeEstimate/gasPrice``
-    /// - `eth_maxPriorityFeePerGas` → ``FeeEstimate/maxPriorityFeePerGas``
-    /// - `eth_getBlockByNumber("latest", false)` → `baseFeePerGas`
-    ///
-    /// ``FeeEstimate/maxFeePerGas`` is `baseFee × 2 + maxPriorityFeePerGas`,
-    /// giving 2× headroom over the observed base fee — enough to absorb
-    /// several consecutive full blocks without repricing.
-    ///
-    /// When `request` supplies a `to` address, `eth_estimateGas` is called
-    /// for the described call (`from`, `to`, `value`, `data`). The returned
-    /// ``FeeEstimate/gasLimit`` is the node's estimate of the gas the
-    /// transaction will consume; ``FeeEstimate/estimatedFee`` is
-    /// `gasLimit × maxFeePerGas` in wei.
-    ///
-    /// - Parameter request: A ``FeeEstimateRequest`` describing the
-    ///   transaction to estimate, or `nil` for rates-only (no
-    ///   ``FeeEstimate/gasLimit`` or ``FeeEstimate/estimatedFee``).
-    /// - Returns: A ``FeeEstimate`` with the current EIP-1559 rates, plus
-    ///   ``FeeEstimate/gasLimit`` and ``FeeEstimate/estimatedFee`` when
-    ///   `request.to` is non-nil.
     /// - Throws: ``BlockchainClientError`` on a transport, RPC, or
     ///   decoding failure.
-    public func estimateFee(for request: FeeEstimateRequest<EthereumAddress>?) async throws -> FeeEstimate {
-        // Fetch all three rate signals concurrently.
+    public func feeRates() async throws -> EthereumFeeRates {
         async let gasPriceHex: String = rpc.call(method: "eth_gasPrice", params: [String]())
         async let priorityFeeHex: String = rpc.call(method: "eth_maxPriorityFeePerGas", params: [String]())
         async let fetchedBlock: LatestBlock = rpc.call(method: "eth_getBlockByNumber", params: LatestBlockParams())
@@ -134,38 +114,38 @@ public struct EthereumRPCClient: Sendable {
         let gasPrice = try parseQuantity(try await gasPriceHex)
         let priorityFee = try parseQuantity(try await priorityFeeHex)
         let baseFee = try parseQuantity((try await fetchedBlock).baseFeePerGas ?? "0x0")
-        let maxFeePerGas = baseFee * 2 + priorityFee
 
-        guard let request, let to = request.to else {
-            return FeeEstimate(
-                gasPrice: gasPrice,
-                maxFeePerGas: maxFeePerGas,
-                maxPriorityFeePerGas: priorityFee
-            )
-        }
-
-        // ETH `value` and ABI `data` are encoded as 0x-prefixed hex strings
-        // in the call object, consistent with the rest of the JSON-RPC API.
-        let valueHex = request.value.map { "0x" + String($0, radix: 16) }
-
-        let dataHex = request.data.map { $0.hexEncoded }
-
-        let estimateParams = EstimateGasParams(
-            from: request.from?.string,
-            to: to.string,
-            value: valueHex,
-            data: dataHex
-        )
-        let gasLimitHex: String = try await rpc.call(method: "eth_estimateGas", params: estimateParams)
-        let gasLimit = try parseQuantity(gasLimitHex)
-
-        return FeeEstimate(
+        return EthereumFeeRates(
             gasPrice: gasPrice,
-            maxFeePerGas: maxFeePerGas,
-            maxPriorityFeePerGas: priorityFee,
-            gasLimit: gasLimit,
-            estimatedFee: gasLimit * maxFeePerGas
+            maxFeePerGas: baseFee * 2 + priorityFee,
+            maxPriorityFeePerGas: priorityFee
         )
+    }
+
+    /// Returns the node's `eth_estimateGas` for the described call.
+    ///
+    /// - Parameters:
+    ///   - from: The sender, or `nil` for the node's default.
+    ///   - to: The call destination, or `nil` for contract creation.
+    ///   - value: Native value in wei.
+    ///   - data: Call data or creation bytecode.
+    /// - Throws: ``BlockchainClientError`` on a transport, RPC, or
+    ///   decoding failure (including a reverting call).
+    public func estimateGas(
+        from: EthereumAddress?,
+        to: EthereumAddress?,
+        value: BigUInt? = nil,
+        data: Data? = nil
+    ) async throws -> BigUInt {
+        let params = EstimateGasParams(
+            from: from?.string,
+            to: to?.string,
+            value: value.map { "0x" + String($0, radix: 16) },
+            data: data.map(\.hexEncoded)
+        )
+
+        let gasLimitHex: String = try await rpc.call(method: "eth_estimateGas", params: params)
+        return try parseQuantity(gasLimitHex)
     }
 
     /// Executes an arbitrary JSON-RPC method with raw, already

@@ -66,15 +66,10 @@ extension EthereumRPCClient: BlockchainClientProtocol {
         switch feature {
         case .multipleBalances: true
         case .allBalances: false
-        case .feeEstimation: true
         case .transactionHistory: true
         case .transactionSubscription: true
         }
     }
-
-    // `estimateFee(for:)` is satisfied by the method defined in
-    // `EthereumRPCClient.swift`, which has access to the private `rpc`
-    // and `parseQuantity` helpers.
 
     /// Broadcasts a signed Ethereum transaction.
     ///

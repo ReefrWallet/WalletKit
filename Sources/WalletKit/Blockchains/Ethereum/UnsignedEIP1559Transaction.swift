@@ -29,10 +29,10 @@ public struct UnsignedEIP1559Transaction: Sendable {
     /// The sending address's transaction count.
     public let nonce: BigUInt
     /// EIP-1559 miner tip cap in wei per gas unit — from
-    /// ``EthereumRPCClient/estimateFee(for:)``'s `eth_maxPriorityFeePerGas`.
+    /// ``EthereumRPCClient/feeRates()``.
     public let maxPriorityFeePerGas: BigUInt
     /// EIP-1559 total fee cap in wei per gas unit — `baseFee * 2 + tip` from
-    /// ``EthereumRPCClient/estimateFee(for:)``.
+    /// ``EthereumRPCClient/feeRates()``.
     public let maxFeePerGas: BigUInt
     /// Maximum gas units this transaction may consume.
     public let gasLimit: BigUInt

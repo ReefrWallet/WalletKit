@@ -70,6 +70,7 @@ enum BitcoinCoinSelector {
                 feeRateSatPerVByte: feeRateSatPerVByte,
                 inputKind: inputKind
             )
+
             guard accumulated >= targetSats + feeWithChange else {
                 continue
             }
@@ -111,6 +112,7 @@ enum BitcoinCoinSelector {
                 feeRateSatPerVByte: feeRateSatPerVByte,
                 inputKind: inputKind
             )
+
             guard accumulated >= targetSats + feeWithoutChange else {
                 continue
             }
@@ -134,6 +136,7 @@ enum BitcoinCoinSelector {
             inputKinds: Array(repeating: inputKind, count: inputCount),
             outputScriptPubkeys: outputs
         )
+
         return vsize * feeRateSatPerVByte
     }
 

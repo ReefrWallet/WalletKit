@@ -156,24 +156,28 @@ extension SolanaRPCClient {
     /// split isn't recoverable from balances alone) plus one
     /// `.tokenTransfer` effect per SPL mint whose balance changed for an
     /// associated token account `owner` holds.
-    private func transaction(signature: String, owner: SolanaAddress) async throws -> BlockchainTransaction? {
+    private func transaction( // swiftlint:disable:this function_body_length
+        signature: String,
+        owner: SolanaAddress
+    ) async throws -> BlockchainTransaction? {
         let response: TransactionResponse? = try? await rpc.call(
             method: "getTransaction",
             params: GetTransactionParams(signature: signature)
         )
+
         guard let response else {
             return nil
         }
 
         let timestamp = response.blockTime.map { Date(timeIntervalSince1970: TimeInterval($0)) }
-
         let status: BlockchainTransactionStatus = (response.meta?.err == nil) ? .confirmed : .failed
-
         var effects: [BlockchainTransactionEffect] = []
+
         if let meta = response.meta,
            let ownerIndex = response.transaction.message.accountKeys.firstIndex(where: { $0.pubkey == owner.string }),
            ownerIndex < meta.preBalances.count, ownerIndex < meta.postBalances.count {
             let delta = Int64(meta.postBalances[ownerIndex]) - Int64(meta.preBalances[ownerIndex])
+
             if delta != 0 {
                 effects.append(BlockchainTransactionEffect(index: 0, kind: .balanceChange, amount: "\(delta)"))
             }
@@ -181,13 +185,17 @@ extension SolanaRPCClient {
 
         if let meta = response.meta {
             let preByMint = Dictionary(
-                (meta.preTokenBalances ?? []).filter { $0.owner == owner.string }.map { ($0.mint, $0) },
-                uniquingKeysWith: { first, _ in first }
+                (meta.preTokenBalances ?? [])
+                    .filter { $0.owner == owner.string }
+                    .map { ($0.mint, $0) },
+                 uniquingKeysWith: { first, _ in first }
             )
+
             let postByMint = Dictionary(
                 (meta.postTokenBalances ?? []).filter { $0.owner == owner.string }.map { ($0.mint, $0) },
                 uniquingKeysWith: { first, _ in first }
             )
+
             for mint in Set(preByMint.keys).union(postByMint.keys) {
                 let pre = BigUInt(preByMint[mint]?.uiTokenAmount.amount ?? "0") ?? 0
                 let post = BigUInt(postByMint[mint]?.uiTokenAmount.amount ?? "0") ?? 0
@@ -264,6 +272,7 @@ extension SolanaRPCClient {
                 pendingUntil: state?.pendingUntil ?? newest,
                 until: state?.until
             )
+
         case .descending:
             return AddressCursor(before: oldest, drained: false, pendingUntil: nil, until: nil)
         }

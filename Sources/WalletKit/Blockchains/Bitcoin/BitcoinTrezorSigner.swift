@@ -39,6 +39,7 @@ public final class BitcoinTrezorSigner: Signer {
             scriptType: scriptType,
             accountIndex: accountIndex
         )
+
         let accountPathText = String(accountDerivationPath.string.dropFirst(2)) // drop the leading "m/".
 
         let xpub = try await remappingWalletKitError {

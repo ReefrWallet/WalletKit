@@ -21,11 +21,6 @@ public enum BlockchainClientFeature {
     /// returns balances for every token or coin the account holds in one call.
     case allBalances
 
-    /// Fee estimation — ``BlockchainClientProtocol/estimateFee(for:)``
-    /// returns current network rates and, when supported, a transaction fee
-    /// estimate.
-    case feeEstimation
-
     /// The node can page through transactions affecting an account.
     case transactionHistory
 
@@ -36,11 +31,18 @@ public enum BlockchainClientFeature {
 /// The common interface shared by every blockchain client in WalletKit.
 ///
 /// Each conformer declares its address type, such as ``BitcoinDescriptor``,
-/// ``EthereumAddress``, or ``SuiAddress``. Use ``AnyBlockchainClient`` when
-/// the concrete address type is not known statically.
-public protocol BlockchainClientProtocol {
+/// ``EthereumAddress``, or ``SuiAddress``. When the concrete address type is
+/// not known statically, hold an `any BlockchainClientProtocol` and use the
+/// String-addressed overloads (e.g. `getNativeBalance(_: String)`), which
+/// parse addresses with ``makeAddress(_:)``.
+public protocol BlockchainClientProtocol: Sendable {
     /// The address type this client uses.
     associatedtype Address: BlockchainAddress
+
+    /// Parses `string` as this client's address type. Defaults to
+    /// `Address(string:)`; conformers override it when parsing needs
+    /// client context (e.g. ``BitcoinClient``'s network).
+    func makeAddress(_ string: String) throws -> Address
 
     /// Returns all token/coin balances for `owner` in a single call. Throws
     /// ``WalletKitError/unsupportedFeature`` on chains that don't support bulk
@@ -80,22 +82,6 @@ public protocol BlockchainClientProtocol {
 
     /// Returns whether this client supports `feature`.
     func isSupported(_ feature: BlockchainClientFeature) -> Bool
-
-    /// Returns current network fee rates and, when `request` is non-nil, a
-    /// per-transaction gas estimate.
-    ///
-    /// Pass `nil` to get only the current network rates
-    /// (``FeeEstimate/gasLimit`` and ``FeeEstimate/estimatedFee`` will be
-    /// `nil`). See
-    /// ``FeeEstimate`` for chain-specific field semantics and units.
-    ///
-    /// - Parameter request: A ``FeeEstimateRequest`` describing the
-    ///   transaction to estimate, or `nil` for rates-only.
-    /// - Returns: A ``FeeEstimate`` with gas rates and, when `request` is
-    ///   non-nil, ``FeeEstimate/gasLimit`` and ``FeeEstimate/estimatedFee``.
-    /// - Throws: ``BlockchainClientError`` on a transport, RPC, or decoding
-    ///   failure.
-    func estimateFee(for request: FeeEstimateRequest<Address>?) async throws -> FeeEstimate
 
     /// Broadcasts a signed transaction and returns its identifier.
     ///

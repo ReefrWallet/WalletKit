@@ -59,13 +59,12 @@ public struct BitcoinDescriptor: BlockchainAddress {
     ///
     /// `tpub` doesn't distinguish testnet from signet/regtest, so this
     /// generic, network-less initializer — required by
-    /// ``BlockchainAddress``, and the only one `AnyBlockchainClient`'s
-    /// type-erasure bridging can call — can't tell those apart. Every
-    /// internal call site (the address resolver, the transaction builder)
-    /// knows its account's network already and calls
-    /// ``init(string:network:)`` directly instead; this inferring
-    /// initializer only fires for the generic bridging path, where sender
-    /// and recipient always share one account's network in practice.
+    /// ``BlockchainAddress`` — can't tell those apart. Every internal call
+    /// site (the address resolver, the transaction builder, and
+    /// ``BitcoinClient/makeAddress(_:)`` when the client knows its network)
+    /// calls ``init(string:network:)`` directly instead; this inferring
+    /// initializer only fires for a ``BitcoinClient`` created without a
+    /// network.
     ///
     /// - Throws: ``WalletKitError/invalidAddress(reason:)``.
     public init(string: String) throws {

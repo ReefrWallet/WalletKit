@@ -3,7 +3,7 @@ import ProjectDescription
 import ProjectDescriptionHelpers
 
 private let testEnvironmentVariables: [String: EnvironmentVariable] = {
-    guard let apiKey = ProcessInfo.processInfo.environment["TRONGRID_API_KEY"], !apiKey.isEmpty else {
+    guard let apiKey = ProcessInfo.processInfo.environment["TUIST_TRONGRID_API_KEY"], !apiKey.isEmpty else {
         return [:]
     }
 

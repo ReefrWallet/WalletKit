@@ -157,7 +157,7 @@ struct ElectrumClient: Sendable {
 
     /// `blockchain.headers.subscribe` — the initial response only; the
     /// server's follow-up push notifications are routed separately via
-    /// ``ElectrumConnection/onNotification(method:handler:)``.
+    /// ``ElectrumConnection/addSubscriber(method:onNotification:onFailure:)``.
     func subscribeHeaders() async throws -> UInt64 {
         let result = try await connection.call(method: "blockchain.headers.subscribe", params: [])
         guard

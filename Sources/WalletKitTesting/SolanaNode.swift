@@ -133,10 +133,15 @@ public final class SolanaNode {
         }
 
         let rpcURL = URL(string: "http://127.0.0.1:\(rpcPort)")!
+
         let node = SolanaNode(
-            rpcURL: rpcURL, binDirectory: binDirectory, process: process, logHandle: logHandle,
+            rpcURL: rpcURL,
+            binDirectory: binDirectory,
+            process: process,
+            logHandle: logHandle,
             ledgerDirectory: ledgerDirectory
         )
+
         try await node.waitUntilReady()
         return node
     }

@@ -100,6 +100,7 @@ private func makeAccount(
         scriptType: scriptType,
         accountIndex: 0
     )
+
     let accountKey = try masterKey.derive(accountDerivationPath)
     let accountPathText = String(accountDerivationPath.string.dropFirst(2)) // drop the leading "m/".
 
@@ -110,6 +111,7 @@ private func makeAccount(
         masterFingerprint: masterFingerprint,
         accountPath: accountPathText
     )
+
     return (descriptor, seed, accountDerivationPath)
 }
 
@@ -122,9 +124,11 @@ struct BitcoinTransactionBuilderTests {
         let funding = makeFundingTransaction(
             scriptPubkey: fundingAddress.scriptPubkey(), valueSats: 100_000, nonce: 0xC0
         )
+
         let backend = MockBitcoinBackend()
-        await backend.seed(scriptPubkey: fundingAddress.scriptPubkey(), utxos: [
-            BitcoinUTXO(
+        await backend.seed(
+            scriptPubkey: fundingAddress.scriptPubkey(),
+            utxos: [ BitcoinUTXO(
                 txid: funding.txid,
                 vout: 0,
                 valueSats: 100_000,
@@ -132,16 +136,22 @@ struct BitcoinTransactionBuilderTests {
                 chain: 0,
                 index: 0,
                 confirmed: true
-            )
-        ])
+            )]
+        )
+
         await backend.seedRawTransaction(txid: funding.txid, raw: funding.raw)
 
         let client = BitcoinClient(backend: backend)
         let builder = BitcoinTransactionBuilder(client: client)
 
         let psbt = try await builder.buildTransfer(
-            sender: sender, recipient: recipient, amount: BigUInt(50_000), token: nil, options: []
+            sender: sender,
+            recipient: recipient,
+            amount: BigUInt(50_000),
+            token: nil,
+            options: []
         )
+
         #expect(!psbt.isEmpty)
 
         let signer = try BitcoinPKeySigner(descriptor: sender, seed: senderSeed, derivationPath: senderPath)
@@ -165,8 +175,11 @@ struct BitcoinTransactionBuilderTests {
 
         let fundingAddress = try sender.deriveAddress(chain: 0, index: 0)
         let funding = makeFundingTransaction(
-            scriptPubkey: fundingAddress.scriptPubkey(), valueSats: 100_000, nonce: 0xD0
+            scriptPubkey: fundingAddress.scriptPubkey(),
+            valueSats: 100_000,
+            nonce: 0xD0
         )
+
         let backend = MockBitcoinBackend()
         await backend.seed(scriptPubkey: fundingAddress.scriptPubkey(), utxos: [
             BitcoinUTXO(

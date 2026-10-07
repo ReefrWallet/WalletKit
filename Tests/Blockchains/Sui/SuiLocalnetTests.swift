@@ -114,26 +114,18 @@ private func send(
 struct SuiLocalnetTests {
     // MARK: - Fee estimation
 
-    /// Rates-only: `estimateFee(for: nil)` returns the epoch's reference gas
-    /// price with no per-transaction fields.
-    @Test func estimateFeeRatesOnlyMatchesTheNodeReferenceGasPrice() async throws {
+    @Test func referenceGasPriceMatchesTheNode() async throws {
         let node = try await SuiNode.start()
         defer { node.stop() }
 
         let client = SuiGRPCClient(host: "127.0.0.1", port: Int(node.rpcPort), useTLS: false)
-        let estimate = try await client.estimateFee(for: nil)
+        let gasPrice = try await client.referenceGasPrice()
         let referenceGasPrice = try await node.referenceGasPrice()
 
-        #expect(estimate.gasPrice == BigUInt(referenceGasPrice))
-        #expect(estimate.maxFeePerGas == nil, "Sui has no EIP-1559 max fee")
-        #expect(estimate.maxPriorityFeePerGas == nil, "Sui has no EIP-1559 priority fee")
-        #expect(estimate.gasLimit == nil, "rates-only: no per-tx gas limit")
-        #expect(estimate.estimatedFee == nil, "rates-only: no per-tx fee")
+        #expect(gasPrice == referenceGasPrice)
     }
 
-    /// Per-tx estimate for a native SUI transfer: the fee is positive and
-    /// the gas price matches the reference gas price.
-    @Test func estimateFeeForANativeSUITransferReturnsAPositiveFee() async throws {
+    @Test func gasCostSummaryForANativeSUITransferIsPositive() async throws {
         let node = try await SuiNode.start()
         defer { node.stop() }
 
@@ -157,21 +149,16 @@ struct SuiLocalnetTests {
             gasBudget: 10_000_000
         )
 
-        let estimate = try await client.estimateFee(
-            for: FeeEstimateRequest(data: tx.transactionDataBcs)
-        )
-
-        #expect(estimate.gasPrice == BigUInt(gasPrice))
-        let estimatedFee = try #require(estimate.estimatedFee)
-        #expect(estimatedFee > 0)
+        let cost = try await client.gasCostSummary(transactionData: tx.transactionDataBcs)
+        #expect(cost.grossCost > 0)
     }
 
-    /// Per-tx estimate for a coin-object transfer (the PTB shape used for any
+    /// Gas cost for a coin-object transfer (the PTB shape used for any
     /// arbitrary `Coin<T>`, e.g. USDC). Funds wallet A twice via the faucet
     /// to obtain two separate SUI coin objects: one for gas, one to transfer
     /// (reusing SUI to exercise the PTB shape, which is identical regardless
     /// of coin type).
-    @Test func estimateFeeForACoinObjectTransferReturnsAPositiveFee() async throws {
+    @Test func gasCostSummaryForACoinObjectTransferIsPositive() async throws {
         let node = try await SuiNode.start()
         defer { node.stop() }
 
@@ -205,13 +192,8 @@ struct SuiLocalnetTests {
             gasBudget: 10_000_000
         )
 
-        let estimate = try await client.estimateFee(
-            for: FeeEstimateRequest(data: tx.transactionDataBcs)
-        )
-
-        #expect(estimate.gasPrice == BigUInt(gasPrice))
-        let estimatedFee = try #require(estimate.estimatedFee)
-        #expect(estimatedFee > 0)
+        let cost = try await client.gasCostSummary(transactionData: tx.transactionDataBcs)
+        #expect(cost.grossCost > 0)
     }
 
     // MARK: - Transfer

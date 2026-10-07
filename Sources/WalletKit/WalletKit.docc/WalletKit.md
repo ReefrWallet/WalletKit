@@ -32,11 +32,8 @@ Start with a ``Mnemonic`` to create or restore a wallet. Derive an
 ### Clients and Transactions
 
 - ``BlockchainClientProtocol``
-- ``AnyBlockchainClient``
 - ``BlockchainTransactionBuilderProtocol``
-- ``AnyBlockchainTransactionBuilder``
 - ``BlockchainTransaction``
-- ``FeeEstimate``
 
 ### Networks
 

@@ -62,6 +62,7 @@ public struct CardanoAccountDescriptor: BlockchainAddress {
             paymentRole: 0,
             paymentIndex: 0
         )
+
         self.network = network
         xpub = components[2]
     }
@@ -78,6 +79,7 @@ public struct CardanoAccountDescriptor: BlockchainAddress {
             paymentRole: 0,
             paymentIndex: 0
         )
+
         self.network = network
         self.xpub = xpub
     }
@@ -97,6 +99,7 @@ public struct CardanoAccountDescriptor: BlockchainAddress {
             paymentRole: role,
             paymentIndex: index
         )
+
         return try CardanoAddress(string: string, network: network)
     }
 

@@ -85,46 +85,33 @@ extension SolanaRPCClient: BlockchainClientProtocol {
 
     public func isSupported(_ feature: BlockchainClientFeature) -> Bool {
         switch feature {
-        case .multipleBalances, .allBalances, .feeEstimation, .transactionHistory:
+        case .multipleBalances, .allBalances, .transactionHistory:
             true
         case .transactionSubscription:
             false
         }
     }
 
-    /// Estimates the total lamport cost of the transfer encoded in
-    /// `request.data` — the ``SolanaUnsignedTransaction`` envelope
-    /// ``SolanaTransactionBuilder`` produces.
-    ///
-    /// Pass `nil` (or a `request` with `data == nil`) for a rates-only
-    /// estimate: ``FeeEstimate/gasPrice`` is the current median recent
-    /// priority fee (micro-lamports per compute unit);
-    /// ``FeeEstimate/gasLimit``/``FeeEstimate/estimatedFee`` are `nil`.
-    ///
-    /// With a request: ``FeeEstimate/estimatedFee`` is `getFeeForMessage`'s
-    /// base fee (5 000 lamports per required signature) plus the
-    /// priority fee implied by any `ComputeBudget` instructions already
-    /// compiled into the message; ``FeeEstimate/gasLimit`` is that
-    /// message's compute-unit limit, if set.
-    public func estimateFee(for request: FeeEstimateRequest<SolanaAddress>?) async throws -> FeeEstimate {
-        guard let envelopeData = request?.data else {
-            return FeeEstimate(gasPrice: BigUInt(try await recentPrioritizationFee()))
-        }
-
-        let envelope = try JSONDecoder().decode(SolanaUnsignedTransaction.self, from: envelopeData)
+    /// Estimates the lamport cost of `transaction` — the
+    /// ``SolanaUnsignedTransaction`` envelope ``SolanaTransactionBuilder``
+    /// produces: `getFeeForMessage`'s base fee (5 000 lamports per
+    /// signature if the node can't price it) plus the priority fee implied
+    /// by the message's `ComputeBudget` instructions.
+    public func estimateFee(transaction: Data) async throws -> SolanaFeeEstimate {
+        let envelope = try JSONDecoder().decode(SolanaUnsignedTransaction.self, from: transaction)
         let message = try SolanaMessage(serialized: envelope.message)
-        let (computeUnitLimit, microLamportsPrice) = Self.computeBudget(in: message)
+        let (computeUnitLimit, computeUnitPrice) = Self.computeBudget(in: message)
 
         let baseFee = try await feeForMessage(envelope.message)
             ?? UInt64(message.header.numRequiredSignatures) * 5_000
         let priorityFee = computeUnitLimit.map { limit in
-            (UInt64(limit) * microLamportsPrice + 999_999) / 1_000_000
+            (UInt64(limit) * computeUnitPrice + 999_999) / 1_000_000
         } ?? 0
 
-        return FeeEstimate(
-            gasPrice: BigUInt(microLamportsPrice),
-            gasLimit: computeUnitLimit.map { BigUInt($0) },
-            estimatedFee: BigUInt(baseFee + priorityFee)
+        return SolanaFeeEstimate(
+            computeUnitLimit: computeUnitLimit,
+            computeUnitPrice: computeUnitPrice,
+            fee: baseFee + priorityFee
         )
     }
 

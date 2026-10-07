@@ -53,6 +53,7 @@ public final class CardanoTrezorSigner {
             ttl: unsigned.ttl,
             witnessPaths: witnessPaths.map(\.raw)
         )
+
         let witnesses = try await remappingWalletKitError {
             try await device.raw.cardanoSignTx(tx: request)
         }

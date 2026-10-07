@@ -128,7 +128,7 @@ private extension SuiTransactionBuilder {
         if let overridePrice = gasOverride?.price {
             gasPrice = overridePrice
         } else {
-            gasPrice = UInt64(try await client.estimateFee(for: nil as FeeEstimateRequest<SuiAddress>?).gasPrice)
+            gasPrice = try await client.referenceGasPrice()
         }
 
         // Cap simulation budget by available gas so low-balance accounts aren't
@@ -143,6 +143,7 @@ private extension SuiTransactionBuilder {
                 sender: sender, recipient: recipient, amount: amount, gasPrice: gasPrice,
                 suiCoins: suiCoins, totalSUI: totalSUI, coins: gasCoins
             )
+
             if refined.count <= gasCoins.count {
                 return UnsignedSuiTransaction(
                     sender: sender, transfers: [(recipient: recipient, amount: amount)],
@@ -214,22 +215,36 @@ private extension SuiTransactionBuilder {
         if let overridePrice = gasOverride?.price {
             gasPrice = overridePrice
         } else {
-            gasPrice = UInt64(try await client.estimateFee(for: nil as FeeEstimateRequest<SuiAddress>?).gasPrice)
+            gasPrice = try await client.referenceGasPrice()
         }
 
-        var gasCoins = selectCoins(from: suiCoins,
-                                   needed: min(SuiTransactionBuilder.simulationBudget, totalSUI)) ?? suiCoins
+        var gasCoins = selectCoins(
+            from: suiCoins,
+            needed: min(SuiTransactionBuilder.simulationBudget, totalSUI)
+        ) ?? suiCoins
 
         for _ in 0..<5 {
             let (refined, budget) = try await simulateAndSelectTokenGas(
-                sender: sender, tokenCoins: tokenCoins, amount: amount, recipient: recipient,
-                gasPrice: gasPrice, suiCoins: suiCoins, totalSUI: totalSUI, coins: gasCoins
+                sender: sender,
+                tokenCoins: tokenCoins,
+                amount: amount,
+                recipient: recipient,
+                gasPrice: gasPrice,
+                suiCoins: suiCoins,
+                totalSUI: totalSUI,
+                coins: gasCoins
             )
+
             if refined.count <= gasCoins.count {
                 return makeCoinTransferBcs(
-                    sender: sender, tokenCoins: tokenCoins, amount: amount, recipient: recipient,
-                    gasCoins: refined.map(\.reference), gasOwner: sender,
-                    gasPrice: gasPrice, gasBudget: gasOverride?.budget ?? budget
+                    sender: sender,
+                    tokenCoins: tokenCoins,
+                    amount: amount,
+                    recipient: recipient,
+                    gasCoins: refined.map(\.reference),
+                    gasOwner: sender,
+                    gasPrice: gasPrice,
+                    gasBudget: gasOverride?.budget ?? budget
                 )
             }
 
@@ -290,10 +305,16 @@ private extension SuiTransactionBuilder {
 
         let capBudget = min(SuiTransactionBuilder.simulationBudget, coinsTotal)
         let simTx = makeCoinTransferBcs(
-            sender: sender, tokenCoins: tokenCoins, amount: amount, recipient: recipient,
-            gasCoins: coins.map(\.reference), gasOwner: sender, gasPrice: gasPrice,
+            sender: sender,
+            tokenCoins: tokenCoins,
+            amount: amount,
+            recipient: recipient,
+            gasCoins: coins.map(\.reference),
+            gasOwner: sender,
+            gasPrice: gasPrice,
             gasBudget: capBudget
         )
+
         let budget = try await simulatedBudget(transactionBcs: simTx)
         guard let refined = selectCoins(from: suiCoins, needed: budget) else {
             throw BlockchainTransactionBuilderError.insufficientFunds(
@@ -359,18 +380,12 @@ private extension SuiTransactionBuilder {
         return nil
     }
 
-    /// Simulates `transactionBcs` and returns `max(1, grossFee × 2)`.
-    ///
-    /// The budget is based on ``FeeEstimate/grossFee`` (`computationCost +
-    /// storageCost`) rather than the net ``FeeEstimate/estimatedFee``
-    /// (`computationCost + storageCost − storageRebate`). The rebate is
-    /// credited after the transaction executes, so the budget must cover the
-    /// full gross cost — for merge/delete-heavy transactions the net can be
-    /// far below the required budget.
+    /// Simulates `transactionBcs` and returns
+    /// `max(1, ``SuiGasCostSummary/grossCost`` × 2)`.
     func simulatedBudget(transactionBcs: Data) async throws -> UInt64 {
-        let estimate = try await client.estimateFee(for: FeeEstimateRequest(data: transactionBcs))
-        let base = estimate.grossFee ?? estimate.estimatedFee ?? estimate.gasPrice
-        return max(1, UInt64(base * 2))
+        let cost = try await client.gasCostSummary(transactionData: transactionBcs)
+        let (budget, overflow) = cost.grossCost.multipliedReportingOverflow(by: 2)
+        return overflow ? .max : max(1, budget)
     }
 }
 

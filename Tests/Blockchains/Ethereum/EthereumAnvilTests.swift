@@ -83,13 +83,9 @@ private func makeSigner(privateKeyHex: String, chainId: UInt64) throws -> Ethere
 struct EthereumAnvilTests {
     // MARK: - Fee estimation
 
-    /// Verifies `estimateFee` against a real local Anvil node:
-    /// - Rates-only (`request: nil`): all three EIP-1559 fields are populated;
-    ///   no per-tx fields.
-    /// - Per-tx for a plain ETH transfer: `gasLimit` is exactly 21 000 (the
-    ///   EVM's flat cost for a native transfer with no calldata); `estimatedFee`
-    ///   equals `gasLimit × maxFeePerGas`.
-    @Test func estimateFeeRatesOnlyAndNativeTransferProduceExpectedGasFields() async throws {
+    /// Verifies `feeRates()` and `estimateGas` against a real local Anvil
+    /// node: a plain ETH transfer costs exactly 21 000 gas.
+    @Test func feeRatesAndNativeTransferGasEstimate() async throws {
         let node = try await EthereumNode.start()
         defer { node.stop() }
 
@@ -97,23 +93,13 @@ struct EthereumAnvilTests {
         let walletB = try EthereumAddress(string: vectors[1].address)
         let client = EthereumRPCClient(endpoint: node.endpoint, chainId: node.chainId)
 
-        // Rates-only.
-        let ratesOnly = try await client.estimateFee(for: nil)
-        #expect(ratesOnly.gasPrice > 0)
-        let maxFeePerGas = try #require(ratesOnly.maxFeePerGas)
-        let priorityFee = try #require(ratesOnly.maxPriorityFeePerGas)
-        #expect(maxFeePerGas >= priorityFee)
-        #expect(ratesOnly.gasLimit == nil)
-        #expect(ratesOnly.estimatedFee == nil)
+        let rates = try await client.feeRates()
+        #expect(rates.gasPrice > 0)
+        #expect(rates.maxFeePerGas >= rates.maxPriorityFeePerGas)
 
-        // Per-tx: a plain ETH transfer (no calldata) always costs 21 000 gas.
         let oneEther = BigUInt(1_000_000_000_000_000_000)
-        let transferFee = try await client.estimateFee(for: FeeEstimateRequest(to: walletB, value: oneEther))
-        let gasLimit = try #require(transferFee.gasLimit)
+        let gasLimit = try await client.estimateGas(from: nil, to: walletB, value: oneEther)
         #expect(gasLimit == 21_000)
-        let estimatedFee = try #require(transferFee.estimatedFee)
-        let expectedFee = gasLimit * (try #require(transferFee.maxFeePerGas))
-        #expect(estimatedFee == expectedFee)
     }
 
     // MARK: - Transfer

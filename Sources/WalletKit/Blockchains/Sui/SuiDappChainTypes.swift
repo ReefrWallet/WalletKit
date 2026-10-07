@@ -89,6 +89,18 @@ public struct SuiGasCostSummary: Sendable, Equatable {
     public let storageCost: UInt64
     public let storageRebate: UInt64
 
+    /// `computationCost + storageCost`. The rebate is credited after
+    /// execution, so a gas budget must cover this, not ``netCost``.
+    public var grossCost: UInt64 {
+        let (sum, overflow) = computationCost.addingReportingOverflow(storageCost)
+        return overflow ? .max : sum
+    }
+
+    /// `grossCost − storageRebate`, floored at 0.
+    public var netCost: UInt64 {
+        grossCost > storageRebate ? grossCost - storageRebate : 0
+    }
+
     public init(computationCost: UInt64, storageCost: UInt64, storageRebate: UInt64) {
         self.computationCost = computationCost
         self.storageCost = storageCost

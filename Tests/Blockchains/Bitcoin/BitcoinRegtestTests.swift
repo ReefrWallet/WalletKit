@@ -38,8 +38,11 @@ private func makeRegtestAccount() throws -> ( // swiftlint:disable:this large_tu
     let masterFingerprint = try BitcoinDescriptor.fingerprint(of: masterKey.publicKey)
 
     let accountDerivationPath = try DerivationPath.bitcoinAccount(
-        network: .regtest, scriptType: .p2wpkh, accountIndex: 0
+        network: .regtest,
+        scriptType: .p2wpkh,
+        accountIndex: 0
     )
+
     let accountKey = try masterKey.derive(accountDerivationPath)
     let accountPathText = String(accountDerivationPath.string.dropFirst(2)) // drop the leading "m/".
 
@@ -50,15 +53,16 @@ private func makeRegtestAccount() throws -> ( // swiftlint:disable:this large_tu
         masterFingerprint: masterFingerprint,
         accountPath: accountPathText
     )
+
     return (descriptor, seed, accountDerivationPath)
 }
 
 private func makeClient(node: BitcoinNode, backend: RegtestBackendKind) -> BitcoinClient {
     switch backend {
     case .electrum:
-        return BitcoinClient(electrumHost: node.electrumHost, port: node.electrumPort, useTLS: false)
+        BitcoinClient(electrumHost: node.electrumHost, port: node.electrumPort, useTLS: false)
     case .esplora:
-        return BitcoinClient(esploraEndpoint: node.esploraEndpoint)
+        BitcoinClient(esploraEndpoint: node.esploraEndpoint)
     }
 }
 
@@ -82,8 +86,10 @@ struct BitcoinRegtestTests {
         #expect(balanceAfterFunding == BigUInt(fundingSats))
 
         let history = try await client.transactionHistory(
-            sender, request: BlockchainTransactionHistoryRequest(direction: .descending)
+            sender,
+            request: BlockchainTransactionHistoryRequest(direction: .descending)
         )
+
         #expect(!history.transactions.isEmpty)
 
         // `TransactionSyncService` needs `head` to establish

@@ -54,14 +54,12 @@ private func send(
 // blow past a tight per-test time limit.
 @Suite(.timeLimit(.minutes(1)), .serialized)
 struct SolanaLocalnetTests {
-    @Test func estimateFeeRatesOnlyReturnsARecentPriorityFee() async throws {
+    @Test func recentPrioritizationFeeSucceeds() async throws {
         let node = try await SolanaNode.start()
         defer { node.stop() }
 
         let client = SolanaRPCClient(endpoint: node.rpcURL)
-        let estimate = try await client.estimateFee(for: nil)
-        #expect(estimate.gasLimit == nil)
-        #expect(estimate.estimatedFee == nil)
+        _ = try await client.recentPrioritizationFee()
     }
 
     @Test func nativeTransferMovesExactlyTheRequestedLamportsPlusFee() async throws {

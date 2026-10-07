@@ -10,8 +10,12 @@ import Network
 /// newline-delimited JSON-RPC 2.0 over TCP or TLS, via `Network.framework`
 /// (no Combine, per this repo's async/await convention). Correlates
 /// responses to requests by `id`; routes `id`-less notifications
-/// (subscription pushes) to per-method handlers registered with
-/// ``onNotification(method:handler:)``.
+/// (subscription pushes) to every subscriber registered with
+/// ``addSubscriber(method:onNotification:onFailure:)``.
+///
+/// Long-lived and shared (see ``BitcoinBackendSession``): when the
+/// connection fails or the server closes it, every in-flight request and
+/// subscriber is failed and the next call opens a fresh connection.
 ///
 /// Deliberately minimal for now: one request in flight per `id` (no
 /// batching), and no `server.ping` keepalive loop or `server.version`
@@ -22,15 +26,22 @@ actor ElectrumConnection {
         case idle
         case connecting([CheckedContinuation<Void, Error>])
         case ready
-        case failed(Error)
     }
 
-    private let connection: NWConnection
+    private struct Subscriber {
+        let onNotification: @Sendable (Any) -> Void
+        let onFailure: @Sendable (any Error) -> Void
+    }
+
+    private let host: NWEndpoint.Host
+    private let port: NWEndpoint.Port
+    private let useTLS: Bool
+    private var connection: NWConnection?
     private var state: ConnectionState = .idle
     private var receiveBuffer = Data()
     private var nextRequestId = 0
     private var pendingResponses: [Int: CheckedContinuation<Any, Error>] = [:]
-    private var notificationHandlers: [String: (Any) -> Void] = [:]
+    private var subscribers: [String: [UUID: Subscriber]] = [:]
 
     /// - Parameters:
     ///   - host: The Electrum server's hostname.
@@ -42,28 +53,30 @@ actor ElectrumConnection {
             preconditionFailure("invalid Electrum port \(port)")
         }
 
-        connection = NWConnection(host: NWEndpoint.Host(host), port: endpointPort, using: useTLS ? .tls : .tcp)
+        self.host = NWEndpoint.Host(host)
+        self.port = endpointPort
+        self.useTLS = useTLS
     }
 
     deinit {
-        connection.cancel()
+        connection?.cancel()
     }
 
     /// Establishes the connection if it isn't already, waiting until it's
     /// ready to send/receive. Safe to call repeatedly — a second call
     /// while connecting joins the same wait; a call once ready returns
-    /// immediately.
+    /// immediately; a call after the connection dropped opens a new one.
     func connect() async throws {
         switch state {
         case .ready:
             return
-        case let .failed(error):
-            throw error
         case .connecting:
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 if case var .connecting(waiters) = state {
                     waiters.append(continuation)
                     state = .connecting(waiters)
+                } else {
+                    continuation.resume(throwing: BlockchainClientError.transportError(reason: "connection reset"))
                 }
             }
 
@@ -72,14 +85,15 @@ actor ElectrumConnection {
             break
         }
 
+        let connection = NWConnection(host: host, port: port, using: useTLS ? .tls : .tcp)
+        let connectionId = ObjectIdentifier(connection)
+        self.connection = connection
+        receiveBuffer.removeAll()
+
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             state = .connecting([continuation])
             connection.stateUpdateHandler = { [weak self] newState in
-                guard let self else {
-                    return
-                }
-
-                Task { await self.handleStateChange(newState) }
+                Task { await self?.handleStateChange(newState, of: connectionId) }
             }
 
             connection.start(queue: .global(qos: .userInitiated))
@@ -96,6 +110,10 @@ actor ElectrumConnection {
     ///   the server returns a JSON-RPC `error` object.
     func call(method: String, params: [Any]) async throws -> Any {
         try await connect()
+
+        guard let connection else {
+            throw BlockchainClientError.transportError(reason: "connection reset")
+        }
 
         let id = nextRequestId
         nextRequestId += 1
@@ -124,24 +142,49 @@ actor ElectrumConnection {
         }
     }
 
-    /// Registers `handler` for `id`-less notifications for `method` (a
-    /// subscription push, e.g. `blockchain.headers.subscribe`'s
-    /// follow-up updates). Replaces any existing handler for the same
-    /// method.
-    func onNotification(method: String, handler: @escaping (Any) -> Void) {
-        notificationHandlers[method] = handler
+    /// Registers handlers for `id`-less notifications for `method` (a
+    /// subscription push, e.g. `blockchain.headers.subscribe`'s follow-up
+    /// updates). Every subscriber for a method receives every push.
+    ///
+    /// When the connection drops, `onFailure` is called once and the
+    /// subscriber is removed — the server forgets subscriptions with the
+    /// connection, so the caller must subscribe again.
+    ///
+    /// - Returns: A token for ``removeSubscriber(method:id:)``.
+    func addSubscriber(
+        method: String,
+        onNotification: @escaping @Sendable (Any) -> Void,
+        onFailure: @escaping @Sendable (any Error) -> Void
+    ) -> UUID {
+        let id = UUID()
+        subscribers[method, default: [:]][id] = Subscriber(onNotification: onNotification, onFailure: onFailure)
+        return id
     }
 
-    /// Tears down the connection, failing every request still in flight.
+    /// Removes a subscriber added by
+    /// ``addSubscriber(method:onNotification:onFailure:)``.
+    func removeSubscriber(method: String, id: UUID) {
+        subscribers[method]?[id] = nil
+    }
+
+    /// Tears down the connection, failing every request and subscriber
+    /// still active. The next call reconnects.
     func disconnect() {
-        connection.cancel()
-        state = .idle
-        failAllPending(BlockchainClientError.transportError(reason: "disconnected"))
+        reset(BlockchainClientError.transportError(reason: "disconnected"))
     }
 
     // MARK: - Private
 
-    private func handleStateChange(_ newState: NWConnection.State) {
+    private func isCurrent(_ connectionId: ObjectIdentifier) -> Bool {
+        connection.map(ObjectIdentifier.init) == connectionId
+    }
+
+    private func handleStateChange(_ newState: NWConnection.State, of connectionId: ObjectIdentifier) {
+        // Late callbacks from a connection already replaced by `reset(_:)`.
+        guard isCurrent(connectionId) else {
+            return
+        }
+
         switch newState {
         case .ready:
             guard case let .connecting(waiters) = state else {
@@ -152,25 +195,43 @@ actor ElectrumConnection {
             for waiter in waiters { waiter.resume() }
 
         case let .failed(nwError):
-            let mapped = BlockchainClientError.transportError(reason: nwError.localizedDescription)
-            if case let .connecting(waiters) = state {
-                for waiter in waiters { waiter.resume(throwing: mapped) }
-            }
+            reset(BlockchainClientError.transportError(reason: nwError.localizedDescription))
 
-            state = .failed(mapped)
-            failAllPending(mapped)
+        case let .waiting(nwError):
+            // The server is unreachable; Network.framework would retry
+            // indefinitely, leaving callers hanging. Fail now — the next
+            // call tries again.
+            if case .connecting = state {
+                reset(BlockchainClientError.transportError(reason: nwError.localizedDescription))
+            }
 
         case .cancelled:
-            let error = BlockchainClientError.transportError(reason: "connection cancelled")
-            if case let .connecting(waiters) = state {
-                for waiter in waiters { waiter.resume(throwing: error) }
-            }
-
-            state = .idle
+            reset(BlockchainClientError.transportError(reason: "connection cancelled"))
 
         default:
             break
         }
+    }
+
+    /// Drops the current connection so the next call opens a new one,
+    /// failing connect waiters, in-flight requests and subscribers.
+    private func reset(_ error: Error) {
+        let previous = connection
+        connection = nil
+
+        if case let .connecting(waiters) = state {
+            for waiter in waiters { waiter.resume(throwing: error) }
+        }
+
+        state = .idle
+        receiveBuffer.removeAll()
+        failAllPending(error)
+
+        let dropped = subscribers.values.flatMap(\.values)
+        subscribers.removeAll()
+        for subscriber in dropped { subscriber.onFailure(error) }
+
+        previous?.cancel()
     }
 
     private func failPending(id: Int, error: Error) {
@@ -190,30 +251,36 @@ actor ElectrumConnection {
     }
 
     private func receiveNext() {
+        guard let connection else {
+            return
+        }
+
+        let connectionId = ObjectIdentifier(connection)
         connection.receive(
             minimumIncompleteLength: 1,
             maximumLength: 64 * 1024
         ) { [weak self] data, _, isComplete, error in
-            Task { await self?.handleReceive(data: data, isComplete: isComplete, error: error) }
+            Task { await self?.handleReceive(data: data, isComplete: isComplete, error: error, of: connectionId) }
         }
     }
 
-    private func handleReceive(data: Data?, isComplete: Bool, error: Error?) {
+    private func handleReceive(data: Data?, isComplete: Bool, error: Error?, of connectionId: ObjectIdentifier) {
+        guard isCurrent(connectionId) else {
+            return
+        }
+
         if let data, !data.isEmpty {
             receiveBuffer.append(data)
             processBufferedLines()
         }
 
         if let error {
-            state = .failed(BlockchainClientError.transportError(reason: error.localizedDescription))
-            failAllPending(BlockchainClientError.transportError(reason: error.localizedDescription))
+            reset(BlockchainClientError.transportError(reason: error.localizedDescription))
             return
         }
 
         guard !isComplete else {
-            let closedError = BlockchainClientError.transportError(reason: "connection closed by peer")
-            state = .failed(closedError)
-            failAllPending(closedError)
+            reset(BlockchainClientError.transportError(reason: "connection closed by peer"))
             return
         }
 
@@ -255,8 +322,9 @@ actor ElectrumConnection {
             }
 
             continuation.resume(returning: result)
-        } else if let method = object["method"] as? String, let handler = notificationHandlers[method] {
-            handler(object["params"] ?? [Any]())
+        } else if let method = object["method"] as? String, let methodSubscribers = subscribers[method] {
+            let params = object["params"] ?? [Any]()
+            for subscriber in methodSubscribers.values { subscriber.onNotification(params) }
         }
     }
 }

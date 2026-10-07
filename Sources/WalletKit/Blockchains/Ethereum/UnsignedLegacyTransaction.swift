@@ -27,7 +27,7 @@ public struct UnsignedLegacyTransaction: Sendable {
     /// The sending address's transaction count (its next-transaction nonce).
     public let nonce: BigUInt
     /// Gas price in wei per gas unit — from `eth_gasPrice` or
-    /// ``EthereumRPCClient/estimateFee(for:)``.
+    /// ``EthereumRPCClient/feeRates()``.
     public let gasPrice: BigUInt
     /// Maximum gas units this transaction may consume.
     public let gasLimit: BigUInt

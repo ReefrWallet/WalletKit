@@ -117,10 +117,6 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
         return result
     }
 
-    public func estimateFee(for request: FeeEstimateRequest<CardanoAccountDescriptor>?) async throws -> FeeEstimate {
-        throw WalletKitError.unsupportedFeature
-    }
-
     public func getAllBalances(_ owner: CardanoAccountDescriptor) async throws -> [String: BigUInt] {
         let entries = try await accountUTxOs(owner)
 
@@ -182,7 +178,7 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
         switch feature {
         case .allBalances, .transactionHistory:
             true
-        case .feeEstimation, .multipleBalances, .transactionSubscription:
+        case .multipleBalances, .transactionSubscription:
             false
         }
     }

@@ -94,15 +94,11 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
 
     public func isSupported(_ feature: BlockchainClientFeature) -> Bool {
         switch feature {
-        case .feeEstimation, .multipleBalances, .transactionHistory:
+        case .multipleBalances, .transactionHistory:
             true
         case .allBalances, .transactionSubscription:
             false
         }
-    }
-
-    public func estimateFee(for request: FeeEstimateRequest<TronAddress>?) async throws -> FeeEstimate {
-        FeeEstimate(gasPrice: 0)
     }
 
     public func transactionHistory(

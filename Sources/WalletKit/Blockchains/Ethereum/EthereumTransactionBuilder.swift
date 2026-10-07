@@ -33,10 +33,9 @@ public struct EthereumTransactionBuilder: BlockchainTransactionBuilderProtocol {
     /// Builds unsigned Ethereum transaction bytes for a transfer of `amount`
     /// of `token` from `sender` to `recipient`.
     ///
-    /// For native ETH transfers, fetches nonce and `eth_estimateGas` (with
-    /// `from`, `to`, `value`) concurrently. For ERC-20 transfers, fetches
-    /// nonce and fee rates concurrently, then calls `eth_estimateGas` with
-    /// the ABI calldata.
+    /// Native ETH is a plain value call to `recipient`; ERC-20 is a
+    /// `transfer(address,uint256)` call to the token contract. Both go
+    /// through ``buildCall(sender:to:value:data:options:)``.
     ///
     /// - Parameters:
     ///   - sender: The account that will sign and pay gas.
@@ -62,62 +61,37 @@ public struct EthereumTransactionBuilder: BlockchainTransactionBuilderProtocol {
         token: String?,
         options: [BlockchainTransactionBuilderOptions]
     ) async throws -> Data {
-        let useLegacy = options.containsLegacyEip155
-        let feeOverride = options.ethereumFeeOverride
+        let to: EthereumAddress
+        let value: BigUInt
+        let data: Data
 
-        if let tokenString = token {
-            // ERC-20: rates-only estimate for fee fields; gas is estimated
-            // separately with the calldata in buildERC20Transfer (unless the
-            // caller has supplied a gasLimit override).
-            async let nonceTask = client.nonce(of: sender)
-            async let feeTask = client.estimateFee(for: nil as FeeEstimateRequest<EthereumAddress>?)
-            let nonce = try await nonceTask
-            let fee = try await feeTask
-            return try await buildERC20Transfer(
-                sender: sender,
-                recipient: recipient,
-                amount: amount,
-                tokenString: tokenString,
-                nonce: nonce,
-                fee: fee,
-                feeOverride: feeOverride,
-                useLegacy: useLegacy
-            )
-        } else {
-            // Native ETH: estimate gas with the actual from/to/value so that
-            // contract recipients with a payable receive/fallback get the
-            // right limit; fall back to 21 000 only if the node omits it.
-            // Skip per-tx gas estimation when the caller has overridden gasLimit.
-            async let nonceTask = client.nonce(of: sender)
-            let nonce = try await nonceTask
-            let fee: FeeEstimate
-            if feeOverride?.gasLimit != nil {
-                fee = try await client.estimateFee(for: nil as FeeEstimateRequest<EthereumAddress>?)
-            } else {
-                fee = try await client.estimateFee(
-                    for: FeeEstimateRequest(from: sender, to: recipient, value: amount)
+        if let token {
+            guard let contract = try? EthereumAddress(string: token) else {
+                throw BlockchainTransactionBuilderError.invalidToken(
+                    reason: "'\(token)' is not a valid Ethereum address"
                 )
             }
 
-            return buildNativeCall(
-                sender: sender,
-                to: recipient,
-                value: amount,
-                data: Data(),
-                nonce: nonce,
-                fee: fee,
-                feeOverride: feeOverride,
-                useLegacy: useLegacy
+            to = contract
+            value = 0
+            data = EthereumABI.encodeCall(
+                selector: EthereumABI.selector("transfer(address,uint256)"),
+                parameters: [.address(recipient), .uint256(amount)]
             )
+        } else {
+            to = recipient
+            value = amount
+            data = Data()
         }
+
+        return try await buildCall(sender: sender, to: to, value: value, data: data, options: options)
     }
 
     /// Builds unsigned Ethereum transaction bytes for an arbitrary call —
     /// `to` optional so contract deployment (`to == nil`) works, `data`
     /// caller-supplied — the entry point a dapp's `eth_sendTransaction`
-    /// needs, as opposed to ``buildTransfer(sender:recipient:amount:token:options:)``'s
-    /// fixed native-ETH/ERC-20-transfer shapes. Reuses the same nonce/fee
-    /// logic as the native-ETH path of ``buildTransfer(sender:recipient:amount:token:options:)``.
+    /// needs. Fetches nonce, ``EthereumRPCClient/feeRates()`` and
+    /// ``EthereumRPCClient/estimateGas(from:to:value:data:)`` concurrently.
     ///
     /// - Parameters:
     ///   - sender: The account that will sign and pay gas.
@@ -140,51 +114,26 @@ public struct EthereumTransactionBuilder: BlockchainTransactionBuilderProtocol {
         data: Data,
         options: [BlockchainTransactionBuilderOptions]
     ) async throws -> Data {
-        let useLegacy = options.containsLegacyEip155
         let feeOverride = options.ethereumFeeOverride
 
         async let nonceTask = client.nonce(of: sender)
-        let nonce = try await nonceTask
-        let fee: FeeEstimate
-        if feeOverride?.gasLimit != nil {
-            fee = try await client.estimateFee(for: nil as FeeEstimateRequest<EthereumAddress>?)
+        async let ratesTask = client.feeRates()
+
+        // Skip `eth_estimateGas` when the caller has overridden gasLimit.
+        let gasLimit: BigUInt
+        if let overrideGasLimit = feeOverride?.gasLimit {
+            gasLimit = overrideGasLimit
         } else {
-            fee = try await client.estimateFee(for: FeeEstimateRequest(from: sender, to: to, value: value, data: data))
+            gasLimit = try await client.estimateGas(from: sender, to: to, value: value, data: data)
         }
 
-        return buildNativeCall(
-            sender: sender,
-            to: to,
-            value: value,
-            data: data,
-            nonce: nonce,
-            fee: fee,
-            feeOverride: feeOverride,
-            useLegacy: useLegacy
-        )
-    }
-}
+        let nonce = BigUInt(try await nonceTask)
+        let rates = try await ratesTask
 
-// MARK: - Private helpers
-
-private extension EthereumTransactionBuilder {
-    typealias EthFeeOverride = (maxFeePerGas: BigUInt?, maxPriorityFeePerGas: BigUInt?, gasLimit: BigUInt?)
-
-    func buildNativeCall(
-        sender: EthereumAddress,
-        to: EthereumAddress?,
-        value: BigUInt,
-        data: Data,
-        nonce: UInt64,
-        fee: FeeEstimate,
-        feeOverride: EthFeeOverride?,
-        useLegacy: Bool
-    ) -> Data {
-        let gasLimit = feeOverride?.gasLimit ?? fee.gasLimit ?? 21_000
-        if useLegacy {
+        if options.containsLegacyEip155 {
             return UnsignedLegacyTransaction(
-                nonce: BigUInt(nonce),
-                gasPrice: feeOverride?.maxFeePerGas ?? fee.gasPrice,
+                nonce: nonce,
+                gasPrice: feeOverride?.maxFeePerGas ?? rates.gasPrice,
                 gasLimit: gasLimit,
                 to: to,
                 value: value,
@@ -194,74 +143,15 @@ private extension EthereumTransactionBuilder {
         }
 
         return UnsignedEIP1559Transaction(
-            nonce: BigUInt(nonce),
-            maxPriorityFeePerGas: feeOverride?.maxPriorityFeePerGas ?? fee.maxPriorityFeePerGas ?? fee.gasPrice,
-            maxFeePerGas: feeOverride?.maxFeePerGas ?? fee.maxFeePerGas ?? fee.gasPrice,
+            nonce: nonce,
+            maxPriorityFeePerGas: feeOverride?.maxPriorityFeePerGas ?? rates.maxPriorityFeePerGas,
+            maxFeePerGas: feeOverride?.maxFeePerGas ?? rates.maxFeePerGas,
             gasLimit: gasLimit,
             to: to,
             value: value,
             data: data,
             chainId: client.chainId
         ).signingData
-    }
-
-    func buildERC20Transfer(
-        sender: EthereumAddress,
-        recipient: EthereumAddress,
-        amount: BigUInt,
-        tokenString: String,
-        nonce: UInt64,
-        fee: FeeEstimate,
-        feeOverride: EthFeeOverride?,
-        useLegacy: Bool
-    ) async throws -> Data {
-        guard let contract = try? EthereumAddress(string: tokenString) else {
-            throw BlockchainTransactionBuilderError.invalidToken(
-                reason: "'\(tokenString)' is not a valid Ethereum address"
-            )
-        }
-
-        let calldata = EthereumABI.encodeCall(
-            selector: EthereumABI.selector("transfer(address,uint256)"),
-            parameters: [.address(recipient), .uint256(amount)]
-        )
-
-        // Skip per-tx gas estimation when the caller has overridden gasLimit.
-        let gasLimit: BigUInt
-
-        if let overrideGasLimit = feeOverride?.gasLimit {
-            gasLimit = overrideGasLimit
-        } else {
-            let gasEstimate = try await client.estimateFee(
-                for: FeeEstimateRequest(from: sender, to: contract, data: calldata)
-            )
-
-            // Fall back to a generous upper-bound if the node couldn't estimate.
-            gasLimit = gasEstimate.gasLimit ?? 100_000
-        }
-
-        if useLegacy {
-            return UnsignedLegacyTransaction(
-                nonce: BigUInt(nonce),
-                gasPrice: feeOverride?.maxFeePerGas ?? fee.gasPrice,
-                gasLimit: gasLimit,
-                to: contract,
-                value: 0,
-                data: calldata,
-                chainId: client.chainId
-            ).signingData
-        } else {
-            return UnsignedEIP1559Transaction(
-                nonce: BigUInt(nonce),
-                maxPriorityFeePerGas: feeOverride?.maxPriorityFeePerGas ?? fee.maxPriorityFeePerGas ?? fee.gasPrice,
-                maxFeePerGas: feeOverride?.maxFeePerGas ?? fee.maxFeePerGas ?? fee.gasPrice,
-                gasLimit: gasLimit,
-                to: contract,
-                value: 0,
-                data: calldata,
-                chainId: client.chainId
-            ).signingData
-        }
     }
 }
 

@@ -13,7 +13,7 @@ import Foundation
 /// reads, fee/rent queries, transaction submission, and account history.
 /// Pairs with ``SolanaTransactionBuilder``/``SolanaPKeySigner``/
 /// ``SolanaTrezorSigner``, which produce the ``SolanaUnsignedTransaction``
-/// envelope this client's ``estimateFee(for:)`` and
+/// envelope this client's ``estimateFee(transaction:)`` and
 /// ``broadcast(transaction:signature:)`` consume.
 public struct SolanaRPCClient: Sendable {
     let rpc: JSONRPCClient
@@ -61,8 +61,10 @@ extension SolanaRPCClient {
     /// broadcast this client itself confirmed doesn't appear stale.
     func lamportBalance(of owner: SolanaAddress) async throws -> UInt64 {
         let response: SolanaRPCValue<UInt64> = try await rpc.call(
-            method: "getBalance", params: CommitmentParams(pubkey: owner.string)
+            method: "getBalance",
+            params: CommitmentParams(pubkey: owner.string)
         )
+
         return response.value
     }
 
@@ -130,6 +132,7 @@ extension SolanaRPCClient {
             method: "getTokenAccountsByOwner",
             params: TokenAccountsParams(owner: owner.string, programId: tokenProgram.string)
         )
+
         return try response.value.map { entry in
             let info = entry.account.data.parsed.info
             guard let amount = BigUInt(info.tokenAmount.amount) else {
@@ -173,6 +176,7 @@ extension SolanaRPCClient {
             method: "getAccountInfo",
             params: AccountInfoParams(pubkey: address.string)
         )
+
         guard let info = response.value, let base64 = info.data.first, let data = Data(base64Encoded: base64) else {
             return nil
         }
@@ -278,6 +282,7 @@ extension SolanaRPCClient {
         let response: SolanaRPCValue<Blockhash> = try await rpc.call(
             method: "getLatestBlockhash", params: CommitmentOnlyParams()
         )
+
         let decoded = try Base58.decode(response.value.blockhash)
         guard decoded.count == 32 else {
             throw BlockchainClientError.decodingFailed(reason: "invalid blockhash: \(response.value.blockhash)")
@@ -303,6 +308,7 @@ extension SolanaRPCClient {
             method: "getFeeForMessage",
             params: FeeForMessageParams(message: message.base64EncodedString())
         )
+
         return response.value
     }
 
@@ -320,11 +326,17 @@ extension SolanaRPCClient {
     /// per compute unit — the median of `getRecentPrioritizationFees`'
     /// non-zero samples, or 0 if every recent sample was 0 (an idle
     /// cluster).
-    func recentPrioritizationFee() async throws -> UInt64 {
+    public func recentPrioritizationFee() async throws -> UInt64 {
         let entries: [PrioritizationFeeEntry] = try await rpc.call(
-            method: "getRecentPrioritizationFees", params: [String]()
+            method: "getRecentPrioritizationFees",
+            params: [String]()
         )
-        let nonZero = entries.map(\.prioritizationFee).filter { $0 > 0 }.sorted()
+
+        let nonZero = entries
+            .map(\.prioritizationFee)
+            .filter { $0 > 0 }
+            .sorted()
+
         guard !nonZero.isEmpty else {
             return 0
         }

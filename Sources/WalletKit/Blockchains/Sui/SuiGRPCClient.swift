@@ -540,60 +540,6 @@ public struct SuiGRPCClient: Sendable { // swiftlint:disable:this type_body_leng
         }
     }
 
-    /// Returns current Sui network fee rates and, when `request.data` is
-    /// non-nil, a per-transaction gas estimate via
-    /// `TransactionExecutionService.simulateTransaction`.
-    ///
-    /// **Rates** are fetched from `LedgerService.getEpoch` as the epoch's
-    /// `reference_gas_price` (MIST per gas unit), returned in
-    /// ``FeeEstimate/gasPrice``. ``FeeEstimate/maxFeePerGas`` and
-    /// ``FeeEstimate/maxPriorityFeePerGas`` are `nil` — Sui has no EIP-1559
-    /// fee model.
-    ///
-    /// **Per-transaction estimate** (when `request.data` is non-nil): the
-    /// BCS-encoded `TransactionData` bytes are passed to
-    /// `simulateTransaction`. The ``FeeEstimate/estimatedFee`` is
-    /// `computation_cost + storage_cost − storage_rebate` (floored at 0) from
-    /// the simulation's `GasCostSummary`. ``FeeEstimate/gasLimit`` is
-    /// `computation_cost ÷ reference_gas_price` (nil if the gas price is 0).
-    ///
-    /// - Parameter request: A ``FeeEstimateRequest`` whose `data` field
-    ///   carries unsigned BCS `TransactionData` bytes, or `nil` for
-    ///   rates-only.
-    /// - Returns: A ``FeeEstimate`` with the reference gas price, plus per-tx
-    ///   fields when `request.data` is non-nil.
-    /// - Throws: ``BlockchainClientError`` on a transport, RPC, or decoding
-    ///   failure.
-    public func estimateFee(for request: FeeEstimateRequest<SuiAddress>?) async throws -> FeeEstimate {
-        let gasPrice = try await referenceGasPrice()
-
-        guard let txBytes = request?.data else {
-            return FeeEstimate(gasPrice: BigUInt(gasPrice))
-        }
-
-        let gasCost = try await simulateGasCost(transactionData: txBytes)
-
-        // Gross = computation + storage (before rebate). The rebate is
-        // credited after execution, so the gas budget must cover the gross
-        // cost; base any budget calculation on grossFee, not estimatedFee.
-        let grossFee = BigUInt(gasCost.computationCost) + BigUInt(gasCost.storageCost)
-
-        // Net fee = computation + storage − rebate, floored at 0. A negative
-        // net is possible if the rebate exceeds both cost components (e.g. a
-        // transaction that deletes many coin objects).
-        let rawCost = Int64(bitPattern: gasCost.computationCost &+ gasCost.storageCost) - Int64(gasCost.storageRebate)
-
-        let estimatedFee = BigUInt(max(0, rawCost))
-        let gasLimit: BigUInt? = gasPrice > 0 ? BigUInt(gasCost.computationCost / gasPrice) : nil
-
-        return FeeEstimate(
-            gasPrice: BigUInt(gasPrice),
-            gasLimit: gasLimit,
-            estimatedFee: estimatedFee,
-            grossFee: grossFee
-        )
-    }
-
     /// Fetches the current epoch's `reference_gas_price` (MIST per gas unit)
     /// via `LedgerService.getEpoch` with a narrow read mask.
     public func referenceGasPrice() async throws -> UInt64 {
@@ -611,12 +557,8 @@ public struct SuiGRPCClient: Sendable { // swiftlint:disable:this type_body_leng
         }
     }
 
-    /// ``simulateGasCost(transactionData:)``, converted to
-    /// ``SuiGasCostSummary`` — the dapp bridge's entry point for sizing
-    /// a transaction's gas budget, kept distinct from
-    /// ``estimateFee(for:)`` (which also fetches the reference gas
-    /// price and computes a net, rebate-adjusted fee this budget-sizing
-    /// use has no need for).
+    /// Simulates `transactionData` (unsigned BCS `TransactionData`) and
+    /// returns its gas cost.
     public func gasCostSummary(transactionData: Data) async throws -> SuiGasCostSummary {
         let cost = try await simulateGasCost(transactionData: transactionData)
         return SuiGasCostSummary(
@@ -627,8 +569,7 @@ public struct SuiGRPCClient: Sendable { // swiftlint:disable:this type_body_leng
     /// Simulates `transactionData` via
     /// `TransactionExecutionService.simulateTransaction` and returns the
     /// resulting `GasCostSummary` (`computation_cost`, `storage_cost`,
-    /// `storage_rebate`, `non_refundable_storage_fee`) — used both by
-    /// ``estimateFee(for:)`` and ``gasCostSummary(transactionData:)``.
+    /// `storage_rebate`, `non_refundable_storage_fee`).
     func simulateGasCost(transactionData: Data) async throws -> Sui_Rpc_V2_GasCostSummary {
         try await withTransactionExecutionServiceClient { client in
             let request = Sui_Rpc_V2_SimulateTransactionRequest.with {
@@ -652,24 +593,17 @@ public struct SuiGRPCClient: Sendable { // swiftlint:disable:this type_body_leng
         }
     }
 
-    func transport() throws -> HTTP2ClientTransport.Posix {
-        do {
-            return try HTTP2ClientTransport.Posix(
-                target: .dns(host: host, port: port),
-                transportSecurity: useTLS ? .tls : .plaintext
-            )
-        } catch {
-            throw BlockchainClientError.transportError(reason: error.localizedDescription)
-        }
+    /// The pooled, long-lived gRPC client for this endpoint (see
+    /// ``SuiGRPCClientPool``).
+    func grpcClient() throws -> SuiGRPCClientPool.Client {
+        try SuiGRPCClientPool.shared.client(for: .init(host: host, port: port, useTLS: useTLS))
     }
 
     func withStateServiceClient<Result: Sendable>(
         _ body: @escaping (Sui_Rpc_V2_StateService.Client<HTTP2ClientTransport.Posix>) async throws -> Result
     ) async throws -> Result {
         try await withRemappedErrors {
-            try await withGRPCClient(transport: try transport()) { grpcClient in
-                try await body(Sui_Rpc_V2_StateService.Client(wrapping: grpcClient))
-            }
+            try await body(Sui_Rpc_V2_StateService.Client(wrapping: try grpcClient()))
         }
     }
 
@@ -677,9 +611,7 @@ public struct SuiGRPCClient: Sendable { // swiftlint:disable:this type_body_leng
         _ body: @escaping (Sui_Rpc_V2_LedgerService.Client<HTTP2ClientTransport.Posix>) async throws -> Result
     ) async throws -> Result {
         try await withRemappedErrors {
-            try await withGRPCClient(transport: try transport()) { grpcClient in
-                try await body(Sui_Rpc_V2_LedgerService.Client(wrapping: grpcClient))
-            }
+            try await body(Sui_Rpc_V2_LedgerService.Client(wrapping: try grpcClient()))
         }
     }
 
@@ -687,9 +619,7 @@ public struct SuiGRPCClient: Sendable { // swiftlint:disable:this type_body_leng
         _ body: @escaping (Sui_Rpc_V2_MovePackageService.Client<HTTP2ClientTransport.Posix>) async throws -> Result
     ) async throws -> Result {
         try await withRemappedErrors {
-            try await withGRPCClient(transport: try transport()) { grpcClient in
-                try await body(Sui_Rpc_V2_MovePackageService.Client(wrapping: grpcClient))
-            }
+            try await body(Sui_Rpc_V2_MovePackageService.Client(wrapping: try grpcClient()))
         }
     }
 
@@ -698,9 +628,7 @@ public struct SuiGRPCClient: Sendable { // swiftlint:disable:this type_body_leng
             -> Result
     ) async throws -> Result {
         try await withRemappedErrors {
-            try await withGRPCClient(transport: try transport()) { grpcClient in
-                try await body(Sui_Rpc_V2_TransactionExecutionService.Client(wrapping: grpcClient))
-            }
+            try await body(Sui_Rpc_V2_TransactionExecutionService.Client(wrapping: try grpcClient()))
         }
     }
 
@@ -708,9 +636,7 @@ public struct SuiGRPCClient: Sendable { // swiftlint:disable:this type_body_leng
         _ body: @escaping (Sui_Rpc_V2_SubscriptionService.Client<HTTP2ClientTransport.Posix>) async throws -> Result
     ) async throws -> Result {
         try await withRemappedErrors {
-            try await withGRPCClient(transport: try transport()) { grpcClient in
-                try await body(Sui_Rpc_V2_SubscriptionService.Client(wrapping: grpcClient))
-            }
+            try await body(Sui_Rpc_V2_SubscriptionService.Client(wrapping: try grpcClient()))
         }
     }
 }
@@ -718,7 +644,7 @@ public struct SuiGRPCClient: Sendable { // swiftlint:disable:this type_body_leng
 extension SuiGRPCClient {
     /// Runs `body`, translating a thrown `RPCError` (a gRPC `Status` the node
     /// returned) into ``BlockchainClientError/rpcError(code:message:)``.
-    /// Already-thrown `BlockchainClientError`s (e.g. from `transport()`) pass
+    /// Already-thrown `BlockchainClientError`s (e.g. from `grpcClient()`) pass
     /// through unchanged.
     func withRemappedErrors<Result: Sendable>(_ body: () async throws -> Result) async throws -> Result {
         do {

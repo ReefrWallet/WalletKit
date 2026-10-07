@@ -157,6 +157,7 @@ private extension SuiGRPCClient {
                 request: ClientRequest(message: Sui_Rpc_V2_GetServiceInfoRequest()),
                 options: self.callOptions
             )
+
             return response.checkpointHeight
         }
     }

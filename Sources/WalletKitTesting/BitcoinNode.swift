@@ -242,6 +242,7 @@ public final class BitcoinNode {
             path: bitcoindPath,
             ports: ports
         )
+
         try await waitForCookie(dataDirectory: dataDirectory, process: bitcoindProcess)
 
         let (electrsProcess, electrsLogHandle) = try makeElectrsProcess(
@@ -365,6 +366,7 @@ public final class BitcoinNode {
         let (data, response) = try await URLSession.shared.data(
             for: URLRequest(url: esploraEndpoint.appendingPathComponent("blocks/tip/height"))
         )
+
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
               let text = String(data: data, encoding: .utf8), let height = Int(text) else {
             throw BitcoinLaunchError(description: "malformed /blocks/tip/height response")
@@ -375,6 +377,7 @@ public final class BitcoinNode {
 
     private func waitUntilElectrsReady() async throws {
         let deadline = ContinuousClock.now.advanced(by: .seconds(15))
+
         while ContinuousClock.now < deadline {
             if (try? await esploraTipHeight()) != nil {
                 return

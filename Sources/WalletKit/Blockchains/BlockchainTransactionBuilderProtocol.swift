@@ -52,6 +52,11 @@ public protocol BlockchainTransactionBuilderProtocol: Sendable {
     /// The chain-specific address type.
     associatedtype Address: BlockchainAddress
 
+    /// Parses `string` as this builder's address type. Defaults to
+    /// `Address(string:)`; conformers override it when parsing needs
+    /// builder context (e.g. ``BitcoinTransactionBuilder``'s network).
+    func makeAddress(_ string: String) throws -> Address
+
     /// Builds unsigned transaction bytes encoding a transfer of `amount`
     /// of `token` (or the native asset when `token` is `nil`) from
     /// `sender` to `recipient`.
@@ -92,70 +97,5 @@ public extension BlockchainTransactionBuilderProtocol {
         token: String?
     ) async throws -> Data {
         try await buildTransfer(sender: sender, recipient: recipient, amount: amount, token: token, options: [])
-    }
-}
-
-// MARK: - Type-eraser
-
-/// A String-addressed facade over any ``BlockchainTransactionBuilderProtocol``
-/// implementation, mirroring ``AnyBlockchainClient``.
-///
-/// Use this type when the concrete address type is not known statically.
-public struct AnyBlockchainTransactionBuilder: Sendable {
-    private let _buildTransfer: @Sendable (
-        String,
-        String,
-        BigUInt,
-        String?,
-        [BlockchainTransactionBuilderOptions]
-    ) async throws -> Data
-
-    /// Wraps `builder`, bridging its concrete `Address` type to `String`.
-    ///
-    /// - Parameters:
-    ///   - builder: The concrete transaction builder to wrap.
-    ///   - makeAddress: Creates `B.Address` from a string.
-    public init<B: BlockchainTransactionBuilderProtocol>(
-        _ builder: B,
-        makeAddress: @Sendable @escaping (String) throws -> B.Address = { try B.Address(string: $0) }
-    ) {
-        _buildTransfer = { sender, recipient, amount, token, options in
-            let from = try makeAddress(sender)
-            let to = try makeAddress(recipient)
-            return try await builder.buildTransfer(
-                sender: from,
-                recipient: to,
-                amount: amount,
-                token: token,
-                options: options
-            )
-        }
-    }
-
-    /// Builds unsigned transaction bytes for the wrapped chain's transfer,
-    /// bridging `sender` and `recipient` from `String` to the concrete
-    /// `Address` type via `Address(string:)`.
-    ///
-    /// - Parameters:
-    ///   - sender: The sending address as a string.
-    ///   - recipient: The destination address as a string.
-    ///   - amount: The transfer amount in the token's smallest unit.
-    ///   - token: `nil` for the native token; a chain-specific token
-    ///     identifier string otherwise.
-    ///   - options: Builder flags — see ``BlockchainTransactionBuilderOptions``.
-    ///     Defaults to `[]` (EIP-1559 on Ethereum).
-    /// - Returns: Unsigned transaction bytes ready for signing.
-    /// - Throws: ``WalletKitError/invalidAddress(reason:)`` if `sender` or
-    ///   `recipient` can't be parsed, ``BlockchainTransactionBuilderError``
-    ///   on build failures, or ``BlockchainClientError`` on chain client
-    ///   failures.
-    public func buildTransfer(
-        sender: String,
-        recipient: String,
-        amount: BigUInt,
-        token: String?,
-        options: [BlockchainTransactionBuilderOptions] = []
-    ) async throws -> Data {
-        try await _buildTransfer(sender, recipient, amount, token, options)
     }
 }
