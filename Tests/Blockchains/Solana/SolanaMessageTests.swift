@@ -130,6 +130,7 @@ struct SolanaMessageTests {
             source: try address(1), mint: try address(2), destination: try address(3), owner: try address(4),
             amount: 256, decimals: 6, tokenProgram: SolanaProgram.token
         )
+
         // 1-byte discriminant (12 == TransferChecked) + 8-byte LE amount + 1-byte decimals.
         #expect(instruction.data == Data([12, 0, 1, 0, 0, 0, 0, 0, 0, 6]))
     }

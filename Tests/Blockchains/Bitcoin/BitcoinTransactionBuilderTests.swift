@@ -200,6 +200,7 @@ struct BitcoinTransactionBuilderTests {
         let psbt = try await builder.buildTransfer(
             sender: sender, recipient: recipient, amount: BigUInt(50_000), token: nil, options: []
         )
+
         let signer = try BitcoinPKeySigner(descriptor: sender, seed: senderSeed, derivationPath: senderPath)
         let finalized = try await signer.sign(transaction: psbt)
 

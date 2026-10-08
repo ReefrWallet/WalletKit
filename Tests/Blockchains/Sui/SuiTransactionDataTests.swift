@@ -96,6 +96,7 @@ private extension SuiPtbTxVector {
             gasPrice: unsignedPtb.gasPrice,
             gasBudget: unsignedPtb.gasBudget
         )
+
         // swiftlint:enable force_try
     }
 }

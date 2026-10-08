@@ -72,6 +72,7 @@ struct BitcoinTrezorSignerTests {
                 isTaproot: false,
                 nonWitnessUtxo: funding.raw
             )
+
             let output = BitcoinPsbtOutputFfi(scriptPubkey: recipient.scriptPubkey(), valueSats: 90_000)
             let psbt = try bitcoinBuildUnsignedPsbt(inputs: [input], outputs: [output], locktime: 0)
 

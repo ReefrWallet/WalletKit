@@ -137,6 +137,7 @@ struct EthereumAnvilTests {
                 data: data,
                 chainId: node.chainId
             )
+
             let signed = try await signer.sign(transaction: transaction.signingData)
             let hash = try await client.broadcast(signed)
             let receipt = try await node.waitForReceipt(hash)
@@ -157,6 +158,7 @@ struct EthereumAnvilTests {
             data: mockUSDCCreationBytecode,
             gasLimit: 1_000_000
         )
+
         let mockUSDCAddress = try EthereumAddress(string: try #require(deployReceipt.contractAddress))
 
         // Mint 1,000 mock USDC (6 decimals) to both wallets.

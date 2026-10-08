@@ -260,6 +260,28 @@ public final class EthereumNode {
         }
     }
 
+    /// The node's latest block number.
+    public func blockNumber() async throws -> UInt64 {
+        let hex: String = try await rpc.call(method: "eth_blockNumber", params: [String]())
+        let digits = hex.hasPrefix("0x") ? String(hex.dropFirst(2)) : hex
+
+        guard let number = UInt64(digits, radix: 16) else {
+            throw BlockchainClientError.decodingFailed(reason: "invalid block number: \(hex)")
+        }
+
+        return number
+    }
+
+    /// Mines `count` empty blocks with Anvil's `anvil_mine` cheat code.
+    public func mine(blocks count: UInt64) async throws {
+        let before = try await blockNumber()
+        let _: String? = try? await rpc.call(method: "anvil_mine", params: ["0x" + String(count, radix: 16)])
+
+        guard try await blockNumber() >= before + count else {
+            throw EthereumLaunchError(description: "anvil_mine(\(count)) didn't take effect")
+        }
+    }
+
     /// Reads an account's native-token balance.
     public func nativeBalance(of address: EthereumAddress) async throws -> BigUInt {
         let hex: String = try await rpc.call(
@@ -392,6 +414,7 @@ private struct AnvilRPCClient {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(Request(method: method, params: params))
+        request.timeoutInterval = 10
 
         let (data, response) = try await URLSession.shared.data(for: request)
 

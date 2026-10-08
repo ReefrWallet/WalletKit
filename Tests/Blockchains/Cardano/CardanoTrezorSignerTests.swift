@@ -34,6 +34,7 @@ struct CardanoTrezorSignerTests {
                 policyId: Data(repeating: 9, count: 28),
                 quantity: "3"
             )
+
             let unsigned = try cardanoBuildTransfer(
                 amount: "3",
                 changeAddress: descriptor.receiveAddress.string,
@@ -61,6 +62,7 @@ struct CardanoTrezorSignerTests {
                     txHash: Data(repeating: 8, count: 32)
                 )]
             )
+
             let request = try JSONEncoder().encode(CardanoUnsignedTransaction(unsigned))
             let signer = try CardanoTrezorSigner(network: .preprod, accountIndex: 0, device: device)
             let signed = try await signer.sign(transaction: request)

@@ -36,6 +36,7 @@ private func loadTxVectors() -> [EthereumTxVector] {
         [EthereumTxVector].self,
         from: try! JSONSerialization.data(withJSONObject: legacyRaw)
     )
+
     // swiftlint:enable force_try force_cast
 }
 
@@ -76,6 +77,7 @@ private extension EthereumTxVector {
             data: unsignedTx.data.hexDecoded,
             chainId: chainId
         )
+
         // swiftlint:enable force_try
     }
 }

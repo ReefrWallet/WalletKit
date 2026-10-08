@@ -401,6 +401,7 @@ private extension SolanaNode {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(envelope)
+        request.timeoutInterval = 10
 
         let (data, _) = try await URLSession.shared.data(for: request)
         return try JSONDecoder().decode(Result.self, from: data)
@@ -500,4 +501,4 @@ private func makeLogHandle(at url: URL) throws -> FileHandle {
     return try FileHandle(forWritingTo: url)
 }
 
-#endif
+#endif // swiftlint:disable:this file_length

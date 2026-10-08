@@ -20,6 +20,7 @@ struct SolanaWireTransactionTests {
             instructions: [SystemProgram.transfer(from: payer, to: recipient, lamports: 1_000)],
             recentBlockhash: Data(repeating: 9, count: 32)
         )
+
         return (message.serialize(), payer)
     }
 
@@ -102,6 +103,7 @@ struct SolanaWireTransactionTests {
             let tx = try SolanaWireTransaction(
                 parsing: wrapAsTransaction(messageBytes: messageBytes, signatures: signatures)
             )
+
             let standalone = try SolanaParsedMessage(validating: messageBytes)
             #expect(tx.parsedMessage == standalone)
         }
@@ -290,6 +292,7 @@ struct SolanaWireTransactionTests {
         let tx = try SolanaWireTransaction(
             parsing: wrapAsTransaction(messageBytes: messageBytes, signatures: signatures)
         )
+
         let outsider = try address(9)
         #expect(throws: WalletKitError.self) {
             _ = try tx.signed(by: outsider, signature: Data(repeating: 3, count: 64))

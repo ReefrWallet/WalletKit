@@ -138,6 +138,9 @@ public struct BlockchainTransactionHead: Sendable {
 /// numeric block/checkpoint coordinate when it has one; the opaque cursor is
 /// authoritative for subsequent pages.
 public struct BlockchainTransactionHistoryRequest: Sendable {
+    /// Asset identifiers (token contracts) already known for the account. Clients whose node
+    /// rejects unscoped token-event queries narrow them to these instead of dropping them.
+    public let assetHints: [String]
     public let cursor: Data?
     public let direction: BlockchainTransactionScanDirection
     public let lowerBound: UInt64?
@@ -149,8 +152,10 @@ public struct BlockchainTransactionHistoryRequest: Sendable {
         direction: BlockchainTransactionScanDirection,
         lowerBound: UInt64? = nil,
         upperBound: UInt64? = nil,
-        limit: UInt32 = 100
+        limit: UInt32 = 100,
+        assetHints: [String] = []
     ) {
+        self.assetHints = assetHints
         self.cursor = cursor
         self.direction = direction
         self.lowerBound = lowerBound

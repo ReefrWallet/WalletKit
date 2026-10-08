@@ -76,9 +76,11 @@ struct SuiTransactionDataDecoderRoundTripTests {
     private static let coinA = SuiObjectReference(
         objectId: Data(repeating: 0x33, count: 32), version: 1, digest: Data(repeating: 0x44, count: 32)
     )
+
     private static let coinB = SuiObjectReference(
         objectId: Data(repeating: 0x55, count: 32), version: 2, digest: Data(repeating: 0x66, count: 32)
     )
+
     private static let gasCoin = SuiObjectReference(
         objectId: Data(repeating: 0x77, count: 32), version: 3, digest: Data(repeating: 0x88, count: 32)
     )
@@ -88,6 +90,7 @@ struct SuiTransactionDataDecoderRoundTripTests {
             sender: Self.account, transfers: [(recipient: Self.recipient, amount: 42)],
             gasPayment: [Self.gasCoin], gasOwner: Self.account, gasPrice: 1000, gasBudget: 3_000_000
         )
+
         let summary = try #require(SuiTransactionDataDecoder.summarize(transaction.transactionDataBcs))
         #expect(summary.sender == Self.account)
         #expect(summary.gasPrice == 1000)
@@ -100,6 +103,7 @@ struct SuiTransactionDataDecoderRoundTripTests {
             sender: Self.account, coinObject: Self.coinA, recipient: Self.recipient,
             gasPayment: [Self.gasCoin], gasOwner: Self.account, gasPrice: 1000, gasBudget: 2_000_000
         )
+
         let summary = try #require(SuiTransactionDataDecoder.summarize(transaction.transactionDataBcs))
         #expect(summary.commandCount == 1) // TransferObjects
         #expect(summary.gasBudget == 2_000_000)
@@ -110,6 +114,7 @@ struct SuiTransactionDataDecoderRoundTripTests {
             sender: Self.account, coinObject: Self.coinA, amount: 7, recipient: Self.recipient,
             gasPayment: [Self.gasCoin], gasOwner: Self.account, gasPrice: 1000, gasBudget: 2_000_000
         )
+
         let summary = try #require(SuiTransactionDataDecoder.summarize(transaction.transactionDataBcs))
         #expect(summary.commandCount == 2) // SplitCoins + TransferObjects
     }
@@ -119,6 +124,7 @@ struct SuiTransactionDataDecoderRoundTripTests {
             sender: Self.account, coinObjects: [Self.coinA, Self.coinB], amount: 9, recipient: Self.recipient,
             gasPayment: [Self.gasCoin], gasOwner: Self.account, gasPrice: 1000, gasBudget: 2_000_000
         )
+
         let summary = try #require(SuiTransactionDataDecoder.summarize(transaction.transactionDataBcs))
         #expect(summary.commandCount == 3) // MergeCoins + SplitCoins + TransferObjects
     }

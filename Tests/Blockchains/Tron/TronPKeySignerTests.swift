@@ -10,6 +10,7 @@ struct TronPKeySignerTests {
             privateKey: privateKey,
             derivationPath: TestAccountFactory.bip44Path(coinType: 195)
         )
+
         let rawData = Data([0x0a, 0x02, 0xe9, 0x42])
         let transaction = try JSONSerialization.data(withJSONObject: ["raw_data_hex": rawData.hexEncoded])
 

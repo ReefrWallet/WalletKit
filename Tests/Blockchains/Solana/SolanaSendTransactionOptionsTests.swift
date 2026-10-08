@@ -25,6 +25,7 @@ struct SolanaSendTransactionOptionsTests {
         let stub = StubURLProtocol.makeSession(
             response: .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":"sig"}"#.utf8))
         )
+
         let client = SolanaRPCClient(endpoint: endpoint, session: stub.urlSession)
 
         _ = try await client.sendTransaction(Data([0x01]))
@@ -41,6 +42,7 @@ struct SolanaSendTransactionOptionsTests {
         let stub = StubURLProtocol.makeSession(
             response: .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":"sig"}"#.utf8))
         )
+
         let client = SolanaRPCClient(endpoint: endpoint, session: stub.urlSession)
 
         _ = try await client.sendTransaction(
@@ -142,6 +144,7 @@ struct SolanaSendTransactionOptionsTests {
         let stub = StubURLProtocol.makeSession(
             response: .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":"sig123"}"#.utf8))
         )
+
         let client = SolanaRPCClient(endpoint: endpoint, session: stub.urlSession)
 
         let signature = try await client.sendTransaction(Data([0x01]))

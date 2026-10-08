@@ -18,6 +18,7 @@ struct TronTrezorSignerTests {
                 device: device,
                 derivationPath: TestAccountFactory.bip44Path(coinType: 195)
             )
+
             let sender = try signer.address()
             let recipient = try TronAddress(string: "TGtcCdz2aV9vvCEtQL5BY8z2BnLi4oJ3sK")
             let now = UInt64(Date().timeIntervalSince1970 * 1_000)

@@ -18,6 +18,7 @@ struct JSONRPCClientTests {
         let stub = StubURLProtocol.makeSession(
             response: .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":"0x2a"}"#.utf8))
         )
+
         let result: String = try await makeClient(stub).call(method: "eth_blockNumber", params: [String]())
         #expect(result == "0x2a")
     }
@@ -26,6 +27,7 @@ struct JSONRPCClientTests {
         let stub = StubURLProtocol.makeSession(
             response: .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":"ok"}"#.utf8))
         )
+
         let _: String = try await makeClient(stub).call(method: "eth_getBalance", params: ["0xabc", "latest"])
 
         let request = try #require(stub.capturedRequest)
@@ -78,6 +80,7 @@ struct JSONRPCClientTests {
         let stub = StubURLProtocol.makeSession(
             response: .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":42}"#.utf8))
         )
+
         let client = makeClient(stub)
 
         do {

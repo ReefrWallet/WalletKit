@@ -46,6 +46,7 @@ struct EthereumTransactionBuilderTests {
             sender: walletA, recipient: walletB, amount: oneEther, token: nil,
             options: [.legacyEip155]
         )
+
         let signed = try await signerA.sign(transaction: txBytes)
         let hash = try await client.broadcast(signed)
         #expect(!hash.isEmpty)
@@ -86,6 +87,7 @@ struct EthereumTransactionBuilderTests {
         let txBytes = try await builder.buildTransfer(
             sender: walletA, recipient: walletB, amount: oneEther, token: nil
         )
+
         let signed = try await signerA.sign(transaction: txBytes)
         let hash = try await client.broadcast(signed)
         #expect(!hash.isEmpty)
@@ -111,6 +113,7 @@ struct EthereumTransactionBuilderTests {
             privateKeyHex: anvilDefaultAccountPrivateKeyHex,
             chainId: node.chainId
         )
+
         let walletA = try signerA.address()
         let walletB = try EthereumAddress(string: vectors[1].address)
 
@@ -125,6 +128,7 @@ struct EthereumTransactionBuilderTests {
             signer: deployerSigner, to: nil, value: 0, data: mockUSDCCreationBytecode, gasLimit: 1_000_000,
             node: node, client: client, gasPrice: gasPrice
         )
+
         let mockUSDC = try EthereumAddress(string: try #require(deployReceipt.contractAddress))
 
         let mintAmount = BigUInt(1_000_000_000) // 1 000 USDC (6 decimals)
@@ -150,6 +154,7 @@ struct EthereumTransactionBuilderTests {
             sender: walletA, recipient: walletB, amount: transferAmount, token: mockUSDC.string,
             options: [.legacyEip155]
         )
+
         let signed = try await signerA.sign(transaction: txBytes)
         let hash = try await client.broadcast(signed)
         let receipt = try await node.waitForReceipt(hash)
@@ -173,6 +178,7 @@ struct EthereumTransactionBuilderTests {
             privateKeyHex: anvilDefaultAccountPrivateKeyHex,
             chainId: node.chainId
         )
+
         let walletA = try signerA.address()
         let walletB = try EthereumAddress(string: vectors[1].address)
 
@@ -187,6 +193,7 @@ struct EthereumTransactionBuilderTests {
             signer: deployerSigner, to: nil, value: 0, data: mockUSDCCreationBytecode, gasLimit: 1_000_000,
             node: node, client: client, gasPrice: gasPrice
         )
+
         let mockUSDC = try EthereumAddress(string: try #require(deployReceipt.contractAddress))
 
         let mintAmount = BigUInt(1_000_000_000)
@@ -211,6 +218,7 @@ struct EthereumTransactionBuilderTests {
         let txBytes = try await builder.buildTransfer(
             sender: walletA, recipient: walletB, amount: transferAmount, token: mockUSDC.string
         )
+
         let signed = try await signerA.sign(transaction: txBytes)
         let hash = try await client.broadcast(signed)
         let receipt = try await node.waitForReceipt(hash)
@@ -244,6 +252,7 @@ struct EthereumTransactionBuilderTests {
         let txBytes = try await builder.buildCall(
             sender: walletA, to: walletB, value: oneEther, data: Data(), options: []
         )
+
         let signed = try await signerA.sign(transaction: txBytes)
         let hash = try await client.broadcast(signed)
         let receipt = try await node.waitForReceipt(hash)
@@ -269,6 +278,7 @@ struct EthereumTransactionBuilderTests {
             sender: walletA, to: nil, value: 0, data: mockUSDCCreationBytecode,
             options: [.ethereumFeeOverride(maxFeePerGas: nil, maxPriorityFeePerGas: nil, gasLimit: 1_000_000)]
         )
+
         let signed = try await signerA.sign(transaction: txBytes)
         let hash = try await client.broadcast(signed)
         let receipt = try await node.waitForReceipt(hash)
@@ -286,6 +296,7 @@ struct EthereumTransactionBuilderTests {
             privateKeyHex: anvilDefaultAccountPrivateKeyHex,
             chainId: node.chainId
         )
+
         let walletA = try signerA.address()
         try await node.setBalance(walletA, wei: BigUInt(1_000_000_000_000_000_000) * 10)
 
@@ -296,6 +307,7 @@ struct EthereumTransactionBuilderTests {
             signer: deployerSigner, to: nil, value: 0, data: mockUSDCCreationBytecode, gasLimit: 1_000_000,
             node: node, client: client, gasPrice: gasPrice
         )
+
         let mockUSDC = try EthereumAddress(string: try #require(deployReceipt.contractAddress))
 
         let builder = EthereumTransactionBuilder(client: client)
@@ -304,9 +316,11 @@ struct EthereumTransactionBuilderTests {
             selector: EthereumABI.selector("mint(address,uint256)"),
             parameters: [.address(walletA), .uint256(mintAmount)]
         )
+
         let txBytes = try await builder.buildCall(
             sender: walletA, to: mockUSDC, value: 0, data: mintCallData, options: []
         )
+
         let signed = try await signerA.sign(transaction: txBytes)
         let hash = try await client.broadcast(signed)
         let receipt = try await node.waitForReceipt(hash)
@@ -340,6 +354,7 @@ private func sendRaw(
         data: data,
         chainId: node.chainId
     )
+
     let signed = try await signer.sign(transaction: tx.signingData)
     let hash = try await client.broadcast(signed)
     return try await node.waitForReceipt(hash)

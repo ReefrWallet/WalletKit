@@ -17,6 +17,7 @@ struct SolanaTrezorSignerTests {
                 device: device,
                 derivationPath: try DerivationPath(string: "m/44'/501'/0'/0'")
             )
+
             let sender = try signer.address()
             let recipient = try SolanaAddress(rawBytes: Data(repeating: 0x11, count: 32))
 
@@ -25,6 +26,7 @@ struct SolanaTrezorSignerTests {
                 instructions: [SystemProgram.transfer(from: sender, to: recipient, lamports: 1)],
                 recentBlockhash: Data(repeating: 0x22, count: 32)
             )
+
             let envelope = SolanaUnsignedTransaction(message: message.serialize())
             let payload = try JSONEncoder().encode(envelope)
 

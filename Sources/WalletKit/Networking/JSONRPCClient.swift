@@ -13,6 +13,9 @@ import Foundation
 struct JSONRPCClient {
     let endpoint: URL
     var session: URLSession = .shared
+    /// Retries after HTTP 429/503 (public endpoints rate-limit bursts).
+    var maxRetryCount = 4
+    var initialRetryDelay: Duration = .milliseconds(500)
 
     private struct Envelope<Params: Encodable>: Encodable {
         let jsonrpc = "2.0"
@@ -60,19 +63,7 @@ struct JSONRPCClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(Envelope(method: method, params: params))
 
-        let data: Data
-        let response: URLResponse
-
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            throw BlockchainClientError.transportError(reason: error.localizedDescription)
-        }
-
-        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw BlockchainClientError.invalidResponse(reason: "unexpected HTTP status \(status)")
-        }
+        let data = try await send(request)
 
         let envelope: ResponseEnvelope<Result>
 
@@ -113,19 +104,7 @@ struct JSONRPCClient {
         body.append(Data("}".utf8))
         request.httpBody = body
 
-        let data: Data
-        let response: URLResponse
-
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            throw BlockchainClientError.transportError(reason: error.localizedDescription)
-        }
-
-        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw BlockchainClientError.invalidResponse(reason: "unexpected HTTP status \(status)")
-        }
+        let data = try await send(request)
 
         guard let envelope = try? JSONSerialization.jsonObject(
             with: data,
@@ -166,18 +145,7 @@ struct JSONRPCClient {
             params.enumerated().map { BatchEnvelope(id: $0.offset + 1, method: method, params: $0.element) }
         )
 
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch {
-            throw BlockchainClientError.transportError(reason: error.localizedDescription)
-        }
-
-        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-            throw BlockchainClientError.invalidResponse(reason: "unexpected HTTP status \(status)")
-        }
+        let data = try await send(request)
 
         let envelopes: [BatchResponseEnvelope<Result>]
         do {
@@ -192,5 +160,42 @@ struct JSONRPCClient {
         }
 
         return results
+    }
+
+    /// Sends `request`, retrying rate-limited (429) and unavailable (503) responses with
+    /// exponential backoff, honoring a numeric `Retry-After` header.
+    private func send(_ request: URLRequest) async throws -> Data {
+        var delay = initialRetryDelay
+        var attempt = 0
+
+        while true {
+            let data: Data
+            let response: URLResponse
+
+            do {
+                (data, response) = try await session.data(for: request)
+            } catch {
+                throw BlockchainClientError.transportError(reason: error.localizedDescription)
+            }
+
+            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+
+            if (200..<300).contains(status) {
+                return data
+            }
+
+            guard [429, 503].contains(status), attempt < maxRetryCount else {
+                throw BlockchainClientError.invalidResponse(reason: "unexpected HTTP status \(status)")
+            }
+
+            let retryAfter = (response as? HTTPURLResponse)?
+                .value(forHTTPHeaderField: "Retry-After")
+                .flatMap(Double.init)
+                .map { Duration.milliseconds(Int64(min($0, 10) * 1_000)) }
+
+            try await Task.sleep(for: retryAfter ?? delay)
+            delay *= 2
+            attempt += 1
+        }
     }
 }

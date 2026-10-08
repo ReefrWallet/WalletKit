@@ -40,6 +40,7 @@ private struct EVMHistoryTransaction: Codable {
 }
 
 private struct EVMLogFilter: Encodable {
+    var address: [String]?
     let fromBlock: String
     let toBlock: String
     let topics: [String?]
@@ -120,12 +121,22 @@ extension EthereumRPCClient {
         let effectsByBlock: [UInt64: [(transactionHash: String, effect: BlockchainTransactionEffect)]]
 
         do {
-            effectsByBlock = try await tokenEffects(owner: owner.string, blocks: blocks)
+            effectsByBlock = try await tokenEffects(owner: owner.string, blocks: blocks, contracts: nil)
         } catch {
-            // Token-log filtering is an optional enrichment. Public RPC nodes
-            // can reject unscoped log queries, but native transfers remain
-            // discoverable from the block's transaction list.
-            effectsByBlock = [:]
+            // Public RPC nodes (e.g. PublicNode) reject log queries without an
+            // `address` — retry scoped to the account's known token contracts.
+            // Native transfers remain discoverable from the block's transaction list.
+            let contracts = Array(Set(request.assetHints.compactMap { try? EthereumAddress(string: $0).string }))
+
+            if contracts.isEmpty {
+                effectsByBlock = [:]
+            } else {
+                effectsByBlock = (try? await tokenEffects(
+                    owner: owner.string,
+                    blocks: blocks,
+                    contracts: contracts
+                )) ?? [:]
+            }
         }
 
         var transactions: [BlockchainTransaction] = []
@@ -378,7 +389,8 @@ private extension EthereumRPCClient {
 
     func tokenEffects(
         owner: String,
-        blocks: [UInt64]
+        blocks: [UInt64],
+        contracts: [String]?
     ) async throws -> [UInt64: [(transactionHash: String, effect: BlockchainTransactionEffect)]] {
         guard let lowerBound = blocks.min(), let upperBound = blocks.max() else {
             return [:]
@@ -391,15 +403,30 @@ private extension EthereumRPCClient {
         let approval = "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925"
 
         async let sent: [EVMHistoryLog] = logs(
-            EVMLogFilter(fromBlock: fromBlock, toBlock: toBlock, topics: [transfer, ownerTopic, nil])
+            EVMLogFilter(
+                address: contracts,
+                fromBlock: fromBlock,
+                toBlock: toBlock,
+                topics: [transfer, ownerTopic, nil]
+            )
         )
 
         async let received: [EVMHistoryLog] = logs(
-            EVMLogFilter(fromBlock: fromBlock, toBlock: toBlock, topics: [transfer, nil, ownerTopic])
+            EVMLogFilter(
+                address: contracts,
+                fromBlock: fromBlock,
+                toBlock: toBlock,
+                topics: [transfer, nil, ownerTopic]
+            )
         )
 
         async let approvals: [EVMHistoryLog] = logs(
-            EVMLogFilter(fromBlock: fromBlock, toBlock: toBlock, topics: [approval, ownerTopic, nil])
+            EVMLogFilter(
+                address: contracts,
+                fromBlock: fromBlock,
+                toBlock: toBlock,
+                topics: [approval, ownerTopic, nil]
+            )
         )
 
         let sentLogs = try await sent
@@ -436,7 +463,7 @@ private extension EthereumRPCClient {
             BlockchainTransactionEffect(
                 index: (try? log.logIndex.flatMap(parseEVMQuantity)) ?? 0,
                 kind: .tokenTransfer,
-                assetIdentifier: log.address,
+                assetIdentifier: (try? EthereumAddress(string: log.address).string) ?? log.address,
                 amount: amount(log.data),
                 from: log.topics.count > 1 ? address(log.topics[1]) : nil,
                 to: log.topics.count > 2 ? address(log.topics[2]) : nil,
@@ -451,7 +478,7 @@ private extension EthereumRPCClient {
             BlockchainTransactionEffect(
                 index: (try? log.logIndex.flatMap(parseEVMQuantity)) ?? 0,
                 kind: .tokenApproval,
-                assetIdentifier: log.address,
+                assetIdentifier: (try? EthereumAddress(string: log.address).string) ?? log.address,
                 amount: amount(log.data),
                 from: log.topics.count > 1 ? address(log.topics[1]) : nil,
                 to: log.topics.count > 2 ? address(log.topics[2]) : nil,

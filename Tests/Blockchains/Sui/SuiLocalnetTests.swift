@@ -90,6 +90,7 @@ private func send(
         gasPrice: gasPrice,
         gasBudget: 10_000_000
     )
+
     let bcs = transaction.transactionDataBcs
     let signature = try await signer.sign(transaction: bcs)
     let digest = try await client.broadcast(transactionData: bcs, signature: signature)

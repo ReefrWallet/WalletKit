@@ -44,6 +44,7 @@ struct SuiTransactionBuilderTests {
         let txBytes = try await builder.buildTransfer(
             sender: walletA, recipient: walletB, amount: BigUInt(transferAmount), token: nil
         )
+
         let signature = try await signerA.sign(transaction: txBytes)
         let digest = try await client.broadcast(transactionData: txBytes, signature: signature)
         #expect(!digest.isEmpty)
@@ -102,6 +103,7 @@ struct SuiTransactionBuilderTests {
         let txBytes = try await builder.buildTransfer(
             sender: walletA, recipient: walletB, amount: BigUInt(transferAmount), token: nil
         )
+
         let signature = try await signerA.sign(transaction: txBytes)
         let digest = try await client.broadcast(transactionData: txBytes, signature: signature)
         #expect(!digest.isEmpty)

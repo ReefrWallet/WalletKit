@@ -113,6 +113,7 @@ struct CardanoTransactionBuilderTests {
             token: nil,
             options: []
         )
+
         let transaction = try JSONDecoder().decode(CardanoUnsignedTransaction.self, from: envelope)
         let signed = try transaction.signed(entropy: entropy, accountIndex: 0)
 

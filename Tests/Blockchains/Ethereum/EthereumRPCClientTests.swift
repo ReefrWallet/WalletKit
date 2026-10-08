@@ -320,6 +320,7 @@ struct EthereumRPCClientTests {
                 to: feed,
                 data: EthereumABI.encodeCall(selector: EthereumABI.selector("decimals()"))
             )
+
             let decimalsWord = try #require(EthereumABI.words(decimalsData).first)
             let decimals = try #require(Int(exactly: EthereumABI.decodeUInt256(decimalsWord)))
 
@@ -654,6 +655,7 @@ struct EthereumRPCClientTests {
         let stub = StubURLProtocol.makeSession(
             response: .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":null}"#.utf8))
         )
+
         let result = try await makeClient(stub).request(method: "eth_getTransactionReceipt", params: Data("[]".utf8))
         #expect(String(data: result, encoding: .utf8) == "null")
     }

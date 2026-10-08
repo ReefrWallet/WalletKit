@@ -41,6 +41,7 @@ private func loadEIP1559Vectors() -> [EIP1559TxVector] {
         [EIP1559TxVector].self,
         from: try! JSONSerialization.data(withJSONObject: eip1559Raw)
     )
+
     // swiftlint:enable force_try force_cast
 }
 
@@ -83,6 +84,7 @@ struct EIP1559TransactionTests {
             data: vector.unsignedTx.data.hexDecoded,
             chainId: vector.chainId
         )
+
         // swiftlint:enable force_try
         #expect(tx.signingData.hexEncoded == vector.signingDataHex)
     }
