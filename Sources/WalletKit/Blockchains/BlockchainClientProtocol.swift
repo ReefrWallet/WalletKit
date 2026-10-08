@@ -71,12 +71,6 @@ public protocol BlockchainClientProtocol: Sendable {
     ///   native token.
     func getTokenInfo(_ token: String?) async throws -> TokenInfo
 
-    /// Returns the current USD price of `token`.
-    ///
-    /// - Parameter token: A chain-specific token identifier, or `nil` for the
-    ///   native token.
-    func getTokenPrice(_ token: String?) async throws -> Decimal
-
     /// Returns whether `owner` has been active on this chain.
     func isActiveAccount(_ owner: Address) async throws -> Bool
 

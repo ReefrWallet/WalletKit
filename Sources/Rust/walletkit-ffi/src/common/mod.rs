@@ -1,6 +1,6 @@
 //! Low-level, chain-agnostic types. See
 //! `Walletkit/Docs/Design Specification/Core/` for the target shape:
-//! `CurveFfi`, `DerivationScheme`, `Wordlist`, `MnemonicWordCount`,
+//! `CurveFfi`, `DerivationScheme`, `WordlistFfi`, `MnemonicWordCountFfi`,
 //! `BlockchainFfi`, `DerivationPathFfi`.
 //!
 //! Named `common` rather than `core` because `core` is reserved by the
@@ -24,6 +24,6 @@ pub use blockchain::BlockchainFfi;
 pub use curve::CurveFfi;
 pub use derivation_path::DerivationPathFfi;
 pub use derivation_scheme::DerivationScheme;
-pub use mnemonic_word_count::MnemonicWordCount;
+pub use mnemonic_word_count::MnemonicWordCountFfi;
 pub use segment::Segment;
-pub use wordlist::Wordlist;
+pub use wordlist::WordlistFfi;

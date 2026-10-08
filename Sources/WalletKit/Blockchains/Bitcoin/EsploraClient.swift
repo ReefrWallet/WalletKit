@@ -3,13 +3,19 @@
 //  WalletKit
 //
 
+import Alamofire
 import Foundation
+import Moya
+import WalletKitRust
 
 /// A client for an Esplora-compatible REST API (blockstream.info,
-/// mempool.space, self-hosted `electrs --http-addr`, ...). Plain HTTPS
-/// JSON over `URLSession`, following the Ethereum client's shape rather than
-/// introducing a new transport pattern — unlike
-/// Electrum, Esplora needs nothing beyond what `URLSession` already gives.
+/// mempool.space, self-hosted `electrs --http-addr`, ...).
+///
+/// Rate-limit handling (retrying 429/503 with backoff, proactive pacing
+/// where a confirmed rate is configured) comes from ``RateGateRegistry``,
+/// shared process-wide and looked up by this client's own endpoint — the
+/// public default (blockstream.info) and a self-hosted instance are
+/// different origins and don't throttle each other.
 struct EsploraClient: Sendable {
     let endpoint: URL
     let session: URLSession
@@ -107,9 +113,7 @@ struct EsploraClient: Sendable {
     /// `GET /tx/:txid/hex` — the raw consensus-serialized transaction,
     /// hex-encoded plain text (not JSON).
     func rawTransaction(_ txid: String) async throws -> Data {
-        let request = URLRequest(url: endpoint.appendingPathComponent("tx/\(txid)/hex"))
-        let (data, response) = try await perform(request)
-        try Self.validate(response, data: data)
+        let data = try await requestData(.get(endpoint: endpoint, path: "tx/\(txid)/hex"))
         guard let hex = String(data: data, encoding: .utf8) else {
             throw BlockchainClientError.decodingFailed(reason: "raw transaction response is not UTF-8 text")
         }
@@ -126,9 +130,7 @@ struct EsploraClient: Sendable {
     /// `GET /blocks/tip/height` — the current chain tip height, plain
     /// text (not JSON).
     func tipHeight() async throws -> UInt64 {
-        let request = URLRequest(url: endpoint.appendingPathComponent("blocks/tip/height"))
-        let (data, response) = try await perform(request)
-        try Self.validate(response, data: data)
+        let data = try await requestData(.get(endpoint: endpoint, path: "blocks/tip/height"))
         guard let text = String(data: data, encoding: .utf8),
               let height = UInt64(text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             throw BlockchainClientError.decodingFailed(reason: "malformed /blocks/tip/height response")
@@ -140,25 +142,29 @@ struct EsploraClient: Sendable {
     /// `POST /tx` — broadcasts `rawTransactionHex` (lowercase hex) and
     /// returns the resulting txid.
     func broadcast(rawTransactionHex: String) async throws -> String {
-        var request = URLRequest(url: endpoint.appendingPathComponent("tx"))
-        request.httpMethod = "POST"
-        request.httpBody = Data(rawTransactionHex.utf8)
+        do {
+            let data = try await requestData(.postPlainText(endpoint: endpoint, path: "tx", body: rawTransactionHex))
+            guard let txid = String(data: data, encoding: .utf8) else {
+                throw BlockchainClientError.decodingFailed(reason: "broadcast response is not UTF-8 text")
+            }
 
-        let (data, response) = try await perform(request)
-        try Self.validate(response, data: data)
-        guard let txid = String(data: data, encoding: .utf8) else {
-            throw BlockchainClientError.decodingFailed(reason: "broadcast response is not UTF-8 text")
+            return txid.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch let BlockchainClientError.invalidResponse(reason) where Self.looksLikeAlreadyKnown(reason) {
+            // A 429/503 retry can land on this after the first attempt
+            // actually landed. Unlike the node's txid, the canonical txid
+            // is deterministic from the raw bytes — decode locally (via
+            // the same FFI call `ElectrumClient` uses) rather than
+            // trusting a possibly-inconsistent second response. Not a hash
+            // of the raw bytes directly: that would be the SegWit wtxid.
+            let raw = try Data(hexString: rawTransactionHex)
+            return try bitcoinDecodeTransaction(raw: raw).txid
         }
-
-        return txid.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Private helpers
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
-        let request = URLRequest(url: endpoint.appendingPathComponent(path))
-        let (data, response) = try await perform(request)
-        try Self.validate(response, data: data)
+        let data = try await requestData(.get(endpoint: endpoint, path: path))
 
         do {
             // Every snake_case JSON field already has an explicit
@@ -171,28 +177,93 @@ struct EsploraClient: Sendable {
         }
     }
 
-    private func perform(_ request: URLRequest) async throws -> (Data, URLResponse) {
+    private func requestData(_ target: EsploraAPI) async throws -> Data {
+        let policy = RateGateRegistry.shared.makeRetryPolicy(for: origin, provider: .esplora)
+        let afSession = Session(configuration: session.configuration, interceptor: policy)
+        let provider = MoyaProvider<EsploraAPI>(session: afSession)
+
         do {
-            return try await session.data(for: request)
-        } catch {
-            throw BlockchainClientError.transportError(reason: error.localizedDescription)
+            return try await provider.requestData(target)
+        } catch let error as MoyaError {
+            throw Self.mapError(error)
         }
     }
 
-    private static func validate(_ response: URLResponse, data: Data) throws {
-        guard let http = response as? HTTPURLResponse else {
-            throw BlockchainClientError.invalidResponse(reason: "not an HTTP response")
-        }
+    /// `origin`: scheme + host + explicit port only (not a default one) —
+    /// matches ``RateGateRegistry``'s keying.
+    private var origin: String {
+        var components = URLComponents()
+        components.scheme = endpoint.scheme
+        components.host = endpoint.host
+        components.port = endpoint.port
+        return components.string ?? endpoint.absoluteString
+    }
 
-        guard (200 ..< 300).contains(http.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw BlockchainClientError.invalidResponse(reason: "HTTP \(http.statusCode): \(body)")
+    private static func mapError(_ error: MoyaError) -> BlockchainClientError {
+        switch error {
+        case let .statusCode(response):
+            return invalidResponse(response)
+        case let .underlying(underlying, response):
+            guard let response else {
+                return .transportError(reason: underlying.localizedDescription)
+            }
+
+            return invalidResponse(response)
+        default:
+            return .transportError(reason: error.localizedDescription)
+        }
+    }
+
+    private static func invalidResponse(_ response: Moya.Response) -> BlockchainClientError {
+        let body = String(data: response.data, encoding: .utf8) ?? ""
+        return .invalidResponse(reason: "HTTP \(response.statusCode): \(body)")
+    }
+
+    private static func looksLikeAlreadyKnown(_ reason: String) -> Bool {
+        // Bitcoin Core's mempool reject reason is hyphenated
+        // ("txn-already-known"); its already-confirmed rejection reads as
+        // a normal sentence ("Transaction already in block chain").
+        // Esplora/electrs-based backends generally proxy one of these
+        // verbatim.
+        ["already-known", "already known", "already in block chain", "already have transaction"].contains {
+            reason.localizedCaseInsensitiveContains($0)
         }
     }
 }
 
-private extension URLSession {
-    func data(for request: URLRequest) async throws -> (Data, URLResponse) {
-        try await data(for: request, delegate: nil)
+private enum EsploraAPI: TargetType {
+    case get(endpoint: URL, path: String)
+    case postPlainText(endpoint: URL, path: String, body: String)
+
+    var baseURL: URL {
+        switch self {
+        case let .get(endpoint, _), let .postPlainText(endpoint, _, _): endpoint
+        }
     }
+
+    var path: String {
+        switch self {
+        case let .get(_, path), let .postPlainText(_, path, _): path
+        }
+    }
+
+    var method: Moya.Method {
+        switch self {
+        case .get: .get
+        case .postPlainText: .post
+        }
+    }
+
+    var headers: [String: String]? { nil }
+
+    var task: Moya.Task {
+        switch self {
+        case .get: .requestPlain
+        case let .postPlainText(_, _, body): .requestData(Data(body.utf8))
+        }
+    }
+
+    var validationType: ValidationType { .successCodes }
+
+    var sampleData: Data { Data() }
 }

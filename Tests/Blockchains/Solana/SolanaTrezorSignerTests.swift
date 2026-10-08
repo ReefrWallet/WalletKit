@@ -51,11 +51,26 @@ struct SolanaTrezorSignerTests {
                 derivationPath: try DerivationPath(string: "m/44'/501'/0'/0'")
             )
 
-            let message = Data("Example solana:signMessage message".utf8)
-            let signature = try await signer.sign(message: .solanaMessage(message))
+            let text = "Example solana:signMessage message"
+            let signature = try await signer.sign(message: .solanaMessage(Data(text.utf8)))
             #expect(signature.count == 64)
-            #expect(signer.account.publicKey.verify(signature: signature, message: message))
+
+            // The device signs its OCMS v1 serialization, not the raw text.
+            let signed = SolanaTrezorSigner.offchainMessageBytes(text, signer: try signer.address())
+            #expect(signer.account.publicKey.verify(signature: signature, message: signed))
         }
+    }
+
+    @Test func offchainMessageBytesMatchTheOCMSv1Layout() throws {
+        let signer = try SolanaAddress(rawBytes: Data(repeating: 0x07, count: 32))
+        let bytes = SolanaTrezorSigner.offchainMessageBytes("hi", signer: signer)
+
+        #expect(bytes.prefix(16) == Data([0xFF]) + Data("solana offchain".utf8))
+        #expect(bytes[16] == 1) // version
+        #expect(bytes[17] == 1) // signer count
+        #expect(bytes[18 ..< 50] == Data(repeating: 0x07, count: 32))
+        #expect(bytes.suffix(2) == Data("hi".utf8))
+        #expect(bytes.count == 52)
     }
 
     @Test func signMessageRejectsANonSolanaMessageKind() async throws {

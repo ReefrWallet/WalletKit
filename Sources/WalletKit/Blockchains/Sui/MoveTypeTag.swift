@@ -9,9 +9,6 @@
 /// Move type-tag string helpers — parsing a Move struct tag's generic
 /// type arguments and normalizing a coin type's address so two
 /// differently-formatted references to the same coin compare equal.
-/// Backs ``SuiGRPCClient/cetusPoolPrice(pool:token:)``, which reads a
-/// Cetus `Pool<CoinTypeA, CoinTypeB>` object's type tag to find its two
-/// coin types.
 public enum MoveTypeTag {
     /// Splits a Move struct tag's generic type arguments — e.g.
     /// `"<pkg>::pool::Pool<0x2::sui::SUI, <pkg>::usdc::USDC>"` splits to

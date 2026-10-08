@@ -57,20 +57,20 @@ final class HardwareDeviceDelegateAdapter: HardwareDeviceDelegateFfi, @unchecked
         self.delegate = delegate
     }
 
-    func needsInput(request: HardwareInputRequest) async -> String? {
+    func needsInput(request: HardwareInputRequestFfi) async -> String? {
         guard let delegate, let device else {
             return nil
         }
 
-        return await delegate.hardwareDevice(device, needsInput: request)
+        return await delegate.hardwareDevice(device, needsInput: HardwareInputRequest(raw: request))
     }
 
-    func waitingForConfirmation(request: HardwareButtonRequest) async {
+    func waitingForConfirmation(request: HardwareButtonRequestFfi) async {
         guard let delegate, let device else {
             return
         }
 
-        await delegate.hardwareDevice(device, waitingForConfirmation: request)
+        await delegate.hardwareDevice(device, waitingForConfirmation: HardwareButtonRequest(raw: request))
     }
 
     func didDisconnect() async {

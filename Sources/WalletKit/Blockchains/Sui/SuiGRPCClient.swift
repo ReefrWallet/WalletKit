@@ -14,7 +14,7 @@ import SwiftProtobuf
 import WalletKitGRPC
 
 /// A client for Sui's gRPC full-node API.
-public struct SuiGRPCClient: Sendable { // swiftlint:disable:this type_body_length
+public struct SuiGRPCClient: Sendable {
     private let host: String
     private let port: Int
     private let useTLS: Bool
@@ -144,10 +144,8 @@ public struct SuiGRPCClient: Sendable { // swiftlint:disable:this type_body_leng
     }
 
     /// Reads a Move object's on-chain state directly — the general
-    /// "read arbitrary object data" entry point. ``cetusPoolPrice(pool:token:)``
-    /// is a worked example built on this; a caller with a different
-    /// object interprets `object.json`/`object.objectType`/
-    /// `object.contents` itself. Unlike
+    /// "read arbitrary object data" entry point. A caller interprets
+    /// `object.json`/`object.objectType`/`object.contents` itself. Unlike
     /// ``EthereumRPCClient/call(to:data:)``, this needs no simulated
     /// execution — a Sui object's fields are plain on-chain data,
     /// directly queryable, not storage a getter function has to run
@@ -319,78 +317,6 @@ public struct SuiGRPCClient: Sendable { // swiftlint:disable:this type_body_leng
         case .unknown, .UNRECOGNIZED:
             return .unsupported
         }
-    }
-
-    /// Reads a Cetus CLMM pool's current spot price for `token`, in
-    /// terms of the pool's other coin — Cetus's `current_sqrt_price`, a
-    /// Q64.64 fixed-point value read directly off the shared
-    /// `Pool<CoinTypeA, CoinTypeB>` object via ``object(id:readMask:)``.
-    ///
-    /// - Note: This is Cetus's *current* price, not a time-weighted
-    ///   average the way ``EthereumRPCClient/uniswapV3TWAPPrice(token:pool:period:)``
-    ///   reads Uniswap V3's — Cetus doesn't publish a verified, stable
-    ///   single-call on-chain TWAP read analogous to Uniswap V3's
-    ///   `observe(uint32[])`.
-    ///
-    /// - Parameters:
-    ///   - pool: The Cetus `Pool` object's ID.
-    ///   - token: The coin type to price, e.g. `"0x2::sui::SUI"` — must
-    ///     match one of the pool's two generic coin type arguments
-    ///     (short or long address form; both are normalized before
-    ///     comparing).
-    /// - Returns: The current price of one (human-unit) `token`, in
-    ///   human-unit terms of the pool's other coin.
-    /// - Throws: ``BlockchainClientError/decodingFailed(reason:)`` if
-    ///   `token` matches neither of the pool's coin types, the object
-    ///   isn't a `Pool<CoinTypeA, CoinTypeB>`, or it has no readable
-    ///   `current_sqrt_price`, or ``BlockchainClientError`` on a
-    ///   transport, RPC, or other decoding failure.
-    public func cetusPoolPrice(pool: String, token: String) async throws -> Double {
-        let poolObject = try await object(id: pool, readMask: ["object_type", "json"])
-
-        let coinTypes = try MoveTypeTag.genericTypeArguments(of: poolObject.objectType)
-        guard coinTypes.count == 2 else {
-            throw BlockchainClientError.decodingFailed(
-                reason: "expected a Pool<CoinTypeA, CoinTypeB> object, got \(poolObject.objectType)"
-            )
-        }
-
-        let coinTypeA = try MoveTypeTag.canonicalCoinType(coinTypes[0])
-        let coinTypeB = try MoveTypeTag.canonicalCoinType(coinTypes[1])
-        let normalizedToken = try MoveTypeTag.canonicalCoinType(token)
-
-        guard normalizedToken == coinTypeA || normalizedToken == coinTypeB else {
-            throw BlockchainClientError.decodingFailed(reason: "token is neither of the pool's two coin types")
-        }
-
-        guard case .stringValue(let sqrtPriceString)? = poolObject.json.structValue.fields["current_sqrt_price"]?.kind,
-              let sqrtPriceX64 = BigUInt(sqrtPriceString)
-        else {
-            throw BlockchainClientError.decodingFailed(reason: "pool object has no readable current_sqrt_price")
-        }
-
-        async let coinACall = coinInfo(coinType: coinTypeA)
-        async let coinBCall = coinInfo(coinType: coinTypeB)
-        let coinADecimals = try await coinACall.decimals
-        let coinBDecimals = try await coinBCall.decimals
-
-        // Decimals relative to `token`/its quote coin, not fixed to
-        // coinA/coinB order — the adjustment's sign has to flip along
-        // with the price direction below, the same way
-        // `EthereumRPCClient.uniswapV3TWAPPrice`'s does.
-        let tokenDecimals = normalizedToken == coinTypeA ? coinADecimals : coinBDecimals
-        let quoteDecimals = normalizedToken == coinTypeA ? coinBDecimals : coinADecimals
-
-        // Raw price of one smallest-unit of coinA in smallest-units of
-        // coinB; adjusting by each side's decimals gives the
-        // human-readable price in the requested direction.
-        let sqrtPrice = Double(sqrtPriceX64) / pow(2, 64)
-        let rawCoinAInCoinB = sqrtPrice * sqrtPrice
-        let decimalsAdjustment = pow(10, Double(Int(tokenDecimals) - Int(quoteDecimals)))
-
-        return normalizedToken == coinTypeA
-            ? rawCoinAInCoinB * decimalsAdjustment
-            : decimalsAdjustment / rawCoinAInCoinB
     }
 
     /// Broadcasts an already-signed transaction.

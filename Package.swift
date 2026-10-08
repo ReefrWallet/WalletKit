@@ -15,11 +15,13 @@ let package = Package(
         )
     ],
     dependencies: [
+        .package(url: "https://github.com/Alamofire/Alamofire", from: "5.12.0"),
         .package(url: "https://github.com/apple/swift-protobuf", from: "1.38.0"),
         .package(url: "https://github.com/attaswift/BigInt", from: "6.0.0"),
         .package(url: "https://github.com/grpc/grpc-swift-2", from: "2.4.0"),
         .package(url: "https://github.com/grpc/grpc-swift-nio-transport", from: "2.9.0"),
         .package(url: "https://github.com/grpc/grpc-swift-protobuf", from: "2.4.0"),
+        .package(url: "https://github.com/Moya/Moya", from: "15.0.3"),
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.5.0")
     ],
     targets: [
@@ -49,9 +51,11 @@ let package = Package(
         .target(
             name: "WalletKit",
             dependencies: [
+                .product(name: "Alamofire", package: "Alamofire"),
                 .product(name: "BigInt", package: "BigInt"),
                 .product(name: "GRPCCore", package: "grpc-swift-2"),
                 .product(name: "GRPCNIOTransportHTTP2Posix", package: "grpc-swift-nio-transport"),
+                .product(name: "Moya", package: "Moya"),
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
                 "WalletKitGRPC",
                 "WalletKitRust",
@@ -73,7 +77,9 @@ let package = Package(
         .testTarget(
             name: "WalletKitTests",
             dependencies: [
+                .product(name: "Alamofire", package: "Alamofire"),
                 .product(name: "BigInt", package: "BigInt"),
+                .product(name: "Moya", package: "Moya"),
                 "WalletKit",
                 "WalletKitRust",
                 "WalletKitTesting"

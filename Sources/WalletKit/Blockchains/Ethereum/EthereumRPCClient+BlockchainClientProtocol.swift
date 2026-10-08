@@ -38,18 +38,6 @@ extension EthereumRPCClient: BlockchainClientProtocol {
         return try await erc20TokenInfo(token: address)
     }
 
-    public func getTokenPrice(_ token: String?) async throws -> Decimal {
-        do {
-            return try await getChainlinkPrice(token)
-        } catch {
-            guard let token else {
-                throw error
-            }
-
-            return try await getUniswapPrice(token)
-        }
-    }
-
     public func isActiveAccount(_ owner: EthereumAddress) async throws -> Bool {
         guard try await nativeBalance(of: owner) == 0 else {
             return false

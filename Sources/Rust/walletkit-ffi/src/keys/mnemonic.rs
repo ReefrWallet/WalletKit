@@ -7,15 +7,15 @@ use std::sync::Arc;
 use bip39::Mnemonic as Bip39Mnemonic;
 
 use crate::common::wordlist::language;
-use crate::common::{MnemonicWordCount, Wordlist};
+use crate::common::{MnemonicWordCountFfi, WordlistFfi};
 use crate::errors::WalletKitErrorFfi;
 use crate::keys::SeedFfi;
 
 #[derive(uniffi::Object)]
 pub struct MnemonicFfi {
     inner: Bip39Mnemonic,
-    word_count: MnemonicWordCount,
-    wordlist: Wordlist,
+    word_count: MnemonicWordCountFfi,
+    wordlist: WordlistFfi,
 }
 
 impl std::fmt::Debug for MnemonicFfi {
@@ -28,9 +28,9 @@ impl std::fmt::Debug for MnemonicFfi {
 impl MnemonicFfi {
     /// Generates a new mnemonic with freshly-generated entropy.
     #[uniffi::constructor]
-    pub fn generate(word_count: MnemonicWordCount, wordlist: Wordlist) -> MnemonicFfi {
+    pub fn generate(word_count: MnemonicWordCountFfi, wordlist: WordlistFfi) -> MnemonicFfi {
         let inner = Bip39Mnemonic::generate_in(language(wordlist), word_count as usize)
-            .expect("MnemonicWordCount is always a valid BIP39 word count");
+            .expect("MnemonicWordCountFfi is always a valid BIP39 word count");
         MnemonicFfi {
             inner,
             word_count,
@@ -40,12 +40,12 @@ impl MnemonicFfi {
 
     /// Validates the BIP39 checksum; fails with `InvalidMnemonic` otherwise.
     #[uniffi::constructor]
-    pub fn from_phrase(phrase: String, wordlist: Wordlist) -> Result<MnemonicFfi, WalletKitErrorFfi> {
+    pub fn from_phrase(phrase: String, wordlist: WordlistFfi) -> Result<MnemonicFfi, WalletKitErrorFfi> {
         let inner = Bip39Mnemonic::parse_in_normalized(language(wordlist), &phrase)
             .map_err(|err| WalletKitErrorFfi::InvalidMnemonic {
                 reason: err.to_string(),
             })?;
-        let word_count = MnemonicWordCount::from_word_count(inner.word_count())
+        let word_count = MnemonicWordCountFfi::from_word_count(inner.word_count())
             .expect("BIP39 mnemonics always have a supported word count");
         Ok(MnemonicFfi {
             inner,
@@ -56,10 +56,10 @@ impl MnemonicFfi {
 
     /// Reconstructs a mnemonic from its original BIP-39 entropy.
     #[uniffi::constructor]
-    pub fn from_entropy(entropy: Vec<u8>, wordlist: Wordlist) -> Result<MnemonicFfi, WalletKitErrorFfi> {
+    pub fn from_entropy(entropy: Vec<u8>, wordlist: WordlistFfi) -> Result<MnemonicFfi, WalletKitErrorFfi> {
         let inner = Bip39Mnemonic::from_entropy_in(language(wordlist), &entropy)
             .map_err(|_| WalletKitErrorFfi::InvalidEntropy)?;
-        let word_count = MnemonicWordCount::from_word_count(inner.word_count())
+        let word_count = MnemonicWordCountFfi::from_word_count(inner.word_count())
             .expect("BIP39 mnemonics always have a supported word count");
         Ok(MnemonicFfi {
             inner,
@@ -72,11 +72,11 @@ impl MnemonicFfi {
         self.inner.to_string()
     }
 
-    pub fn word_count(&self) -> MnemonicWordCount {
+    pub fn word_count(&self) -> MnemonicWordCountFfi {
         self.word_count
     }
 
-    pub fn wordlist(&self) -> Wordlist {
+    pub fn wordlist(&self) -> WordlistFfi {
         self.wordlist
     }
 
@@ -101,11 +101,11 @@ mod tests {
     #[test]
     fn from_phrase_matches_official_bip39_vectors() {
         for (entropy_hex, phrase, seed_hex, master_xprv) in english_vectors() {
-            let mnemonic = MnemonicFfi::from_phrase(phrase.clone(), Wordlist::English)
+            let mnemonic = MnemonicFfi::from_phrase(phrase.clone(), WordlistFfi::English)
                 .unwrap_or_else(|err| panic!("failed to parse vector {entropy_hex}: {err}"));
 
             assert_eq!(mnemonic.phrase(), phrase, "entropy {entropy_hex}");
-            assert_eq!(mnemonic.wordlist(), Wordlist::English, "entropy {entropy_hex}");
+            assert_eq!(mnemonic.wordlist(), WordlistFfi::English, "entropy {entropy_hex}");
             let seed = mnemonic.to_seed("TREZOR".to_string());
             assert_eq!(hex::encode(seed.export_raw()), seed_hex, "entropy {entropy_hex}");
             let master = seed.master_key(crate::common::CurveFfi::Secp256k1);
@@ -117,7 +117,7 @@ mod tests {
     fn from_entropy_recreates_the_same_seed() {
         let (entropy_hex, phrase, seed_hex, _) = english_vectors().into_iter().next().unwrap();
         let entropy = hex::decode(entropy_hex).unwrap();
-        let mnemonic = MnemonicFfi::from_entropy(entropy, Wordlist::English).unwrap();
+        let mnemonic = MnemonicFfi::from_entropy(entropy, WordlistFfi::English).unwrap();
 
         assert_eq!(mnemonic.phrase(), phrase);
         assert_eq!(hex::encode(mnemonic.to_seed("TREZOR".to_string()).export_raw()), seed_hex);
@@ -126,26 +126,26 @@ mod tests {
     #[test]
     fn generate_produces_a_valid_checksum_for_every_word_count() {
         for word_count in [
-            MnemonicWordCount::Words12,
-            MnemonicWordCount::Words15,
-            MnemonicWordCount::Words18,
-            MnemonicWordCount::Words21,
-            MnemonicWordCount::Words24,
+            MnemonicWordCountFfi::Words12,
+            MnemonicWordCountFfi::Words15,
+            MnemonicWordCountFfi::Words18,
+            MnemonicWordCountFfi::Words21,
+            MnemonicWordCountFfi::Words24,
         ] {
-            let mnemonic = MnemonicFfi::generate(word_count, Wordlist::English);
+            let mnemonic = MnemonicFfi::generate(word_count, WordlistFfi::English);
             assert_eq!(mnemonic.word_count(), word_count);
             assert_eq!(
                 mnemonic.phrase().split(' ').count(),
                 word_count as usize
             );
             // Must round-trip through from_phrase (validates the checksum).
-            MnemonicFfi::from_phrase(mnemonic.phrase(), Wordlist::English).unwrap();
+            MnemonicFfi::from_phrase(mnemonic.phrase(), WordlistFfi::English).unwrap();
         }
     }
 
     #[test]
     fn from_phrase_rejects_an_invalid_phrase() {
-        let err = MnemonicFfi::from_phrase("definitely not a bip39 phrase".to_string(), Wordlist::English)
+        let err = MnemonicFfi::from_phrase("definitely not a bip39 phrase".to_string(), WordlistFfi::English)
             .unwrap_err();
         assert!(matches!(err, WalletKitErrorFfi::InvalidMnemonic { .. }));
     }
@@ -153,15 +153,15 @@ mod tests {
     #[test]
     fn from_phrase_matches_official_bip39_vectors_for_every_supported_wordlist() {
         let wordlists = [
-            ("chinese_simplified", Wordlist::ChineseSimplified),
-            ("chinese_traditional", Wordlist::ChineseTraditional),
-            ("czech", Wordlist::Czech),
-            ("french", Wordlist::French),
-            ("italian", Wordlist::Italian),
-            ("japanese", Wordlist::Japanese),
-            ("korean", Wordlist::Korean),
-            ("portuguese", Wordlist::Portuguese),
-            ("spanish", Wordlist::Spanish),
+            ("chinese_simplified", WordlistFfi::ChineseSimplified),
+            ("chinese_traditional", WordlistFfi::ChineseTraditional),
+            ("czech", WordlistFfi::Czech),
+            ("french", WordlistFfi::French),
+            ("italian", WordlistFfi::Italian),
+            ("japanese", WordlistFfi::Japanese),
+            ("korean", WordlistFfi::Korean),
+            ("portuguese", WordlistFfi::Portuguese),
+            ("spanish", WordlistFfi::Spanish),
         ];
         for (language_key, wordlist) in wordlists {
             for (entropy_hex, phrase, seed_hex, _master_xprv) in crate::test_vectors::vectors_for(language_key) {

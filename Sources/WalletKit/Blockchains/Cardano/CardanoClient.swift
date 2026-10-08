@@ -1,5 +1,7 @@
+import Alamofire
 import BigInt
 import Foundation
+import Moya
 import WalletKitRust
 
 /// Blockfrost-backed read client for CIP-1852 Cardano accounts.
@@ -7,6 +9,11 @@ import WalletKitRust
 /// The client covers account discovery, history, and signed-CBOR submission.
 /// Transfer construction remains separate because it requires UTxO selection
 /// and CBOR witness assembly.
+///
+/// Rate-limit handling (retrying 429/503 with backoff; no proactive pacing
+/// until Blockfrost's real plan/key-tier limit is confirmed — see
+/// ``RateGateRegistry``) comes from the shared registry, looked up by this
+/// client's own endpoint.
 public struct CardanoClient: BlockchainClientProtocol, Sendable {
     public typealias Address = CardanoAccountDescriptor
 
@@ -20,7 +27,7 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
         self.session = session
     }
 
-    public func broadcast(transaction _: Data, signature: Data) async throws -> String {
+    public func broadcast(transaction: Data, signature: Data) async throws -> String {
         guard !signature.isEmpty else {
             throw WalletKitError.signingFailed(reason: "Cardano transaction CBOR is empty.")
         }
@@ -29,25 +36,35 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
             throw WalletKitError.internalError(message: "Set a Blockfrost project ID before using Cardano.")
         }
 
-        var request = URLRequest(url: endpoint.appending(path: "tx/submit"))
+        do {
+            let data = try await requestData(
+                .submit(endpoint: endpoint, projectId: projectId, cbor: signature),
+                path: "tx/submit"
+            )
 
-        request.httpBody = signature
-        request.httpMethod = "POST"
-        request.setValue("application/cbor", forHTTPHeaderField: "Content-Type")
-        request.setValue(projectId, forHTTPHeaderField: "project_id")
+            guard let identifier = String(data: data, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !identifier.isEmpty else {
+                throw WalletKitError.internalError(message: "Blockfrost returned no Cardano transaction ID.")
+            }
 
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
-            throw WalletKitError.internalError(message: "Blockfrost rejected Cardano transaction submission.")
+            return identifier
+        } catch let WalletKitError.internalError(message) where Self.looksLikeAlreadySubmitted(message) {
+            // A 429/503 retry can land on this after the first attempt
+            // actually landed. The canonical tx hash is the *unsigned*
+            // transaction body's hash — not the complete signed CBOR,
+            // which also includes the witness set — recovered from
+            // `transaction`, the JSON-encoded `CardanoUnsignedTransaction`
+            // envelope `CardanoTransactionBuilder` produced, instead of
+            // trusting a possibly-inconsistent second response.
+            let unsigned = try JSONDecoder().decode(CardanoUnsignedTransaction.self, from: transaction)
+            return try unsigned.transactionBodyHash().map { String(format: "%02x", $0) }.joined()
         }
+    }
 
-        guard let identifier = String(data: data, encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines), !identifier.isEmpty else {
-            throw WalletKitError.internalError(message: "Blockfrost returned no Cardano transaction ID.")
+    private static func looksLikeAlreadySubmitted(_ message: String) -> Bool {
+        ["already exists", "already submitted", "already in the mempool", "already known"].contains {
+            message.localizedCaseInsensitiveContains($0)
         }
-
-        return identifier
     }
 
     /// Builds an ADA or native-asset transfer from UTxOs held at the current
@@ -164,10 +181,6 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
             isNative: false,
             symbol: metadata?.ticker ?? token
         )
-    }
-
-    public func getTokenPrice(_ token: String?) async throws -> Decimal {
-        throw WalletKitError.unsupportedFeature
     }
 
     public func isActiveAccount(_ owner: CardanoAccountDescriptor) async throws -> Bool {
@@ -331,27 +344,102 @@ extension CardanoClient {
     }
 
     func responseData(url: URL, path: String, projectId: String) async throws -> Data {
-        var request = URLRequest(url: url)
-        request.setValue(projectId, forHTTPHeaderField: "project_id")
+        try await requestData(.get(url: url, projectId: projectId), path: path)
+    }
 
-        let (data, response) = try await session.data(for: request)
+    private func requestData(_ target: BlockfrostAPI, path: String) async throws -> Data {
+        let policy = RateGateRegistry.shared.makeRetryPolicy(for: origin, provider: .blockfrost)
+        let afSession = Session(configuration: session.configuration, interceptor: policy)
+        let provider = MoyaProvider<BlockfrostAPI>(session: afSession)
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw WalletKitError.internalError(message: "Blockfrost returned an invalid response.")
+        do {
+            return try await provider.requestData(target)
+        } catch let error as MoyaError {
+            if Self.response(of: error)?.statusCode == 404 {
+                throw HTTPError.notFound
+            }
+
+            throw Self.mapError(error, path: path)
+        }
+    }
+
+    /// `origin`: scheme + host + explicit port only (not a default one) —
+    /// matches ``RateGateRegistry``'s keying.
+    private var origin: String {
+        var components = URLComponents()
+        components.scheme = endpoint.scheme
+        components.host = endpoint.host
+        components.port = endpoint.port
+        return components.string ?? endpoint.absoluteString
+    }
+
+    private static func response(of error: MoyaError) -> Moya.Response? {
+        switch error {
+        case let .statusCode(response): response
+        case let .underlying(_, response): response
+        default: nil
+        }
+    }
+
+    /// Includes the response body in the message — not just the status
+    /// code — so `broadcast(transaction:signature:)` can recognize an
+    /// already-submitted-shaped rejection by its text.
+    private static func mapError(_ error: MoyaError, path: String) -> WalletKitError {
+        guard let response = Self.response(of: error) else {
+            return .internalError(message: "Blockfrost returned an invalid response.")
         }
 
-        if httpResponse.statusCode == 404 {
-            throw HTTPError.notFound
-        }
-
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            throw WalletKitError.internalError(message: "Blockfrost rejected \(path).")
-        }
-
-        return data
+        let body = String(data: response.data, encoding: .utf8) ?? ""
+        return .internalError(message: "Blockfrost rejected \(path): \(body)")
     }
 }
 
 private enum HTTPError: Swift.Error {
     case notFound
+}
+
+private enum BlockfrostAPI: TargetType {
+    case get(url: URL, projectId: String)
+    case submit(endpoint: URL, projectId: String, cbor: Data)
+
+    var baseURL: URL {
+        switch self {
+        case let .get(url, _): url
+        case let .submit(endpoint, _, _): endpoint
+        }
+    }
+
+    var path: String {
+        switch self {
+        case .get: ""
+        case .submit: "tx/submit"
+        }
+    }
+
+    var method: Moya.Method {
+        switch self {
+        case .get: .get
+        case .submit: .post
+        }
+    }
+
+    var headers: [String: String]? {
+        switch self {
+        case let .get(_, projectId):
+            ["project_id": projectId]
+        case let .submit(_, projectId, _):
+            ["Content-Type": "application/cbor", "project_id": projectId]
+        }
+    }
+
+    var task: Moya.Task {
+        switch self {
+        case .get: .requestPlain
+        case let .submit(_, _, cbor): .requestData(cbor)
+        }
+    }
+
+    var validationType: ValidationType { .successCodes }
+
+    var sampleData: Data { Data() }
 }

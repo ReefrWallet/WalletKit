@@ -9,7 +9,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use walletkit_hardware as hw;
 
-use super::types::{HardwareButtonRequest, HardwareInputRequest};
+use super::types::{HardwareButtonRequestFfi, HardwareInputRequestFfi};
 
 #[uniffi::export(foreign, async_runtime = "tokio")]
 #[async_trait]
@@ -17,11 +17,11 @@ pub trait HardwareDeviceDelegateFfi: Send + Sync {
     /// Called when the device needs the user to provide a piece of input
     /// (a PIN or passphrase). Returns the user-provided value, or `None`
     /// if the user cancelled.
-    async fn needs_input(&self, request: HardwareInputRequest) -> Option<String>;
+    async fn needs_input(&self, request: HardwareInputRequestFfi) -> Option<String>;
 
     /// Called when the device is waiting for the user to physically
     /// confirm something on the device itself.
-    async fn waiting_for_confirmation(&self, request: HardwareButtonRequest);
+    async fn waiting_for_confirmation(&self, request: HardwareButtonRequestFfi);
 
     /// Called when the device disconnects, whether initiated by the app
     /// or externally (e.g. the user unplugged it).

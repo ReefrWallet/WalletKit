@@ -51,6 +51,60 @@ struct TronClientTests {
         #expect((body["parameter"] as? String)?.count == 64)
     }
 
+    @Test func broadcastReturnsTheNodesTxidOnSuccess() async throws {
+        let stub = StubURLProtocol.makeSession(
+            response: .success(body: Data(#"{"result":true,"txid":"node-txid"}"#.utf8))
+        )
+
+        let client = TronClient(endpoint: endpoint, session: stub.urlSession)
+        let transaction = Data(#"{"raw_data_hex":"00","txID":"unsigned-txid"}"#.utf8)
+
+        let result = try await client.broadcast(transaction: transaction, signature: Data(repeating: 0xAB, count: 65))
+        #expect(result == "node-txid")
+    }
+
+    @Test func broadcastThrowsOnAGenuineRejection() async throws {
+        let stub = StubURLProtocol.makeSession(
+            response: .success(
+                body: Data(#"{"result":false,"code":"CONTRACT_VALIDATE_ERROR","message":"626164"}"#.utf8)
+            )
+        )
+
+        let client = TronClient(endpoint: endpoint, session: stub.urlSession)
+        let transaction = Data(#"{"raw_data_hex":"00","txID":"unsigned-txid"}"#.utf8)
+
+        do {
+            _ = try await client.broadcast(transaction: transaction, signature: Data(repeating: 0xAB, count: 65))
+            Issue.record("expected broadcast(transaction:signature:) to throw")
+        } catch let error as WalletKitError {
+            guard case .internalError = error else {
+                Issue.record("expected .internalError, got \(error)")
+                return
+            }
+        }
+    }
+
+    /// Covers the ambiguous-retry case: a 429/503 retry can land on
+    /// "DUP_TRANSACTION_ERROR" even though the first attempt landed. The
+    /// txID is already known from the unsigned payload (java-tron's own
+    /// identifier for the transaction it already built), so it's recovered
+    /// instead of surfacing a false failure.
+    @Test func broadcastRecoversTheKnownTxidOnADuplicateRejection() async throws {
+        // "64 75 70 6c 69 63 61 74 65" == "duplicate", hex-encoded the way
+        // java-tron encodes error messages.
+        let stub = StubURLProtocol.makeSession(
+            response: .success(
+                body: Data(#"{"result":false,"code":"DUP_TRANSACTION_ERROR","message":"6475706c6963617465"}"#.utf8)
+            )
+        )
+
+        let client = TronClient(endpoint: endpoint, session: stub.urlSession)
+        let transaction = Data(#"{"raw_data_hex":"00","txID":"unsigned-txid"}"#.utf8)
+
+        let result = try await client.broadcast(transaction: transaction, signature: Data(repeating: 0xAB, count: 65))
+        #expect(result == "unsigned-txid")
+    }
+
     @Test func mainnetAndNileUseTronGridEndpoints() {
         #expect(TronNetwork.mainnet.rpcURL == URL(string: "https://api.trongrid.io")!)
         #expect(TronNetwork.testnet.rpcURL == URL(string: "https://nile.trongrid.io")!)

@@ -51,17 +51,64 @@ public enum HardwareTransportKind: String, Codable, CaseIterable, Sendable {
     }
 }
 
-// These are plain data types with no cryptography or FFI-object handle
-// involved, so — unlike ``HardwareVendor``/``HardwareTransportKind`` —
-// they're UniFFI-generated and re-exported as-is rather than hand-wrapped;
-// see `Docs/Overview.md`'s "FFI / bindings strategy".
-
 /// A piece of input a hardware device is asking the user to provide,
 /// relayed to the app via ``HardwareDeviceDelegate``.
-@_documentation(visibility: internal) @_exported import enum WalletKitRust.HardwareInputRequest
+public enum HardwareInputRequest: Codable, Equatable, Hashable, Sendable {
+    case passphrase
+    case pin(attempt: UInt32)
+
+    init(raw: HardwareInputRequestFfi) {
+        switch raw {
+        case .passphrase:
+            self = .passphrase
+        case let .pin(attempt):
+            self = .pin(attempt: attempt)
+        }
+    }
+
+    var raw: HardwareInputRequestFfi {
+        switch self {
+        case .passphrase:
+            .passphrase
+        case let .pin(attempt):
+            .pin(attempt: attempt)
+        }
+    }
+}
 
 /// A physical confirmation the device is waiting for the user to perform
 /// on its own screen/buttons, relayed to the app via
 /// ``HardwareDeviceDelegate`` so the UI can show "check your device"-style
 /// messaging.
-@_documentation(visibility: internal) @_exported import enum WalletKitRust.HardwareButtonRequest
+public enum HardwareButtonRequest: Codable, Equatable, Hashable, Sendable {
+    case confirmAddress
+    case confirmPublicKey
+    case confirmTransaction
+    case other(description: String)
+
+    init(raw: HardwareButtonRequestFfi) {
+        switch raw {
+        case .confirmAddress:
+            self = .confirmAddress
+        case .confirmPublicKey:
+            self = .confirmPublicKey
+        case .confirmTransaction:
+            self = .confirmTransaction
+        case let .other(description):
+            self = .other(description: description)
+        }
+    }
+
+    var raw: HardwareButtonRequestFfi {
+        switch self {
+        case .confirmAddress:
+            .confirmAddress
+        case .confirmPublicKey:
+            .confirmPublicKey
+        case .confirmTransaction:
+            .confirmTransaction
+        case let .other(description):
+            .other(description: description)
+        }
+    }
+}

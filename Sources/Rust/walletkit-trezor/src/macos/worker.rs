@@ -57,7 +57,8 @@ enum Command {
     },
     SolanaSignMessage {
         path: Vec<HardwarePathSegment>,
-        message: Vec<u8>,
+        message: String,
+        signers: Vec<Vec<u8>>,
         reply: oneshot::Sender<Result<Vec<u8>, HardwareError>>,
     },
     CardanoXpub { path: Vec<HardwarePathSegment>, reply: oneshot::Sender<Result<String, HardwareError>> },
@@ -183,9 +184,15 @@ impl DeviceWorker {
                         let result = super::device::solana_sign_tx(&mut trezor, &path, fields, &delegate, &runtime);
                         let _ = reply.send(result);
                     }
-                    Command::SolanaSignMessage { path, message, reply } => {
-                        let result =
-                            super::device::solana_sign_message(&mut trezor, &path, message, &delegate, &runtime);
+                    Command::SolanaSignMessage { path, message, signers, reply } => {
+                        let result = super::device::solana_sign_message(
+                            &mut trezor,
+                            &path,
+                            message,
+                            signers,
+                            &delegate,
+                            &runtime,
+                        );
                         let _ = reply.send(result);
                     }
                     Command::CardanoXpub { path, reply } => {
@@ -311,11 +318,12 @@ impl DeviceWorker {
     pub(super) async fn solana_sign_message(
         &self,
         path: Vec<HardwarePathSegment>,
-        message: Vec<u8>,
+        message: String,
+        signers: Vec<Vec<u8>>,
     ) -> Result<Vec<u8>, HardwareError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
-            .send(Command::SolanaSignMessage { path, message, reply: reply_tx })
+            .send(Command::SolanaSignMessage { path, message, signers, reply: reply_tx })
             .map_err(|_| HardwareError::Disconnected)?;
         reply_rx.await.map_err(|_| HardwareError::Disconnected)?
     }

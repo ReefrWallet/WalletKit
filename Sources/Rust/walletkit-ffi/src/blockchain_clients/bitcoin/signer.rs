@@ -179,7 +179,7 @@ mod tests {
     use crate::blockchain_clients::bitcoin::psbt::{bitcoin_build_unsigned_psbt, BitcoinPsbtInputFfi, BitcoinPsbtOutputFfi};
     use crate::common::CurveFfi;
     use crate::keys::MnemonicFfi;
-    use crate::common::{MnemonicWordCount, Wordlist};
+    use crate::common::{MnemonicWordCountFfi, WordlistFfi};
 
     /// A syntactically valid (64 hex characters), otherwise arbitrary txid
     /// — built rather than hand-typed so its length can't be mistyped.
@@ -188,7 +188,7 @@ mod tests {
     }
 
     fn account_descriptor(script_type: BitcoinScriptTypeFfi) -> (BitcoinDescriptorFfi, Arc<PrivateKeyFfi>) {
-        let seed = MnemonicFfi::generate(MnemonicWordCount::Words24, Wordlist::English).to_seed("".to_string());
+        let seed = MnemonicFfi::generate(MnemonicWordCountFfi::Words24, WordlistFfi::English).to_seed("".to_string());
         let master = seed.master_key(CurveFfi::Secp256k1);
         let path_string = match script_type {
             BitcoinScriptTypeFfi::P2wpkh => "m/84'/0'/0'",

@@ -3,15 +3,14 @@
 
 import Testing
 @testable import WalletKit
-import WalletKitRust
 
 struct MnemonicWordCountTests {
     @Test(arguments: [
-        (MnemonicWordCount.words12, UInt32(12)),
-        (MnemonicWordCount.words15, UInt32(15)),
-        (MnemonicWordCount.words18, UInt32(18)),
-        (MnemonicWordCount.words21, UInt32(21)),
-        (MnemonicWordCount.words24, UInt32(24))
+        (MnemonicWordCount.`12`, UInt32(12)),
+        (MnemonicWordCount.`15`, UInt32(15)),
+        (MnemonicWordCount.`18`, UInt32(18)),
+        (MnemonicWordCount.`21`, UInt32(21)),
+        (MnemonicWordCount.`24`, UInt32(24))
     ])
     func rawValueMatchesWordCount(count: MnemonicWordCount, expected: UInt32) {
         #expect(count.rawValue == expected)

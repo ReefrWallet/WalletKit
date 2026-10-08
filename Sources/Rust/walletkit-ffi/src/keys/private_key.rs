@@ -150,11 +150,11 @@ pub struct RecoverableSignatureFfi {
 
 #[cfg(test)]
 mod tests {
-    use crate::common::{CurveFfi, MnemonicWordCount, Wordlist};
+    use crate::common::{CurveFfi, MnemonicWordCountFfi, WordlistFfi};
     use crate::keys::MnemonicFfi;
 
     fn master_private_key(curve: CurveFfi) -> std::sync::Arc<super::PrivateKeyFfi> {
-        MnemonicFfi::generate(MnemonicWordCount::Words24, Wordlist::English)
+        MnemonicFfi::generate(MnemonicWordCountFfi::Words24, WordlistFfi::English)
             .to_seed("".to_string())
             .master_key(curve)
             .private_key()
@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn public_key_matches_the_deriving_extended_keys_public_key() {
-        let seed = MnemonicFfi::generate(MnemonicWordCount::Words24, Wordlist::English).to_seed("".to_string());
+        let seed = MnemonicFfi::generate(MnemonicWordCountFfi::Words24, WordlistFfi::English).to_seed("".to_string());
         let extended_key = seed.master_key(CurveFfi::Secp256k1);
         let private_key = extended_key.private_key().unwrap();
         assert_eq!(private_key.public_key().raw_bytes(), extended_key.public_key().raw_bytes());

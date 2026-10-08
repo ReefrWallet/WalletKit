@@ -3,7 +3,6 @@
 
 import Testing
 @testable import WalletKit
-import WalletKitRust
 
 struct WordlistTests {
     @Test func allCasesIncludesEnglish() {

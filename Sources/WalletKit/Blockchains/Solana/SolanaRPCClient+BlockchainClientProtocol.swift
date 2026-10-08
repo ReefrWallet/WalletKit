@@ -75,10 +75,6 @@ extension SolanaRPCClient: BlockchainClientProtocol {
         return TokenInfo(decimals: decimals, name: metadata.name, isNative: false, symbol: metadata.symbol)
     }
 
-    public func getTokenPrice(_ token: String?) async throws -> Decimal {
-        throw WalletKitError.unsupportedFeature
-    }
-
     public func isActiveAccount(_ owner: SolanaAddress) async throws -> Bool {
         try await lamportBalance(of: owner) > 0
     }

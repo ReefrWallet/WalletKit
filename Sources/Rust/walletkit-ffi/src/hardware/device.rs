@@ -175,14 +175,18 @@ impl HardwareDeviceFfi {
         self.inner.solana_sign_tx(to_hardware_segments(&path), fields).await.map_err(Into::into)
     }
 
-    /// Signs a Solana off-chain message (`solana:signMessage`) on the
-    /// device, returning the raw 64-byte ed25519 signature — the same
-    /// shape `SolanaPKeySigner.sign(message:)` returns on the software
-    /// path. No signature reshaping needed here (unlike
-    /// `ethereum_sign_message`'s `r ‖ s ‖ v` encoding).
-    pub async fn solana_sign_message(&self, path: DerivationPathFfi, message: Vec<u8>) -> Result<Vec<u8>, WalletKitErrorFfi> {
+    /// Signs a Solana off-chain message (OCMS v1) on the device: a UTF-8
+    /// `message` plus the 32-byte `signers` keys (which must include the
+    /// key at `path`). Returns the raw 64-byte ed25519 signature over the
+    /// firmware's own serialization of that structure, not the raw text.
+    pub async fn solana_sign_message(
+        &self,
+        path: DerivationPathFfi,
+        message: String,
+        signers: Vec<Vec<u8>>,
+    ) -> Result<Vec<u8>, WalletKitErrorFfi> {
         let segments = to_hardware_segments(&path);
-        self.inner.solana_sign_message(segments, message).await.map_err(Into::into)
+        self.inner.solana_sign_message(segments, message, signers).await.map_err(Into::into)
     }
 
     /// Reads the Cardano Icarus/CIP-1852 account xpub at `path`.

@@ -79,6 +79,65 @@ struct CardanoClientTests {
         #expect(stub.capturedBody == Data([0xde, 0xad]))
     }
 
+    /// Covers the ambiguous-retry case: a 429/503 retry can land on an
+    /// already-submitted-shaped rejection even though the first attempt
+    /// landed. The canonical tx hash is the *unsigned* body's hash (not a
+    /// hash of the complete signed CBOR, which also includes the witness
+    /// set), so it's recovered locally from the envelope
+    /// `CardanoTransactionBuilder` already produced, instead of trusting a
+    /// possibly-inconsistent second response.
+    @Test func broadcastRecoversTheTxHashLocallyWhenAlreadySubmitted() async throws {
+        let account = try descriptor()
+        let utxos = """
+        [{
+          "address":"\(account.receiveAddress.string)",
+          "amount":[{"unit":"lovelace","quantity":"5000000"}],
+          "output_index":0,
+          "tx_hash":"\(String(repeating: "07", count: 32))"
+        }]
+        """
+        let parameters = """
+        {
+          "coins_per_utxo_size":4310,
+          "key_deposit":2000000,
+          "max_tx_size":16384,
+          "max_val_size":5000,
+          "min_fee_a":44,
+          "min_fee_b":155381,
+          "pool_deposit":500000000
+        }
+        """
+        let buildStub = StubURLProtocol.makeSession(responsesByPath: [
+            "/api/v0/accounts/\(account.stakeAddress)/utxos": .success(body: Data(utxos.utf8)),
+            "/api/v0/epochs/latest/parameters": .success(body: Data(parameters.utf8))
+        ])
+        let builder = CardanoTransactionBuilder(client: CardanoClient(
+            endpoint: endpoint,
+            projectId: "project-id",
+            session: buildStub.urlSession
+        ))
+
+        let envelope = try await builder.buildTransfer(
+            sender: .account(account),
+            recipient: .recipient(try account.address(role: 0, index: 1)),
+            amount: 1_000_000,
+            token: nil,
+            options: []
+        )
+
+        let unsigned = try JSONDecoder().decode(CardanoUnsignedTransaction.self, from: envelope)
+        let expectedHash = try unsigned.transactionBodyHash().map { String(format: "%02x", $0) }.joined()
+
+        let submitStub = StubURLProtocol.makeSession(
+            response: .success(statusCode: 400, body: Data("Transaction already submitted".utf8))
+        )
+
+        let client = CardanoClient(endpoint: endpoint, projectId: "project-id", session: submitStub.urlSession)
+
+        let result = try await client.broadcast(transaction: envelope, signature: Data([0xde, 0xad]))
+        #expect(result == expectedHash)
+    }
+
     @Test func transactionHistoryMapsBlockfrostTransactions() async throws {
         let response = """
         [{

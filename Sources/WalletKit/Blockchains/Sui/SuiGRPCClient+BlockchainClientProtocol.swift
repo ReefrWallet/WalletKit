@@ -43,10 +43,6 @@ extension SuiGRPCClient: BlockchainClientProtocol {
         return try await coinInfo(coinType: token)
     }
 
-    public func getTokenPrice(_ token: String?) async throws -> Decimal {
-        throw WalletKitError.internalError(message: "Not Implemented")
-    }
-
     public func isActiveAccount(_ owner: SuiAddress) async throws -> Bool {
         let ownedObjects = try await getOwnedObjects(owner)
         return ownedObjects.isEmpty == false

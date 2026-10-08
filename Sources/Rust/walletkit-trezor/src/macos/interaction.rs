@@ -47,16 +47,12 @@ pub(super) fn drive_interaction<T, R: TrezorMessage>(
                 }
             }
             TrezorResponse::PassphraseRequest(req) => {
-                if req.on_device() {
-                    // The device itself can accept passphrase entry on its
-                    // own trusted screen; let it, without prompting the host.
-                    req.ack(true).map_err(map_trezor_error)?
-                } else {
-                    let passphrase = runtime.block_on(delegate.needs_input(HardwareInputRequest::Passphrase));
-                    match passphrase {
-                        Some(passphrase) => req.ack_passphrase(passphrase).map_err(map_trezor_error)?,
-                        None => return Err(HardwareError::UserCancelled),
-                    }
+                // The firmware's legacy `_on_device` request flag (< 2.3.0) no
+                // longer exists in the protocol; the host always supplies it.
+                let passphrase = runtime.block_on(delegate.needs_input(HardwareInputRequest::Passphrase));
+                match passphrase {
+                    Some(passphrase) => req.ack_passphrase(passphrase).map_err(map_trezor_error)?,
+                    None => return Err(HardwareError::UserCancelled),
                 }
             }
         };

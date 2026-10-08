@@ -370,11 +370,11 @@ fn public_key_bytes_for(curve: CurveFfi, private_key: &[u8; 32]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{MnemonicWordCount, Wordlist};
+    use crate::common::{MnemonicWordCountFfi, WordlistFfi};
     use crate::keys::MnemonicFfi;
 
     fn master(curve: CurveFfi) -> Arc<ExtendedKeyFfi> {
-        MnemonicFfi::generate(MnemonicWordCount::Words24, Wordlist::English)
+        MnemonicFfi::generate(MnemonicWordCountFfi::Words24, WordlistFfi::English)
             .to_seed("".to_string())
             .master_key(curve)
     }

@@ -44,13 +44,22 @@ public struct EthereumRPCClient: Sendable {
     /// - Throws: ``BlockchainClientError`` on a transport, RPC, or
     ///   decoding failure.
     public func broadcast(_ signedTransaction: Data) async throws -> String {
-        try await rpc.call(method: "eth_sendRawTransaction", params: [signedTransaction.hexEncoded])
+        do {
+            return try await rpc.call(method: "eth_sendRawTransaction", params: [signedTransaction.hexEncoded])
+        } catch let BlockchainClientError.rpcError(_, message)
+            where message.localizedCaseInsensitiveContains("already known") {
+            // A 429/503 retry can land on this after the first attempt
+            // actually succeeded server-side. The transaction hash is
+            // deterministic from the signed bytes regardless of what the
+            // node's response says, so recover it locally instead of
+            // surfacing a false failure.
+            return EthereumABI.keccak256(signedTransaction).hexEncoded
+        }
     }
 
     /// Executes a read-only contract call against `address` — the
     /// general "execute a smart contract" entry point.
-    /// ``erc20Balance(token:owner:)`` and ``latestRoundData(feed:)`` are
-    /// two worked examples built on this; a
+    /// ``erc20Balance(token:owner:)`` is a worked example built on this; a
     /// caller with a different contract computes its own call data via
     /// ``EthereumABI`` and calls this directly.
     ///

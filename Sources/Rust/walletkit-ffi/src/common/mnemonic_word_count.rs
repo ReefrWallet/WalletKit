@@ -1,7 +1,7 @@
-//! `MnemonicWordCount`: BIP39 word counts a mnemonic may have.
+//! `MnemonicWordCountFfi`: BIP39 word counts a mnemonic may have.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
-pub enum MnemonicWordCount {
+pub enum MnemonicWordCountFfi {
     Words12 = 12,
     Words15 = 15,
     Words18 = 18,
@@ -9,13 +9,13 @@ pub enum MnemonicWordCount {
     Words24 = 24,
 }
 
-impl MnemonicWordCount {
-    pub const ALL: [MnemonicWordCount; 5] = [
-        MnemonicWordCount::Words12,
-        MnemonicWordCount::Words15,
-        MnemonicWordCount::Words18,
-        MnemonicWordCount::Words21,
-        MnemonicWordCount::Words24,
+impl MnemonicWordCountFfi {
+    pub const ALL: [MnemonicWordCountFfi; 5] = [
+        MnemonicWordCountFfi::Words12,
+        MnemonicWordCountFfi::Words15,
+        MnemonicWordCountFfi::Words18,
+        MnemonicWordCountFfi::Words21,
+        MnemonicWordCountFfi::Words24,
     ];
 
     pub fn from_word_count(count: usize) -> Option<Self> {
@@ -36,7 +36,7 @@ mod tests {
 
     #[test]
     fn mnemonic_word_count_all_cases_have_the_expected_raw_values() {
-        let raw_values: Vec<u32> = MnemonicWordCount::ALL.iter().map(|c| *c as u32).collect();
+        let raw_values: Vec<u32> = MnemonicWordCountFfi::ALL.iter().map(|c| *c as u32).collect();
         assert_eq!(raw_values, vec![12, 15, 18, 21, 24]);
     }
 }

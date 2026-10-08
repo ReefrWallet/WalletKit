@@ -6,16 +6,21 @@
 //  Copyright © 2026 Reefr Wallet. All rights reserved.
 //
 
+import Alamofire
 import Foundation
+import Moya
 
 /// A JSON-RPC 2.0 transport over HTTPS POST — the `{jsonrpc, id, method,
 /// params}` → `{result}`/`{error}` envelope Ethereum's execution-apis use.
+///
+/// Rate-limit handling (retrying 429/503 with backoff, proactive pacing
+/// where a confirmed rate is configured) comes from ``RateGateRegistry``,
+/// shared process-wide and looked up by this client's own endpoint — a
+/// public default RPC and a user's `rpcURLOverride` are different origins
+/// and don't throttle each other.
 struct JSONRPCClient {
     let endpoint: URL
     var session: URLSession = .shared
-    /// Retries after HTTP 429/503 (public endpoints rate-limit bursts).
-    var maxRetryCount = 4
-    var initialRetryDelay: Duration = .milliseconds(500)
 
     private struct Envelope<Params: Encodable>: Encodable {
         let jsonrpc = "2.0"
@@ -57,13 +62,8 @@ struct JSONRPCClient {
         method: String,
         params: Params
     ) async throws -> Result {
-        var request = URLRequest(url: endpoint)
-
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(Envelope(method: method, params: params))
-
-        let data = try await send(request)
+        let body = try JSONEncoder().encode(Envelope(method: method, params: params))
+        let data = try await send(body)
 
         let envelope: ResponseEnvelope<Result>
 
@@ -93,18 +93,13 @@ struct JSONRPCClient {
     /// - Throws: ``BlockchainClientError`` for a transport failure, a
     ///   non-2xx HTTP status, or a JSON-RPC `error` response.
     func call(method: String, params: Data) async throws -> Data {
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
         var body = Data("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":".utf8)
         body.append(try JSONEncoder().encode(method))
         body.append(Data(",\"params\":".utf8))
         body.append(params)
         body.append(Data("}".utf8))
-        request.httpBody = body
 
-        let data = try await send(request)
+        let data = try await send(body)
 
         guard let envelope = try? JSONSerialization.jsonObject(
             with: data,
@@ -138,14 +133,11 @@ struct JSONRPCClient {
             return []
         }
 
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(
+        let body = try JSONEncoder().encode(
             params.enumerated().map { BatchEnvelope(id: $0.offset + 1, method: method, params: $0.element) }
         )
 
-        let data = try await send(request)
+        let data = try await send(body)
 
         let envelopes: [BatchResponseEnvelope<Result>]
         do {
@@ -162,40 +154,74 @@ struct JSONRPCClient {
         return results
     }
 
-    /// Sends `request`, retrying rate-limited (429) and unavailable (503) responses with
-    /// exponential backoff, honoring a numeric `Retry-After` header.
-    private func send(_ request: URLRequest) async throws -> Data {
-        var delay = initialRetryDelay
-        var attempt = 0
+    // MARK: - Private helpers
 
-        while true {
-            let data: Data
-            let response: URLResponse
+    /// POSTs `body`, retrying rate-limited (429) and unavailable (503)
+    /// responses with backoff via ``RateGateRegistry``'s shared interceptor
+    /// for this endpoint.
+    private func send(_ body: Data) async throws -> Data {
+        let policy = RateGateRegistry.shared.makeRetryPolicy(for: origin, provider: .jsonRPC)
+        let afSession = Session(configuration: session.configuration, interceptor: policy)
+        let provider = MoyaProvider<JSONRPCTarget>(session: afSession)
 
-            do {
-                (data, response) = try await session.data(for: request)
-            } catch {
-                throw BlockchainClientError.transportError(reason: error.localizedDescription)
-            }
-
-            let status = (response as? HTTPURLResponse)?.statusCode ?? -1
-
-            if (200..<300).contains(status) {
-                return data
-            }
-
-            guard [429, 503].contains(status), attempt < maxRetryCount else {
-                throw BlockchainClientError.invalidResponse(reason: "unexpected HTTP status \(status)")
-            }
-
-            let retryAfter = (response as? HTTPURLResponse)?
-                .value(forHTTPHeaderField: "Retry-After")
-                .flatMap(Double.init)
-                .map { Duration.milliseconds(Int64(min($0, 10) * 1_000)) }
-
-            try await Task.sleep(for: retryAfter ?? delay)
-            delay *= 2
-            attempt += 1
+        do {
+            return try await provider.requestData(.post(endpoint: endpoint, body: body))
+        } catch let error as MoyaError {
+            throw Self.mapError(error)
         }
     }
+
+    /// `origin`: scheme + host + explicit port only (not a default one) —
+    /// matches ``RateGateRegistry``'s keying, so a custom `rpcURLOverride`
+    /// on a different port is treated as a distinct endpoint.
+    private var origin: String {
+        var components = URLComponents()
+        components.scheme = endpoint.scheme
+        components.host = endpoint.host
+        components.port = endpoint.port
+        return components.string ?? endpoint.absoluteString
+    }
+
+    private static func mapError(_ error: MoyaError) -> BlockchainClientError {
+        switch error {
+        case let .statusCode(response):
+            return .invalidResponse(reason: "unexpected HTTP status \(response.statusCode)")
+        case let .underlying(underlying, response):
+            guard let response else {
+                return .transportError(reason: underlying.localizedDescription)
+            }
+
+            return .invalidResponse(reason: "unexpected HTTP status \(response.statusCode)")
+        default:
+            return .transportError(reason: error.localizedDescription)
+        }
+    }
+}
+
+private enum JSONRPCTarget: TargetType {
+    case post(endpoint: URL, body: Data)
+
+    var baseURL: URL {
+        switch self {
+        case let .post(endpoint, _): endpoint
+        }
+    }
+
+    var path: String { "" }
+
+    var method: Moya.Method { .post }
+
+    var headers: [String: String]? {
+        ["Content-Type": "application/json"]
+    }
+
+    var task: Moya.Task {
+        switch self {
+        case let .post(_, body): .requestData(body)
+        }
+    }
+
+    var validationType: ValidationType { .successCodes }
+
+    var sampleData: Data { Data() }
 }

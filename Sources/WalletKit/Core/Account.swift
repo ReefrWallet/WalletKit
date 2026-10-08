@@ -14,8 +14,10 @@ public enum Curve: String, Codable, CaseIterable, Sendable {
 
     init(_ raw: CurveFfi) {
         switch raw {
-        case .secp256k1: self = .secp256k1
-        case .ed25519: self = .ed25519
+        case .secp256k1:
+            self = .secp256k1
+        case .ed25519:
+            self = .ed25519
         }
     }
 

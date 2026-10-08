@@ -9,7 +9,7 @@
 //! folder maps to `common` here):
 //!
 //!   errors/         WalletKitError
-//!   common/         CurveFfi, DerivationScheme, Wordlist, MnemonicWordCount,
+//!   common/         CurveFfi, DerivationScheme, WordlistFfi, MnemonicWordCountFfi,
 //!                   BlockchainFfi, DerivationPathFfi, BigIntFfi
 //!   keys/           Mnemonic, Seed, ExtendedKey, PublicKey, PrivateKey
 //!   accounts/       KeySource, Account — not implemented yet

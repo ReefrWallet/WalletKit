@@ -5,9 +5,7 @@
 //  Created by Andrey Yurkevich on 16/08/2026.
 //
 
-@_documentation(visibility: internal) @_exported import enum WalletKitRust.MnemonicWordCount
-@_documentation(visibility: internal) @_exported import enum WalletKitRust.Wordlist
-import class WalletKitRust.MnemonicFfi
+import WalletKitRust
 
 /// A BIP39 recovery phrase, and the entry point for deriving the wallet's
 /// seed from it.
@@ -56,8 +54,8 @@ public final class Mnemonic: MnemonicProtocol {
     ///   - wordlist: The wordlist to draw words from. Defaults to
     ///     `.english`.
     /// - Returns: A new ``Mnemonic`` wrapping the generated phrase.
-    public static func generate(wordCount: MnemonicWordCount = .words24, wordlist: Wordlist = .english) -> Mnemonic {
-        Mnemonic(raw: MnemonicFfi.generate(wordCount: wordCount, wordlist: wordlist))
+    public static func generate(wordCount: MnemonicWordCount = .`12`, wordlist: Wordlist = .english) -> Mnemonic {
+        Mnemonic(raw: MnemonicFfi.generate(wordCount: wordCount.raw, wordlist: wordlist.raw))
     }
 
     /// Imports a mnemonic from an existing recovery phrase.
@@ -72,14 +70,14 @@ public final class Mnemonic: MnemonicProtocol {
     ///   checksum.
     public static func fromPhrase(_ phrase: String, wordlist: Wordlist = .english) throws -> Mnemonic {
         try remappingWalletKitError {
-            Mnemonic(raw: try MnemonicFfi.fromPhrase(phrase: phrase, wordlist: wordlist))
+            Mnemonic(raw: try MnemonicFfi.fromPhrase(phrase: phrase, wordlist: wordlist.raw))
         }
     }
 
     /// Reconstructs a mnemonic from the original BIP-39 entropy.
     public static func fromEntropy(_ entropy: Data, wordlist: Wordlist = .english) throws -> Mnemonic {
         try remappingWalletKitError {
-            Mnemonic(raw: try MnemonicFfi.fromEntropy(entropy: entropy, wordlist: wordlist))
+            Mnemonic(raw: try MnemonicFfi.fromEntropy(entropy: entropy, wordlist: wordlist.raw))
         }
     }
 
@@ -91,10 +89,10 @@ public final class Mnemonic: MnemonicProtocol {
     public var phrase: String { raw.phrase() }
 
     /// The number of words in ``phrase`` (12, 15, 18, 21, or 24).
-    public var wordCount: MnemonicWordCount { raw.wordCount() }
+    public var wordCount: MnemonicWordCount { MnemonicWordCount(raw: raw.wordCount()) }
 
     /// The BIP39 wordlist ``phrase``'s words were drawn from.
-    public var wordlist: Wordlist { raw.wordlist() }
+    public var wordlist: Wordlist { Wordlist(raw: raw.wordlist()) }
 
     /// The original BIP-39 entropy used for Cardano's Icarus derivation.
     public var entropy: Data { raw.entropy() }
@@ -112,64 +110,38 @@ public final class Mnemonic: MnemonicProtocol {
 
 // MARK: - MnemonicWordCount
 
-#if SWIFT_PACKAGE
-extension MnemonicWordCount: RawRepresentable {
-    public typealias RawValue = UInt32
+/// A supported BIP39 mnemonic word count.
+public enum MnemonicWordCount: UInt32, CaseIterable, Codable, Sendable {
+    // swiftlint:disable identifier_name
+    case `12` = 12
+    case `15` = 15
+    case `18` = 18
+    case `21` = 21
+    case `24` = 24
+    // swiftlint:enable identifier_name
 
-    /// The number of words this case represents (12, 15, 18, 21, or 24).
-    public var rawValue: UInt32 {
-        switch self {
-        case .words12: return 12
-        case .words15: return 15
-        case .words18: return 18
-        case .words21: return 21
-        case .words24: return 24
+    init(raw: MnemonicWordCountFfi) {
+        switch raw {
+        case .words12:
+            self = .`12`
+        case .words15:
+            self = .`15`
+        case .words18:
+            self = .`18`
+        case .words21:
+            self = .`21`
+        case .words24:
+            self = .`24`
         }
     }
 
-    /// Creates a word count from its raw integer value.
-    ///
-    /// - Parameter rawValue: A BIP39 word count (12, 15, 18, 21, or 24).
-    /// - Returns: `nil` if `rawValue` isn't a supported BIP39 word count.
-    public init?(rawValue: UInt32) {
-        switch rawValue {
-        case 12: self = .words12
-        case 15: self = .words15
-        case 18: self = .words18
-        case 21: self = .words21
-        case 24: self = .words24
-        default: return nil
+    var raw: MnemonicWordCountFfi {
+        switch self {
+        case .`12`: .words12
+        case .`15`: .words15
+        case .`18`: .words18
+        case .`21`: .words21
+        case .`24`: .words24
         }
     }
 }
-#else
-extension MnemonicWordCount: @retroactive RawRepresentable {
-    public typealias RawValue = UInt32
-
-    /// The number of words this case represents (12, 15, 18, 21, or 24).
-    public var rawValue: UInt32 {
-        switch self {
-        case .words12: return 12
-        case .words15: return 15
-        case .words18: return 18
-        case .words21: return 21
-        case .words24: return 24
-        }
-    }
-
-    /// Creates a word count from its raw integer value.
-    ///
-    /// - Parameter rawValue: A BIP39 word count (12, 15, 18, 21, or 24).
-    /// - Returns: `nil` if `rawValue` isn't a supported BIP39 word count.
-    public init?(rawValue: UInt32) {
-        switch rawValue {
-        case 12: self = .words12
-        case 15: self = .words15
-        case 18: self = .words18
-        case 21: self = .words21
-        case 24: self = .words24
-        default: return nil
-        }
-    }
-}
-#endif

@@ -1,7 +1,14 @@
+import Alamofire
 import BigInt
 import Foundation
+import Moya
 
 /// Minimal HTTP client for Tron FullNode-compatible endpoints.
+///
+/// Rate-limit handling (retrying 429/503 with backoff; no proactive pacing
+/// until TronGrid's real plan/key-tier limit is confirmed — see
+/// ``RateGateRegistry``) comes from the shared registry, looked up by this
+/// client's own endpoint.
 public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disable:this type_body_length
     public typealias Address = TronAddress
 
@@ -83,10 +90,6 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         )
     }
 
-    public func getTokenPrice(_ token: String?) async throws -> Decimal {
-        throw WalletKitError.unsupportedFeature
-    }
-
     public func isActiveAccount(_ owner: TronAddress) async throws -> Bool {
         let response = try await post("wallet/getaccount", body: ["address": owner.string, "visible": true])
         return !response.isEmpty
@@ -155,14 +158,48 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         var payload = try JSONSerialization.jsonObject(with: transaction) as? [String: Any] ?? [:]
         payload["signature"] = [signature.map { String(format: "%02x", $0) }.joined()]
 
+        // Already known before broadcasting — the unsigned payload's own
+        // txID (`raw_data_hex`'s hash), not just a fallback for when the
+        // response omits it.
+        let knownTxId = payload["txID"] as? String
+
         let response = try await post("wallet/broadcasttransaction", body: payload)
 
-        guard (response["result"] as? Bool) == true,
-              let identifier = (response["txid"] as? String) ?? (payload["txID"] as? String) else {
-            throw WalletKitError.internalError(message: "Tron node rejected transaction broadcast.")
+        if (response["result"] as? Bool) == true {
+            guard let identifier = (response["txid"] as? String) ?? knownTxId else {
+                throw WalletKitError.internalError(message: "Tron node rejected transaction broadcast.")
+            }
+
+            return identifier
         }
 
-        return identifier
+        // A 429/503 retry can land on this after the first attempt
+        // actually landed — "DUP_TRANSACTION_ERROR" is java-tron's reject
+        // reason for a transaction it's already seen. The txID is already
+        // known from the unsigned payload (this is the same identifier
+        // java-tron itself derived when it first built the transaction,
+        // not a value we're trusting from this second, failing response),
+        // so recover it instead of surfacing a false failure.
+        if Self.looksLikeDuplicate(response), let knownTxId {
+            return knownTxId
+        }
+
+        throw WalletKitError.internalError(message: "Tron node rejected transaction broadcast.")
+    }
+
+    private static func looksLikeDuplicate(_ response: [String: Any]) -> Bool {
+        if let code = response["code"] as? String, code.localizedCaseInsensitiveContains("dup") {
+            return true
+        }
+
+        // java-tron error messages are hex-encoded ASCII.
+        if let messageHex = response["message"] as? String,
+           let data = try? Data(hexString: messageHex),
+           let text = String(data: data, encoding: .utf8) {
+            return text.localizedCaseInsensitiveContains("dup")
+        }
+
+        return false
     }
 
     func buildTransfer(
@@ -242,38 +279,45 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
     }
 
     private func post(_ path: String, body: [String: Any]) async throws -> [String: Any] {
-        var request = URLRequest(url: endpoint.appending(path: path))
-        request.httpMethod = "POST"
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        if let apiKey, !apiKey.isEmpty {
-            request.setValue(apiKey, forHTTPHeaderField: "TRON-PRO-API-KEY")
-        }
-
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
-            throw WalletKitError.internalError(message: "Tron endpoint rejected \(path).")
-        }
-
-        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
+        return try await requestJSONObject(
+            .post(endpoint: endpoint, path: path, apiKey: apiKey, body: bodyData),
+            errorMessage: "Tron endpoint rejected \(path)."
+        )
     }
 
     private func get(_ url: URL) async throws -> [String: Any] {
-        var request = URLRequest(url: url)
+        try await requestJSONObject(
+            .get(url: url, apiKey: apiKey),
+            errorMessage: "TronGrid rejected account-history request."
+        )
+    }
 
-        if let apiKey, !apiKey.isEmpty {
-            request.setValue(apiKey, forHTTPHeaderField: "TRON-PRO-API-KEY")
+    private func requestJSONObject(_ target: TronGridAPI, errorMessage: String) async throws -> [String: Any] {
+        let policy = RateGateRegistry.shared.makeRetryPolicy(for: origin, provider: .tronGrid)
+        let afSession = Session(configuration: session.configuration, interceptor: policy)
+        let provider = MoyaProvider<TronGridAPI>(session: afSession)
+
+        do {
+            return try await provider.requestJSONObject(target)
+        } catch MoyaError.jsonMapping {
+            // Matches the original `try? ... ?? [:]` tolerance: a 2xx
+            // response whose body isn't a JSON object yields an empty
+            // dictionary rather than a thrown error.
+            return [:]
+        } catch is MoyaError {
+            throw WalletKitError.internalError(message: errorMessage)
         }
+    }
 
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, (200..<300).contains(httpResponse.statusCode) else {
-            throw WalletKitError.internalError(message: "TronGrid rejected account-history request.")
-        }
-
-        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
+    /// `origin`: scheme + host + explicit port only (not a default one) —
+    /// matches ``RateGateRegistry``'s keying.
+    private var origin: String {
+        var components = URLComponents()
+        components.scheme = endpoint.scheme
+        components.host = endpoint.host
+        components.port = endpoint.port
+        return components.string ?? endpoint.absoluteString
     }
 
     private func constantCall(
@@ -449,3 +493,61 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         let tokens: String?
     }
 }
+
+private enum TronGridAPI: TargetType {
+    case get(url: URL, apiKey: String?)
+    case post(endpoint: URL, path: String, apiKey: String?, body: Data)
+
+    var baseURL: URL {
+        switch self {
+        case let .get(url, _): url
+        case let .post(endpoint, _, _, _): endpoint
+        }
+    }
+
+    var path: String {
+        switch self {
+        case .get: ""
+        case let .post(_, path, _, _): path
+        }
+    }
+
+    var method: Moya.Method {
+        switch self {
+        case .get: .get
+        case .post: .post
+        }
+    }
+
+    var headers: [String: String]? {
+        let apiKey: String?
+
+        switch self {
+        case let .get(_, key), let .post(_, _, key, _):
+            apiKey = key
+        }
+
+        guard let apiKey, !apiKey.isEmpty else {
+            return method == .post ? ["Content-Type": "application/json"] : nil
+        }
+
+        var headers = ["TRON-PRO-API-KEY": apiKey]
+
+        if method == .post {
+            headers["Content-Type"] = "application/json"
+        }
+
+        return headers
+    }
+
+    var task: Moya.Task {
+        switch self {
+        case .get: .requestPlain
+        case let .post(_, _, _, body): .requestData(body)
+        }
+    }
+
+    var validationType: ValidationType { .successCodes }
+
+    var sampleData: Data { Data() }
+} // swiftlint:disable:this file_length

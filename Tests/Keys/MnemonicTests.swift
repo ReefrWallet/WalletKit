@@ -8,11 +8,11 @@ import WalletKitRust
 struct MnemonicTests {
     @Test func generateDefaultsTo24WordsAndEnglish() {
         let mnemonic = Mnemonic.generate()
-        #expect(mnemonic.wordCount == .words24)
+        #expect(mnemonic.wordCount == .`12`)
         #expect(mnemonic.wordlist == .english)
     }
 
-    @Test(arguments: [MnemonicWordCount.words12, .words15, .words18, .words21, .words24])
+    @Test(arguments: [MnemonicWordCount.`12`, .`15`, .`18`, .`21`, .`24`])
     func generateHonorsRequestedWordCount(wordCount: MnemonicWordCount) {
         let mnemonic = Mnemonic.generate(wordCount: wordCount)
         #expect(mnemonic.wordCount == wordCount)
@@ -26,7 +26,7 @@ struct MnemonicTests {
     }
 
     @Test func fromPhraseRoundTripsAGeneratedMnemonic() throws {
-        let generated = Mnemonic.generate(wordCount: .words12)
+        let generated = Mnemonic.generate(wordCount: .`12`)
         let restored = try Mnemonic.fromPhrase(generated.phrase)
         #expect(restored.phrase == generated.phrase)
     }

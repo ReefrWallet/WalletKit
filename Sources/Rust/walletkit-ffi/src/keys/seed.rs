@@ -55,11 +55,11 @@ impl SeedFfi {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{MnemonicWordCount, Wordlist};
+    use crate::common::{MnemonicWordCountFfi, WordlistFfi};
     use crate::keys::MnemonicFfi;
 
     fn seed() -> Arc<SeedFfi> {
-        MnemonicFfi::generate(MnemonicWordCount::Words24, Wordlist::English).to_seed("".to_string())
+        MnemonicFfi::generate(MnemonicWordCountFfi::Words24, WordlistFfi::English).to_seed("".to_string())
     }
 
     #[test]

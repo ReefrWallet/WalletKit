@@ -125,7 +125,8 @@ impl HardwareDeviceTrait for TrezorDevice {
     async fn solana_sign_message(
         &self,
         _path: Vec<HardwarePathSegment>,
-        _message: Vec<u8>,
+        _message: String,
+        _signers: Vec<Vec<u8>>,
     ) -> Result<Vec<u8>, HardwareError> {
         Err(unavailable())
     }

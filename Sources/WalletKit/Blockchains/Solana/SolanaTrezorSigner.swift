@@ -65,13 +65,21 @@ public final class SolanaTrezorSigner: Signer, MessageSigner {
     }
 
     /// Signs a Solana off-chain message (`solana:signMessage`) on-device
-    /// — the raw bytes directly, no prefix, matching
-    /// ``SolanaPKeySigner/sign(message:)``'s software-path behavior.
+    /// using Trezor's structured OCMS v1 request: the UTF-8 text plus this
+    /// account's key as the sole signer.
+    ///
+    /// Unlike ``SolanaPKeySigner/sign(message:)``, the device doesn't sign
+    /// the raw bytes — it signs its own serialization of the request, so
+    /// verify against ``offchainMessageBytes(_:signer:)``, not the text.
     ///
     /// - Throws: ``WalletKitError/unsupportedFeature`` if `message` isn't
-    ///   ``SignableMessage/solanaMessage(_:)``.
+    ///   ``SignableMessage/solanaMessage(_:)`` or isn't non-empty UTF-8
+    ///   text (the only thing the firmware accepts).
     public func sign(message: SignableMessage) async throws -> Data {
-        guard case let .solanaMessage(data) = message else {
+        guard case let .solanaMessage(data) = message,
+              !data.isEmpty,
+              let text = String(data: data, encoding: .utf8)
+        else {
             throw WalletKitError.unsupportedFeature
         }
 
@@ -79,8 +87,26 @@ public final class SolanaTrezorSigner: Signer, MessageSigner {
             throw WalletKitError.deviceDisconnected
         }
 
+        let signer = try address().rawBytes
+
         return try await remappingWalletKitError {
-            try await device.raw.solanaSignMessage(path: account.derivationPath.raw, message: data)
+            try await device.raw.solanaSignMessage(
+                path: account.derivationPath.raw,
+                message: text,
+                signers: [signer]
+            )
         }
+    }
+
+    /// The exact bytes the device signs for an OCMS v1 message with a single
+    /// `signer`: `\xffsolana offchain` ‖ version `1` ‖ signer count ‖
+    /// signer ‖ UTF-8 message.
+    public static func offchainMessageBytes(_ message: String, signer: SolanaAddress) -> Data {
+        var bytes = Data([0xFF])
+        bytes.append(Data("solana offchain".utf8))
+        bytes.append(contentsOf: [1, 1])
+        bytes.append(signer.rawBytes)
+        bytes.append(Data(message.utf8))
+        return bytes
     }
 }

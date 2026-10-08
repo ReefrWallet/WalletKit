@@ -9,7 +9,7 @@
 import BigInt
 import Foundation
 
-extension EthereumRPCClient {
+public extension EthereumRPCClient {
     /// Reads an ERC-20 `token`'s balance for `owner` — `balanceOf(address)`.
     ///
     /// - Parameters:
@@ -18,7 +18,7 @@ extension EthereumRPCClient {
     /// - Returns: The balance, in the token's smallest unit.
     /// - Throws: ``BlockchainClientError`` on a transport, RPC, or
     ///   decoding failure.
-    public func erc20Balance(
+    func erc20Balance(
         token: EthereumAddress,
         owner: EthereumAddress
     ) async throws -> BigUInt {
@@ -38,7 +38,7 @@ extension EthereumRPCClient {
 
     /// Reads multiple ERC-20 balances using one Multicall3 `eth_call`, falling
     /// back to a JSON-RPC batch when the aggregate contract is unavailable.
-    public func erc20Balances(
+    func erc20Balances(
         tokens: [EthereumAddress],
         owner: EthereumAddress
     ) async throws -> [String: BigUInt] {
@@ -112,7 +112,7 @@ extension EthereumRPCClient {
     /// - Returns: The token's metadata.
     /// - Throws: ``BlockchainClientError`` on a transport, RPC, or
     ///   decoding failure.
-    public func erc20TokenInfo(token: EthereumAddress) async throws -> TokenInfo {
+    func erc20TokenInfo(token: EthereumAddress) async throws -> TokenInfo {
         async let nameData = call(
             to: token,
             data: EthereumABI.encodeCall(selector: EthereumABI.selector("name()"))
@@ -133,14 +133,16 @@ extension EthereumRPCClient {
 
         guard let decimalsWord = EthereumABI.words(try await decimalsData).first,
               let decimals = UInt8(exactly: EthereumABI.decodeUInt256(decimalsWord))
-        else {
+                else {
             throw BlockchainClientError.decodingFailed(reason: "empty or invalid decimals() response")
         }
 
         return TokenInfo(decimals: decimals, name: name, isNative: false, symbol: symbol)
     }
+}
 
-    private func multicall3Address() throws -> EthereumAddress {
+private extension EthereumRPCClient {
+    func multicall3Address() throws -> EthereumAddress {
         let addresses: [UInt64: String] = [
             728_126_428: "0x32a4f47a74a6810bd0bf861cabab99656a75de9e"
         ]

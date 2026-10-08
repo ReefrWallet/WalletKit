@@ -15,8 +15,7 @@ import WalletKitRust
 /// `bool` — each encoding to exactly one 32-byte ABI word.
 ///
 /// - Note: Dynamic types (`string`, `bytes`, arrays, tuples) aren't
-///   covered — ERC-20 `balanceOf` and Chainlink `latestRoundData()`, the
-///   calls this client makes, only need static words.
+///   covered — the ERC-20 calls this client makes only need static words.
 public enum EthereumABIValue {
     case address(EthereumAddress)
     case bool(Bool)
@@ -44,10 +43,14 @@ public enum EthereumABIValue {
 
 /// Minimal Ethereum ABI encode/decode helpers — function-selector computation,
 /// static-word call-data encoding, and static-word return-data decoding.
-/// Backs `EthereumRPCClient`'s contract-call methods (`erc20Balance`,
-/// `latestRoundData`) and is available directly for a caller's own contract
-/// calls via `EthereumRPCClient.call(to:data:)`.
+/// Backs `EthereumRPCClient`'s contract-call methods and is available directly
+/// for a caller's own contract calls via `EthereumRPCClient.call(to:data:)`.
 public enum EthereumABI {
+    /// Computes Keccak-256 of arbitrary Ethereum data.
+    public static func keccak256(_ data: Data) -> Data {
+        ethereumKeccak256(data: data)
+    }
+
     private static func word(_ value: BigUInt) -> Data {
         let bytes = value.serialize()
         return Data(repeating: 0, count: 32 - bytes.count) + bytes

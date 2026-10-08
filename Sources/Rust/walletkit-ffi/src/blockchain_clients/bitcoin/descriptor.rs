@@ -315,7 +315,7 @@ impl BitcoinDescriptorFfi {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{CurveFfi, MnemonicWordCount, Wordlist};
+    use crate::common::{CurveFfi, MnemonicWordCountFfi, WordlistFfi};
     use crate::keys::MnemonicFfi;
     use bitcoin::hashes::Hash;
 
@@ -327,7 +327,7 @@ mod tests {
     /// account xpub", matching how the code under test treats the xpub
     /// as opaque to which script type ends up wrapping it.
     fn test_account() -> (String, Vec<u8>) {
-        let seed = MnemonicFfi::generate(MnemonicWordCount::Words24, Wordlist::English).to_seed("".to_string());
+        let seed = MnemonicFfi::generate(MnemonicWordCountFfi::Words24, WordlistFfi::English).to_seed("".to_string());
         let master = seed.master_key(CurveFfi::Secp256k1);
         let secp = bitcoin::secp256k1::Secp256k1::new();
         let master_secret =
@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn bitcoin_fingerprint_matches_the_manually_computed_master_fingerprint() {
-        let seed = MnemonicFfi::generate(MnemonicWordCount::Words24, Wordlist::English).to_seed("".to_string());
+        let seed = MnemonicFfi::generate(MnemonicWordCountFfi::Words24, WordlistFfi::English).to_seed("".to_string());
         let master = seed.master_key(CurveFfi::Secp256k1);
         let compressed = master.public_key().raw_bytes();
         assert_eq!(compressed.len(), 33);

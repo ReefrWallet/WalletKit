@@ -49,10 +49,6 @@ extension BitcoinClient: BlockchainClientProtocol {
         return .bitcoin
     }
 
-    public func getTokenPrice(_ token: String?) async throws -> Decimal {
-        throw WalletKitError.internalError(message: "Not Implemented")
-    }
-
     public func isActiveAccount(_ owner: BitcoinDescriptor) async throws -> Bool {
         let resolver = resolver(for: owner)
         return try await resolver.allAddresses().contains { $0.isUsed }

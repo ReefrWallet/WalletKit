@@ -184,11 +184,11 @@ impl SuiSignerFfi {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{MnemonicWordCount, Wordlist};
+    use crate::common::{MnemonicWordCountFfi, WordlistFfi};
     use crate::keys::{MnemonicFfi, PrivateKeyFfi};
 
     fn public_key(curve: CurveFfi) -> Arc<PublicKeyFfi> {
-        MnemonicFfi::generate(MnemonicWordCount::Words24, Wordlist::English)
+        MnemonicFfi::generate(MnemonicWordCountFfi::Words24, WordlistFfi::English)
             .to_seed("".to_string())
             .master_key(curve)
             .public_key()
@@ -520,7 +520,7 @@ mod tests {
     }
 
     fn master_private_key(curve: CurveFfi) -> Arc<PrivateKeyFfi> {
-        MnemonicFfi::generate(MnemonicWordCount::Words24, Wordlist::English)
+        MnemonicFfi::generate(MnemonicWordCountFfi::Words24, WordlistFfi::English)
             .to_seed("".to_string())
             .master_key(curve)
             .private_key()

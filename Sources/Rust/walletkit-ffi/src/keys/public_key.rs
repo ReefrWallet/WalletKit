@@ -73,11 +73,11 @@ impl PublicKeyFfi {
 mod tests {
     use std::sync::Arc;
 
-    use crate::common::{CurveFfi, MnemonicWordCount, Wordlist};
+    use crate::common::{CurveFfi, MnemonicWordCountFfi, WordlistFfi};
     use crate::keys::MnemonicFfi;
 
     fn master_public_key(curve: CurveFfi) -> Arc<super::PublicKeyFfi> {
-        MnemonicFfi::generate(MnemonicWordCount::Words24, Wordlist::English)
+        MnemonicFfi::generate(MnemonicWordCountFfi::Words24, WordlistFfi::English)
             .to_seed("".to_string())
             .master_key(curve)
             .public_key()
@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn verify_accepts_a_signature_from_the_matching_private_key() {
-        let seed = MnemonicFfi::generate(MnemonicWordCount::Words24, Wordlist::English).to_seed("".to_string());
+        let seed = MnemonicFfi::generate(MnemonicWordCountFfi::Words24, WordlistFfi::English).to_seed("".to_string());
         let extended_key = seed.master_key(CurveFfi::Secp256k1);
         let message = b"hello walletkit".to_vec();
         let signature = extended_key.private_key().unwrap().sign(message.clone()).unwrap();
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn verify_rejects_a_tampered_message() {
-        let seed = MnemonicFfi::generate(MnemonicWordCount::Words24, Wordlist::English).to_seed("".to_string());
+        let seed = MnemonicFfi::generate(MnemonicWordCountFfi::Words24, WordlistFfi::English).to_seed("".to_string());
         let extended_key = seed.master_key(CurveFfi::Secp256k1);
         let signature = extended_key.private_key().unwrap().sign(b"hello".to_vec()).unwrap();
         assert!(!extended_key.public_key().verify(signature, b"goodbye".to_vec()));

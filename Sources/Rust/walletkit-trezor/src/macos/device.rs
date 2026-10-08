@@ -124,9 +124,10 @@ impl HardwareDeviceTrait for TrezorDevice {
     async fn solana_sign_message(
         &self,
         path: Vec<HardwarePathSegment>,
-        message: Vec<u8>,
+        message: String,
+        signers: Vec<Vec<u8>>,
     ) -> Result<Vec<u8>, HardwareError> {
-        self.worker.solana_sign_message(path, message).await
+        self.worker.solana_sign_message(path, message, signers).await
     }
 
     async fn cardano_xpub(&self, path: Vec<HardwarePathSegment>) -> Result<String, HardwareError> {
@@ -577,17 +578,14 @@ fn call_typed_data_step(
                 resp = trezor.call_raw(ack).map_err(map_trezor_error)?;
             }
             MessageType::MessageType_PassphraseRequest => {
-                let request: protos::PassphraseRequest = resp.into_message().map_err(into_message_error)?;
+                // The firmware's legacy `_on_device` request flag (< 2.3.0) no
+                // longer exists in the protocol; the host always supplies it.
+                let _: protos::PassphraseRequest = resp.into_message().map_err(into_message_error)?;
                 let mut ack = protos::PassphraseAck::new();
-                if request._on_device() {
-                    ack.set_on_device(true);
-                } else {
-                    let Some(passphrase) = runtime.block_on(delegate.needs_input(HardwareInputRequest::Passphrase))
-                    else {
-                        return Err(HardwareError::UserCancelled);
-                    };
-                    ack.set_passphrase(passphrase);
-                }
+                let Some(passphrase) = runtime.block_on(delegate.needs_input(HardwareInputRequest::Passphrase)) else {
+                    return Err(HardwareError::UserCancelled);
+                };
+                ack.set_passphrase(passphrase);
                 resp = trezor.call_raw(ack).map_err(map_trezor_error)?;
             }
             other => {
@@ -982,13 +980,18 @@ pub(super) fn solana_sign_tx(
 pub(super) fn solana_sign_message(
     trezor: &mut Trezor,
     path: &[HardwarePathSegment],
-    message: Vec<u8>,
+    message: String,
+    signers: Vec<Vec<u8>>,
     delegate: &Arc<dyn HardwareDeviceDelegate>,
     runtime: &tokio::runtime::Handle,
 ) -> Result<Vec<u8>, HardwareError> {
+    let mut offchain = protos::SolanaOffchainMessageV1::new();
+    offchain.set_message(message);
+    offchain.signers = signers;
+
     let mut req = protos::SolanaSignMessage::new();
     req.address_n = path.iter().map(HardwarePathSegment::to_address_n).collect();
-    req.set_message(message);
+    req.message = Some(offchain).into();
 
     let resp = drive_interaction(
         trezor.call(req, Box::new(|_, m: protos::SolanaMessageSignature| Ok(m))),

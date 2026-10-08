@@ -1,11 +1,6 @@
 //! Plain data mirrors of `walletkit-hardware`'s vendor-agnostic types,
-//! exported as UniFFI Records/Enums. Most carry no `Ffi` suffix, the same
-//! way `common::CurveFfi`/`common::DerivationPathFfi` don't — see
-//! `common/mod.rs`'s doc comment. `HardwareVendorFfi`/
-//! `HardwareDeviceInfoFfi`/`HardwareTransportKindFfi` are the exception:
-//! `WalletKit` hand-wraps them (`HardwareVendor`, `HardwareDeviceInfo`,
-//! `HardwareTransportKind`) rather than using them as-is, so — like
-//! `EthereumSignTxFfi`/`EthereumSignatureFfi` — they get the suffix.
+//! exported as UniFFI Records/Enums. Every FFI-facing type carries the
+//! `Ffi` suffix because WalletKit exposes a native wrapper instead.
 
 use walletkit_hardware as hw;
 
@@ -102,16 +97,16 @@ impl From<hw::HardwareDeviceInfo> for HardwareDeviceInfoFfi {
 
 /// A piece of input a hardware device is asking the user to provide.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
-pub enum HardwareInputRequest {
+pub enum HardwareInputRequestFfi {
     Pin { attempt: u32 },
     Passphrase,
 }
 
-impl From<hw::HardwareInputRequest> for HardwareInputRequest {
+impl From<hw::HardwareInputRequest> for HardwareInputRequestFfi {
     fn from(value: hw::HardwareInputRequest) -> Self {
         match value {
-            hw::HardwareInputRequest::Pin { attempt } => HardwareInputRequest::Pin { attempt },
-            hw::HardwareInputRequest::Passphrase => HardwareInputRequest::Passphrase,
+            hw::HardwareInputRequest::Pin { attempt } => HardwareInputRequestFfi::Pin { attempt },
+            hw::HardwareInputRequest::Passphrase => HardwareInputRequestFfi::Passphrase,
         }
     }
 }
@@ -119,20 +114,20 @@ impl From<hw::HardwareInputRequest> for HardwareInputRequest {
 /// A physical confirmation the device is waiting for the user to perform
 /// on its own screen/buttons.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
-pub enum HardwareButtonRequest {
+pub enum HardwareButtonRequestFfi {
     ConfirmAddress,
     ConfirmPublicKey,
     ConfirmTransaction,
     Other { description: String },
 }
 
-impl From<hw::HardwareButtonRequest> for HardwareButtonRequest {
+impl From<hw::HardwareButtonRequest> for HardwareButtonRequestFfi {
     fn from(value: hw::HardwareButtonRequest) -> Self {
         match value {
-            hw::HardwareButtonRequest::ConfirmAddress => HardwareButtonRequest::ConfirmAddress,
-            hw::HardwareButtonRequest::ConfirmPublicKey => HardwareButtonRequest::ConfirmPublicKey,
-            hw::HardwareButtonRequest::ConfirmTransaction => HardwareButtonRequest::ConfirmTransaction,
-            hw::HardwareButtonRequest::Other { description } => HardwareButtonRequest::Other { description },
+            hw::HardwareButtonRequest::ConfirmAddress => HardwareButtonRequestFfi::ConfirmAddress,
+            hw::HardwareButtonRequest::ConfirmPublicKey => HardwareButtonRequestFfi::ConfirmPublicKey,
+            hw::HardwareButtonRequest::ConfirmTransaction => HardwareButtonRequestFfi::ConfirmTransaction,
+            hw::HardwareButtonRequest::Other { description } => HardwareButtonRequestFfi::Other { description },
         }
     }
 }
@@ -172,17 +167,17 @@ mod tests {
     #[test]
     fn input_request_converts_from_the_hardware_crate_type() {
         assert_eq!(
-            HardwareInputRequest::from(hw::HardwareInputRequest::Pin { attempt: 2 }),
-            HardwareInputRequest::Pin { attempt: 2 }
+            HardwareInputRequestFfi::from(hw::HardwareInputRequest::Pin { attempt: 2 }),
+            HardwareInputRequestFfi::Pin { attempt: 2 }
         );
-        assert_eq!(HardwareInputRequest::from(hw::HardwareInputRequest::Passphrase), HardwareInputRequest::Passphrase);
+        assert_eq!(HardwareInputRequestFfi::from(hw::HardwareInputRequest::Passphrase), HardwareInputRequestFfi::Passphrase);
     }
 
     #[test]
     fn button_request_converts_from_the_hardware_crate_type() {
         assert_eq!(
-            HardwareButtonRequest::from(hw::HardwareButtonRequest::Other { description: "custom".to_string() }),
-            HardwareButtonRequest::Other { description: "custom".to_string() }
+            HardwareButtonRequestFfi::from(hw::HardwareButtonRequest::Other { description: "custom".to_string() }),
+            HardwareButtonRequestFfi::Other { description: "custom".to_string() }
         );
     }
 }

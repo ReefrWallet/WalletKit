@@ -72,9 +72,14 @@ extension SolanaRPCClient {
         let owner: String
         let programId: String
 
-        private struct Filter: Encodable { let programId: String }
+        private struct Filter: Encodable {
+            let programId: String
+        }
 
-        private struct Config: Encodable { let encoding = "jsonParsed"; let commitment = "confirmed" }
+        private struct Config: Encodable {
+            let encoding = "jsonParsed"
+            let commitment = "confirmed"
+        }
 
         func encode(to encoder: Encoder) throws {
             var container = encoder.unkeyedContainer()
@@ -135,6 +140,7 @@ extension SolanaRPCClient {
 
         return try response.value.map { entry in
             let info = entry.account.data.parsed.info
+
             guard let amount = BigUInt(info.tokenAmount.amount) else {
                 throw BlockchainClientError.decodingFailed(reason: "invalid SPL token amount: \(info.tokenAmount.amount)")
             }
@@ -221,26 +227,34 @@ extension SolanaRPCClient {
     /// LE) UTF-8 strings — only `name`/`symbol` are read here.
     func metaplexTokenInfo(of mint: SolanaAddress) async throws -> (name: String, symbol: String)? {
         let metadataAddress = try SolanaProgram.metadataAddress(mint: mint)
+
         guard let (data, _) = try await rawAccountInfo(of: metadataAddress) else {
             return nil
         }
 
         var offset = 1 + 32 + 32
+
         func readString() -> String? {
             guard offset + 4 <= data.count else {
                 return nil
             }
 
-            let length = Int(data[offset]) | Int(data[offset + 1]) << 8 | Int(data[offset + 2]) << 16
+            let length = Int(data[offset])
+                | Int(data[offset + 1]) << 8
+                | Int(data[offset + 2]) << 16
                 | Int(data[offset + 3]) << 24
+
             offset += 4
+
             guard length >= 0, offset + length <= data.count else {
                 return nil
             }
 
             let stringData = data[offset..<(offset + length)]
             offset += length
-            return String(data: stringData, encoding: .utf8)?.trimmingCharacters(in: .controlCharacters)
+
+            return String(data: stringData, encoding: .utf8)?
+                .trimmingCharacters(in: .controlCharacters)
         }
 
         guard let name = readString(), let symbol = readString() else {
@@ -284,6 +298,7 @@ extension SolanaRPCClient {
         )
 
         let decoded = try Base58.decode(response.value.blockhash)
+
         guard decoded.count == 32 else {
             throw BlockchainClientError.decodingFailed(reason: "invalid blockhash: \(response.value.blockhash)")
         }
@@ -450,12 +465,35 @@ extension SolanaRPCClient {
     ///   for a transaction that lands but fails on-chain, or for a
     ///   confirmation wait that exceeds ``confirmationTimeout``.
     public func sendTransaction(
-        _ signedTransaction: Data, options: SolanaSendTransactionOptions = .init()
+        _ signedTransaction: Data,
+        options: SolanaSendTransactionOptions = .init()
     ) async throws -> String {
-        let signature: String = try await rpc.call(
-            method: "sendTransaction",
-            params: SendTransactionParams(transaction: signedTransaction.base64EncodedString(), options: options)
-        )
+        let signature: String
+
+        do {
+            signature = try await rpc.call(
+                method: "sendTransaction",
+                params: SendTransactionParams(transaction: signedTransaction.base64EncodedString(), options: options)
+            )
+        } catch let BlockchainClientError.rpcError(_, message)
+            where message.localizedCaseInsensitiveContains("already been processed")
+                || message.localizedCaseInsensitiveContains("already known") {
+            // A 429/503 retry can land on this after the first attempt
+            // actually landed. Solana has no separate transaction hash —
+            // the signature is the identifier, and it's already embedded
+            // in the wire transaction, so recover it locally instead of
+            // surfacing a false failure. Doesn't wait for confirmation on
+            // this path, matching `EthereumRPCClient.broadcast(_:)`'s
+            // narrower scope: report the identifier, not replicate the
+            // full happy-path wait.
+            let wireTransaction = try SolanaWireTransaction(parsing: signedTransaction)
+
+            guard let recoveredSignature = wireTransaction.signatures.first else {
+                throw BlockchainClientError.decodingFailed(reason: "signed transaction has no signatures")
+            }
+
+            return Base58.encode(recoveredSignature)
+        }
 
         if let commitment = options.commitment {
             try await confirmTransaction(signature: signature, commitment: commitment)

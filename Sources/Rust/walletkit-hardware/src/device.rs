@@ -247,15 +247,17 @@ pub trait HardwareDevice: Send + Sync {
         fields: SolanaTxFields,
     ) -> Result<Vec<u8>, HardwareError>;
 
-    /// Signs a Solana off-chain message (Wallet Standard's
-    /// `solana:signMessage`) on-device — the raw message bytes directly,
-    /// no prefix, matching the software path's
-    /// `SolanaPKeySigner.sign(message:)`. Returns the raw 64-byte ed25519
-    /// signature.
+    /// Signs a Solana off-chain message (OCMS v1) on-device. The firmware
+    /// takes structured data — a UTF-8 `message` and the 32-byte `signers`
+    /// public keys (which must include the key at `path`) — and signs its
+    /// own serialization (`\xffsolana offchain` ‖ version ‖ signer count ‖
+    /// signers ‖ message), not the raw text. Returns the raw 64-byte
+    /// ed25519 signature.
     async fn solana_sign_message(
         &self,
         path: Vec<HardwarePathSegment>,
-        message: Vec<u8>,
+        message: String,
+        signers: Vec<Vec<u8>>,
     ) -> Result<Vec<u8>, HardwareError>;
 
     /// Reads the Cardano Icarus/CIP-1852 account extended public key.

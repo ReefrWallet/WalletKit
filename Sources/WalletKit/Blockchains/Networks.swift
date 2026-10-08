@@ -114,9 +114,12 @@ public enum CardanoNetwork: Codable, Equatable, Hashable, Sendable {
 
     init?(storageIdentifier: String) {
         switch storageIdentifier {
-        case "mainnet": self = .mainnet
-        case "preprod": self = .preprod
-        default: return nil
+        case "mainnet":
+            self = .mainnet
+        case "preprod":
+            self = .preprod
+        default:
+            return nil
         }
     }
 }
