@@ -160,8 +160,7 @@ public final class EthereumNode {
 
     /// Stops the node and releases its resources.
     public func stop() {
-        process.terminate()
-        process.waitUntilExit()
+        process.terminateAndWait()
         try? logHandle.close()
         try? FileManager.default.removeItem(at: workingDirectory)
     }

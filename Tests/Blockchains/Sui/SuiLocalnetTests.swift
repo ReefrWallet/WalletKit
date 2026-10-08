@@ -111,7 +111,12 @@ private func send(
 // alongside SuiTransactionBuilderTests, where a test that passes in ~15s
 // alone failed on "exceeded execution time allowance" when six such
 // validators were starting at once.
-@Suite(.timeLimit(.minutes(1)), .serialized)
+//
+// Measured on a quiet machine (3–6s per test, of which 3.5–5.7s is node
+// startup): the limit is per test and must cover waiting on `SuiNodeGate`
+// (another suite's startup) plus the test's own startup, each bounded by
+// `SuiNode`'s 30s startup timeout — hence 2 minutes, still ≥ 20× measured.
+@Suite(.timeLimit(.minutes(2)), .serialized)
 struct SuiLocalnetTests {
     // MARK: - Fee estimation
 

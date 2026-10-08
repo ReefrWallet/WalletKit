@@ -148,8 +148,7 @@ public final class SolanaNode {
 
     /// Stops the validator and removes its temporary ledger.
     public func stop() {
-        process.terminate()
-        process.waitUntilExit()
+        process.terminateAndWait()
         try? logHandle.close()
         try? FileManager.default.removeItem(at: ledgerDirectory)
     }

@@ -198,6 +198,8 @@ public final class BitcoinNode {
     private let electrsLogHandle: FileHandle
     private let walletName = "test"
 
+    private var esploraPort: UInt16 { UInt16(esploraEndpoint.port ?? 0) }
+
     private init(
         bitcoinCLIPath: String,
         rpcPort: UInt16,
@@ -265,6 +267,7 @@ public final class BitcoinNode {
             electrsLogHandle: electrsLogHandle
         )
 
+        try await node.waitUntilRPCReady()
         try node.bitcoinCLI(["createwallet", node.walletName])
 
         // A freshly created regtest chain (zero blocks, no peers) stays
@@ -293,10 +296,8 @@ public final class BitcoinNode {
 
     /// Stops the Bitcoin and indexer processes.
     public func stop() {
-        electrsProcess.terminate()
-        electrsProcess.waitUntilExit()
-        bitcoindProcess.terminate()
-        bitcoindProcess.waitUntilExit()
+        electrsProcess.terminateAndWait()
+        bitcoindProcess.terminateAndWait()
         try? bitcoindLogHandle.close()
         try? electrsLogHandle.close()
         try? FileManager.default.removeItem(at: dataDirectory)
@@ -379,7 +380,10 @@ public final class BitcoinNode {
         let deadline = ContinuousClock.now.advanced(by: .seconds(15))
 
         while ContinuousClock.now < deadline {
-            if (try? await esploraTipHeight()) != nil {
+            // A plain TCP connect first: probing the HTTP endpoint while
+            // electrs is still binding makes CFNetwork log a "Could not
+            // connect to the server" error for every attempt.
+            if isListening(port: esploraPort), (try? await esploraTipHeight()) != nil {
                 return
             }
 
@@ -389,6 +393,52 @@ public final class BitcoinNode {
         let logURL = dataDirectory.appendingPathComponent("electrs.log")
         let log = (try? String(contentsOf: logURL, encoding: .utf8)) ?? "(no log)"
         throw BitcoinLaunchError(description: "electrs never became ready within 15s. Log tail:\n\(log.suffix(2000))")
+    }
+
+    /// Polls until `bitcoind` answers an RPC call. The cookie file appears
+    /// before the daemon finishes warming up, and during warm-up every RPC
+    /// fails with error -28 ("Loading block index…") — so the cookie alone
+    /// doesn't mean `createwallet` will succeed.
+    private func waitUntilRPCReady() async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(15))
+        var lastError = "no attempt made"
+
+        while ContinuousClock.now < deadline {
+            do {
+                try bitcoinCLI(["getblockcount"])
+                return
+            } catch {
+                lastError = "\(error)"
+            }
+
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+
+        throw BitcoinLaunchError(description: "bitcoind RPC never became ready within 15s: \(lastError)")
+    }
+
+    /// Whether something accepts TCP connections on `127.0.0.1:port`.
+    private func isListening(port: UInt16) -> Bool {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+
+        guard fd >= 0 else {
+            return false
+        }
+
+        defer { close(fd) }
+
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = port.bigEndian
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+
+        let result = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+
+        return result == 0
     }
 
     /// Polls until `bitcoind`'s cookie auth file exists, confirming the
@@ -486,4 +536,4 @@ private func makeLogHandle(at url: URL) throws -> FileHandle {
     return try FileHandle(forWritingTo: url)
 }
 
-#endif
+#endif // swiftlint:disable:this file_length

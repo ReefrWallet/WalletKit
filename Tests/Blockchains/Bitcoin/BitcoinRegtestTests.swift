@@ -66,7 +66,11 @@ private func makeClient(node: BitcoinNode, backend: RegtestBackendKind) -> Bitco
     }
 }
 
-@Suite(.serialized)
+// Measured on a quiet machine: ~6s node startup + ~18s test body = ~24s per
+// backend, so the 2-minute limit (per test case) is ~5× that — long enough
+// to survive a loaded machine, short enough that a hung node fails the test
+// instead of stalling the run.
+@Suite(.timeLimit(.minutes(2)), .serialized)
 struct BitcoinRegtestTests {
     @Test(arguments: [RegtestBackendKind.electrum, .esplora])
     func fundSendMineAndConfirmBalanceNetsOut(backend: RegtestBackendKind) async throws {

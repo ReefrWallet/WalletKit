@@ -16,8 +16,10 @@ import WalletKitTesting
 
 // `.serialized`: see SuiLocalnetTests.swift — each test spins up its own
 // full local `sui` validator, and running several concurrently causes
-// enough CPU contention to blow past the 1-minute time limit.
-@Suite(.timeLimit(.minutes(1)), .serialized)
+// enough CPU contention to blow past the time limit. The 2-minute limit is
+// per test (measured 5–6s on a quiet machine): it must cover `SuiNodeGate`
+// queueing plus startup, see SuiLocalnetTests.swift.
+@Suite(.timeLimit(.minutes(2)), .serialized)
 struct SuiTransactionBuilderTests {
     // MARK: - Native SUI transfer
 

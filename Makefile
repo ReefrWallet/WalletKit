@@ -72,6 +72,11 @@ SOLANA_TESTING_DIR := $(BUILD_DIR)/solana-testing
 SOLANA_TESTING_BIN_DIR := $(SOLANA_TESTING_DIR)/bin
 SOLANA_RELEASE_STAMP := $(SOLANA_TESTING_DIR)/.solana-release-stamp
 
+ifneq ($(GITHUB_ACTIONS),)
+# CI only runs tests: build the macOS arm64 slice alone.
+MACOS_TARGETS := aarch64-apple-darwin
+ALL_TARGETS := $(MACOS_TARGETS)
+else
 # Apple Silicon + Intel Mac, fused into one macOS slice.
 MACOS_TARGETS := aarch64-apple-darwin x86_64-apple-darwin
 # Apple Silicon + Intel simulator, fused into one iOS-simulator slice.
@@ -80,10 +85,18 @@ IOS_SIM_TARGETS := aarch64-apple-ios-sim x86_64-apple-ios
 IOS_DEVICE_TARGET := aarch64-apple-ios
 
 ALL_TARGETS := $(MACOS_TARGETS) $(IOS_SIM_TARGETS) $(IOS_DEVICE_TARGET)
+endif
 
 MACOS_LIB := $(BUILD_DIR)/macos/$(LIB_NAME)
 IOS_SIM_LIB := $(BUILD_DIR)/ios-simulator/$(LIB_NAME)
 IOS_DEVICE_LIB := $(TARGET_DIR)/$(IOS_DEVICE_TARGET)/release/$(LIB_NAME)
+
+XCFRAMEWORK_LIBS := -library $(MACOS_LIB) -headers $(HEADERS_DIR)
+ifeq ($(GITHUB_ACTIONS),)
+XCFRAMEWORK_LIBS += \
+	-library $(IOS_DEVICE_LIB) -headers $(HEADERS_DIR) \
+	-library $(IOS_SIM_LIB) -headers $(HEADERS_DIR)
+endif
 
 # UniFFI embeds its interface metadata in the compiled library itself, and
 # that metadata is platform/arch-agnostic — so bindings only need to be
@@ -125,7 +138,7 @@ rust-targets:
 test: rust-tests swift-tests
 
 walletkit-ffi: rust-targets
-	@echo "==> Building walletkit-ffi (release) for macOS + iOS device + iOS simulator"
+	@echo "==> Building walletkit-ffi (release): $(ALL_TARGETS)"
 	@cd $(RUST_DIR) && for target in $(ALL_TARGETS); do \
 		echo "  -- $$target"; \
 		$(CARGO) build --release --target $$target || exit 1; \
@@ -144,7 +157,9 @@ walletkit-ffi: rust-targets
 	@echo "==> Fusing per-platform slices with lipo"
 	@mkdir -p $(BUILD_DIR)/macos $(BUILD_DIR)/ios-simulator
 	@lipo -create $(foreach t,$(MACOS_TARGETS),$(TARGET_DIR)/$(t)/release/$(LIB_NAME)) -output $(MACOS_LIB)
+ifeq ($(GITHUB_ACTIONS),)
 	@lipo -create $(foreach t,$(IOS_SIM_TARGETS),$(TARGET_DIR)/$(t)/release/$(LIB_NAME)) -output $(IOS_SIM_LIB)
+endif
 
 	@echo "==> Assembling headers + module map"
 	@rm -rf $(HEADERS_DIR)
@@ -156,9 +171,7 @@ walletkit-ffi: rust-targets
 	@mkdir -p $(FRAMEWORKS_DIR)
 	@rm -rf $(XCFRAMEWORK)
 	@xcodebuild -create-xcframework \
-		-library $(MACOS_LIB) -headers $(HEADERS_DIR) \
-		-library $(IOS_DEVICE_LIB) -headers $(HEADERS_DIR) \
-		-library $(IOS_SIM_LIB) -headers $(HEADERS_DIR) \
+		$(XCFRAMEWORK_LIBS) \
 		-output $(XCFRAMEWORK)
 
 sui-grpc:

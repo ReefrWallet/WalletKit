@@ -110,7 +110,14 @@ private actor SuiNodeGate {
 }
 
 public final class SuiNode {
+    /// Per-operation bound (gRPC call, faucet, effects, balance polling).
+    /// Measured on a quiet machine: each takes ≤ ~1s, so this is ≥ 10×.
     private static let localnetTimeout: Duration = .seconds(10)
+
+    /// `sui start --force-regenesis` until the first checkpoint. Measured
+    /// 3.5–5.7s on a quiet machine (25 runs) but roughly doubles under CPU
+    /// load, which a 10s bound didn't survive — 30s is ≥ 5× the measured max.
+    private static let startupTimeout: Duration = .seconds(30)
 
     /// The local full node's gRPC port.
     public let rpcPort: UInt16
@@ -137,7 +144,7 @@ public final class SuiNode {
     ///     the same `sui` instance.
     ///   - faucetPort: Same as `rpcPort`, for the faucet's HTTP listener.
     /// - Throws: ``SuiLaunchError`` if `mise`/`sui` can't be found/run, or
-    ///   if the node never becomes ready within 10 seconds.
+    ///   if the node never becomes ready within 30 seconds.
     public static func start(rpcPort: UInt16? = nil, faucetPort: UInt16? = nil) async throws -> SuiNode {
         let allocatedPorts = try freeTCPPorts(2)
         let rpcPort = rpcPort ?? allocatedPorts[0]
@@ -243,8 +250,7 @@ public final class SuiNode {
 
     /// Stops the local network and removes its temporary files.
     public func stop() {
-        process.terminate()
-        process.waitUntilExit()
+        process.terminateAndWait()
         try? logHandle.close()
         try? FileManager.default.removeItem(at: workingDirectory)
     }
@@ -272,7 +278,7 @@ public final class SuiNode {
     }
 
     private func waitUntilReady() async throws {
-        let deadline = ContinuousClock.now.advanced(by: Self.localnetTimeout)
+        let deadline = ContinuousClock.now.advanced(by: Self.startupTimeout)
 
         while ContinuousClock.now < deadline {
             if let height = try? await checkpointHeight(), height > 0 {
@@ -285,7 +291,7 @@ public final class SuiNode {
         let log = (try? String(contentsOf: workingDirectory.appendingPathComponent("sui.log"), encoding: .utf8))
             ?? "(no log)"
 
-        throw SuiLaunchError(description: "sui never became ready within 10s. Log tail:\n\(log.suffix(2000))")
+        throw SuiLaunchError(description: "sui never became ready within 30s. Log tail:\n\(log.suffix(2000))")
     }
 
     private func checkpointHeight() async throws -> UInt64 {
