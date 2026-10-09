@@ -30,7 +30,7 @@ BINDINGS_DIR := $(BUILD_DIR)/bindings
 HEADERS_DIR := $(BUILD_DIR)/headers
 
 # Static DocC site, ready to commit and serve from GitHub Pages.
-DOCS_DIR := Docs
+DOCS_DIR := docs
 DOCS_BASE_PATH ?= WalletKit
 FRAMEWORKS_DIR := Frameworks
 GENERATED_SOURCES_DIR := $(SOURCES_DIR)/Generated/Bindings
