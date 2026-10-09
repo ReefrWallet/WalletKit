@@ -45,7 +45,14 @@ Use as a local SPM dependency while developing with WalletKit:
 
 ## Documentation
 
-[Read the API reference and guides on GitHub Pages.](https://kervich.github.io/WalletKit/)
+- [WalletKit API reference and guides](https://kervich.github.io/WalletKit/documentation/walletkit/)
+- [WalletKitTesting API reference](https://kervich.github.io/WalletKit/Testing/documentation/walletkittesting/)
+
+To regenerate the site in `docs/` (served by GitHub Pages from `main`), run:
+
+```shell
+make docs
+```
 
 ## Requirements
 

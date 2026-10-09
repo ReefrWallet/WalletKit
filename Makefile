@@ -32,6 +32,10 @@ HEADERS_DIR := $(BUILD_DIR)/headers
 # Static DocC site, ready to commit and serve from GitHub Pages.
 DOCS_DIR := docs
 DOCS_BASE_PATH ?= WalletKit
+# $(call docs_redirect,<file>,<relative target>): write a static redirect page.
+docs_redirect = printf '%s\n' '<!doctype html>' '<meta charset="utf-8">' \
+	'<meta http-equiv="refresh" content="0; url=$(2)">' '<link rel="canonical" href="$(2)">' \
+	'<title>Redirecting…</title>' '<a href="$(2)">Continue to the documentation</a>' > $(1)
 FRAMEWORKS_DIR := Frameworks
 GENERATED_SOURCES_DIR := $(SOURCES_DIR)/Generated/Bindings
 XCFRAMEWORK := $(FRAMEWORKS_DIR)/WalletKit.xcframework
@@ -118,6 +122,10 @@ docs: $(XCFRAMEWORK)
 	@swift package --allow-writing-to-directory $(DOCS_DIR)/Testing \
 		generate-documentation --target WalletKitTesting --output-path $(DOCS_DIR)/Testing \
 		--disable-indexing --transform-for-static-hosting --hosting-base-path $(DOCS_BASE_PATH)/Testing
+	@# DocC has no page for the site root, so its app shows "page not found"
+	@# there. Replace each bundle's root shell with a redirect to its module page.
+	@$(call docs_redirect,$(DOCS_DIR)/index.html,documentation/walletkit/)
+	@$(call docs_redirect,$(DOCS_DIR)/Testing/index.html,documentation/walletkittesting/)
 	@touch $(DOCS_DIR)/.nojekyll
 
 doc: docs
