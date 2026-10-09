@@ -6,9 +6,6 @@
 //  Copyright © 2026 Reefr Wallet. All rights reserved.
 //
 
-@_documentation(visibility: internal) @_exported import Foundation
-@_documentation(visibility: internal) @_exported import BigInt
-
 /// Discrete capabilities a ``BlockchainClientProtocol`` conformer may or may
 /// not support. Call ``BlockchainClientProtocol/isSupported(_:)`` before
 /// using a feature to avoid ``WalletKitError/unsupportedFeature`` errors at

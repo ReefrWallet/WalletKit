@@ -463,7 +463,7 @@ extension SolanaRPCClient {
     ///
     /// - Throws: ``BlockchainClientError`` for a transport/RPC failure,
     ///   for a transaction that lands but fails on-chain, or for a
-    ///   confirmation wait that exceeds ``confirmationTimeout``.
+    ///   confirmation wait that exceeds `confirmationTimeout`.
     public func sendTransaction(
         _ signedTransaction: Data,
         options: SolanaSendTransactionOptions = .init()
@@ -530,7 +530,7 @@ extension SolanaRPCClient {
     }
 
     /// Polls `getSignatureStatuses` for `signature` until it reaches
-    /// `commitment`, fails on-chain, or ``confirmationTimeout`` elapses.
+    /// `commitment`, fails on-chain, or `confirmationTimeout` elapses.
     private func confirmTransaction(signature: String, commitment: SolanaCommitment) async throws {
         let deadline = Date().addingTimeInterval(Self.confirmationTimeout)
 

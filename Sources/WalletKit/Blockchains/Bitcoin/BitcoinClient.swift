@@ -9,7 +9,7 @@ import Foundation
 /// Electrum or Esplora backend and resolves each account descriptor to
 /// its addresses. A Bitcoin account can resolve to many addresses.
 ///
-/// Clients created for the same endpoint share a ``BitcoinBackendSession``
+/// Clients created for the same endpoint share a `BitcoinBackendSession`
 /// — one Electrum connection and one address resolver per descriptor — so
 /// creating a client is cheap and doesn't repeat address discovery.
 public actor BitcoinClient {

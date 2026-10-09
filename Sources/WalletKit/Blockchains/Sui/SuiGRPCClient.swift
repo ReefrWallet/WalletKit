@@ -186,8 +186,7 @@ public struct SuiGRPCClient: Sendable {
     ///   - ids: The objects' IDs. The node imposes its own cap on
     ///     request count; callers should batch at a reasonable size
     ///     (e.g. 50) themselves.
-    ///   - readMask: Which fields to populate. Defaults to
-    ///     `object_id,version,digest,owner`.
+    /// Each lookup populates `object_id,version,digest,owner`.
     /// - Returns: One object per input id, in the same order as `ids`.
     /// - Throws: ``BlockchainClientError`` on a transport, RPC, or
     ///   decoding failure, or if any individual object lookup failed

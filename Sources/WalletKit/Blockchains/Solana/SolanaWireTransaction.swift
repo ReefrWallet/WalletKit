@@ -41,7 +41,7 @@ public struct SolanaAddressTableLookup: Equatable, Sendable {
 /// real signer would.
 ///
 /// Every variable-length field is length-prefixed by
-/// ``SolanaShortVec/decodeCanonical(_:offset:)`` (canonical, ≤3 bytes,
+/// `SolanaShortVec.decodeCanonical(_:offset:)` (canonical, ≤3 bytes,
 /// ≤`0xFFFF`), every length is checked against the remaining input before
 /// slicing, and the input must be consumed exactly — no trailing bytes.
 /// Any structural mismatch (header counts vs. account count, an

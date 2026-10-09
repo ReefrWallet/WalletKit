@@ -372,7 +372,7 @@ public final class SuiNode {
     }
 
     /// `address`'s owned native-SUI coin objects, largest balance first.
-    /// Delegates to ``SuiGRPCClient/ownedCoins(of:coinType:)`` on the local
+    /// Delegates to `SuiGRPCClient.ownedCoins(of:coinType:)` on the local
     /// node client rather than duplicating the gRPC + Base58 logic here.
     public func suiCoins(of address: SuiAddress) async throws -> [SuiCoinObject] {
         try await client().ownedCoins(of: address, coinType: "0x2::sui::SUI")
@@ -443,7 +443,7 @@ public final class SuiNode {
         }
     }
 
-    /// Polls ``SuiGRPCClient/nativeBalance(of:)`` for `address` until it
+    /// Polls `SuiGRPCClient.nativeBalance(of:)` for `address` until it
     /// differs from `previous` — the balance index updates on checkpoint
     /// commit, slightly after `waitForEffects(_:)` sees the transaction's
     /// own effects.

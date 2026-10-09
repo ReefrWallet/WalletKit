@@ -1,1 +1,1 @@
-@_exported import WalletKit
+@_documentation(visibility: internal) @_exported import WalletKit

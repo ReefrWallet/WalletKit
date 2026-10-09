@@ -14,7 +14,7 @@ hosting_base_path="$4"
 symbol_graph="$(find .build/out/Products/Debug -path "*/${target}.symbolgraphs/${target}.symbols.json" -print -quit)"
 
 if [ -z "$symbol_graph" ]; then
-    echo "Missing primary symbol graph for ${target}. Run swift build first." >&2
+    echo "Missing primary symbol graph for ${target}. Run 'make docs', which emits it via swift-docc-plugin." >&2
     exit 1
 fi
 

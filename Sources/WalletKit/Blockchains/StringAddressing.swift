@@ -36,7 +36,9 @@ public extension BlockchainClientProtocol {
 
     /// Returns balances for the requested token identifiers.
     ///
-    /// - Parameter owner: The account's address string.
+    /// - Parameters:
+    ///   - owner: The account's address string.
+    ///   - tokens: The chain-specific token identifiers.
     func getBalances(_ owner: String, tokens: [String]) async throws -> [String: BigUInt] {
         try await getBalances(makeAddress(owner), tokens: tokens)
     }
@@ -66,7 +68,9 @@ public extension BlockchainClientProtocol {
 
     /// Returns one bounded page of account activity.
     ///
-    /// - Parameter owner: The account's address string.
+    /// - Parameters:
+    ///   - owner: The account's address string.
+    ///   - request: The page bounds and cursor.
     func transactionHistory(
         _ owner: String,
         request: BlockchainTransactionHistoryRequest

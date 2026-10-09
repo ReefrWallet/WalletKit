@@ -67,7 +67,7 @@ private func freeTCPPorts(_ count: Int) throws -> [UInt16] {
 }
 
 /// A local `solana-test-validator` node for integration tests that need a real backend behind
-/// ``SolanaRPCClient`` rather than a mock. Unlike `bitcoind`/`electrs` (two processes) or Sui's
+/// `SolanaRPCClient` rather than a mock. Unlike `bitcoind`/`electrs` (two processes) or Sui's
 /// `sui start`, one binary serves both RPC and the airdrop faucet, and the SPL Token/Token-2022/
 /// Associated-Token-Account programs are already present in its default genesis — no
 /// `--bpf-program`/`--clone` setup needed.
@@ -352,7 +352,7 @@ public final class SolanaNode {
                 // Waits for "confirmed" (or better) specifically, not
                 // just any non-nil status — "processed" alone doesn't
                 // guarantee the cluster has converged on this block, and
-                // ``SolanaRPCClient``'s own reads use `confirmed`
+                // `SolanaRPCClient`'s own reads use `confirmed`
                 // commitment (not the RPC default `finalized`, which
                 // lags behind by the ~32-slot optimistic-confirmation
                 // lockout window — tens of seconds even on an idle

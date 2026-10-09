@@ -29,8 +29,8 @@ BUILD_DIR := .build
 BINDINGS_DIR := $(BUILD_DIR)/bindings
 HEADERS_DIR := $(BUILD_DIR)/headers
 
-# Disposable static documentation artifact for GitHub Pages.
-DOCS_DIR := $(BUILD_DIR)/docs
+# Static DocC site, ready to commit and serve from GitHub Pages.
+DOCS_DIR := Docs
 DOCS_BASE_PATH ?= WalletKit
 FRAMEWORKS_DIR := Frameworks
 GENERATED_SOURCES_DIR := $(SOURCES_DIR)/Generated/Bindings
@@ -104,23 +104,23 @@ endif
 BINDGEN_SOURCE_LIB := $(TARGET_DIR)/aarch64-apple-darwin/release/$(LIB_NAME)
 
 .DEFAULT_GOAL := spm
-.PHONY: all docs walletkit-ffi sui-grpc bitcoin-testing solana-testing test clean rust-targets
+.PHONY: all bitcoin-testing clean doc docs rust-targets solana-testing sui-grpc test walletkit-ffi
 
 all: $(XCFRAMEWORK) test docs
 
 docs: $(XCFRAMEWORK)
+	@echo "==> Building DocC documentation into $(DOCS_DIR)/"
 	@rm -rf $(DOCS_DIR)
-	@mkdir -p $(DOCS_DIR)/symbol-graphs
-	@swift package --allow-writing-to-directory $(DOCS_DIR)/symbol-graphs \
-		generate-documentation --target WalletKit --output-path $(DOCS_DIR)/symbol-graphs/walletkit \
-		--disable-indexing
-	@swift package --allow-writing-to-directory $(DOCS_DIR)/symbol-graphs \
-		generate-documentation --target WalletKitTesting --output-path $(DOCS_DIR)/symbol-graphs/walletkittesting \
-		--disable-indexing
-	@Scripts/generate-docc.sh WalletKit Sources/WalletKit/WalletKit.docc $(DOCS_DIR) $(DOCS_BASE_PATH)
-	@Scripts/generate-docc.sh WalletKitTesting Sources/WalletKitTesting/WalletKitTesting.docc $(DOCS_DIR)/testing $(DOCS_BASE_PATH)/testing
-	@rm -rf $(DOCS_DIR)/symbol-graphs
+	@mkdir -p $(DOCS_DIR)
+	@swift package --allow-writing-to-directory $(DOCS_DIR) \
+		generate-documentation --target WalletKit --output-path $(DOCS_DIR) \
+		--disable-indexing --transform-for-static-hosting --hosting-base-path $(DOCS_BASE_PATH)
+	@swift package --allow-writing-to-directory $(DOCS_DIR)/Testing \
+		generate-documentation --target WalletKitTesting --output-path $(DOCS_DIR)/Testing \
+		--disable-indexing --transform-for-static-hosting --hosting-base-path $(DOCS_BASE_PATH)/Testing
 	@touch $(DOCS_DIR)/.nojekyll
+
+doc: docs
 
 spm: walletkit-ffi sui-grpc
 	@swift build
@@ -256,6 +256,6 @@ swift-tests: $(XCFRAMEWORK) bitcoin-testing solana-testing
 	@cd
 
 clean:
-	@rm -rf $(BUILD_DIR) $(FRAMEWORKS_DIR) $(GENERATED_SOURCES_DIR) $(GENERATED_GRPC_SOURCES_DIR)
+	@rm -rf $(BUILD_DIR) $(DOCS_DIR) $(FRAMEWORKS_DIR) $(GENERATED_SOURCES_DIR) $(GENERATED_GRPC_SOURCES_DIR)
 	@cd $(CRATE_DIR) && $(CARGO) clean
 	@rm -rf Derived *.xcodeproj *.xcworkspace

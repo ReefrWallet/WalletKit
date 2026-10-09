@@ -13,7 +13,7 @@ import Network
 /// (subscription pushes) to every subscriber registered with
 /// ``addSubscriber(method:onNotification:onFailure:)``.
 ///
-/// Long-lived and shared (see ``BitcoinBackendSession``): when the
+/// Long-lived and shared (see `BitcoinBackendSession`): when the
 /// connection fails or the server closes it, every in-flight request and
 /// subscriber is failed and the next call opens a fresh connection.
 ///
