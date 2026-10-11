@@ -102,6 +102,7 @@ let package = Package(
                 "Project.swift",
                 "README.md",
                 "Scripts",
+                "Site",
                 "Sources",
                 "WalletKit.xcodeproj"
             ],

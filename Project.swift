@@ -58,9 +58,11 @@ private let walletKit: Target = .target(
         )
     ],
     dependencies: [
+        .external(name: "Alamofire"),
         .external(name: "BigInt"),
         .external(name: "GRPCCore"),
         .external(name: "GRPCNIOTransportHTTP2Posix"),
+        .externam(name: "Moya"),
         .target(name: "WalletKitGRPC"),
         .target(name: "WalletKitRust")
     ]
@@ -153,7 +155,8 @@ let project = Project(
     additionalFiles: [
         ".github/**/*",
         "*.md",
-        "Docs/**/*",
+        "docs/**/*",
+        "Site/**/*",
         "Sources/Rust/walletkit-ffi/**/*",
         "Sources/Rust/Cargo.toml",
         "Sources/Rust/README.md",

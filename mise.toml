@@ -1,3 +1,4 @@
 [tools]
 foundry = "1.7.1"
 sui = "testnet-v1.78.1"
+pandoc = "3.12.1"

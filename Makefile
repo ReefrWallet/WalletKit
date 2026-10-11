@@ -4,10 +4,9 @@
 #   - protoc, protoc-gen-swift, and protoc-gen-grpc-swift (v2, binary name
 #     `protoc-gen-grpc-swift-2`) for `make sui-grpc` — e.g.
 #     `brew install protobuf swift-protobuf protoc-gen-grpc-swift`
-#   - `git`, `curl`, `tar`, and `cargo` (already required above) for
-#     `make bitcoin-testing`
-#   - `git submodule update --init --recursive` once after cloning, to
-#     fetch Sources/gRPC/sui-rpc-api-v2's .proto files
+
+export MACOSX_DEPLOYMENT_TARGET := 15.0
+export IPHONEOS_DEPLOYMENT_TARGET := 18.0
 
 RUST_BIN_DIR := $(HOME)/.cargo/bin
 export PATH := $(RUST_BIN_DIR):$(PATH)
@@ -21,16 +20,12 @@ CRATE_DIR := $(RUST_DIR)/walletkit-ffi
 TARGET_DIR := $(RUST_DIR)/target
 LIB_NAME := libwalletkit_ffi.a
 
-# Hidden scratch dir for intermediate build artifacts (per-target/platform
-# libs, headers staging, raw bindgen output). Nothing in here is meant to
-# be committed or consumed directly — see Frameworks/ and Sources/ below
-# for the actual deliverables.
 BUILD_DIR := .build
 BINDINGS_DIR := $(BUILD_DIR)/bindings
 HEADERS_DIR := $(BUILD_DIR)/headers
 
-# Static DocC site, ready to commit and serve from GitHub Pages.
 DOCS_DIR := docs
+DOCS_SITE_DIR := Site
 DOCS_BASE_PATH ?= WalletKit
 # $(call docs_redirect,<file>,<relative target>): write a static redirect page.
 docs_redirect = printf '%s\n' '<!doctype html>' '<meta charset="utf-8">' \
@@ -108,27 +103,27 @@ endif
 BINDGEN_SOURCE_LIB := $(TARGET_DIR)/aarch64-apple-darwin/release/$(LIB_NAME)
 
 .DEFAULT_GOAL := spm
-.PHONY: all bitcoin-testing clean doc docs rust-targets solana-testing sui-grpc test walletkit-ffi
+.PHONY: all bitcoin-testing clean doc docs docs-index rust-targets solana-testing sui-grpc test walletkit-ffi
 
-all: $(XCFRAMEWORK) test docs
+all: $(XCFRAMEWORK) test docs docs-index
 
 docs: $(XCFRAMEWORK)
 	@echo "==> Building DocC documentation into $(DOCS_DIR)/"
 	@rm -rf $(DOCS_DIR)
 	@mkdir -p $(DOCS_DIR)
 	@swift package --allow-writing-to-directory $(DOCS_DIR) \
-		generate-documentation --target WalletKit --output-path $(DOCS_DIR) \
+		generate-documentation --target WalletKit --target WalletKitTesting --output-path $(DOCS_DIR) \
 		--disable-indexing --transform-for-static-hosting --hosting-base-path $(DOCS_BASE_PATH)
-	@swift package --allow-writing-to-directory $(DOCS_DIR)/Testing \
-		generate-documentation --target WalletKitTesting --output-path $(DOCS_DIR)/Testing \
-		--disable-indexing --transform-for-static-hosting --hosting-base-path $(DOCS_BASE_PATH)/Testing
-	@# DocC has no page for the site root, so its app shows "page not found"
-	@# there. Replace each bundle's root shell with a redirect to its module page.
-	@$(call docs_redirect,$(DOCS_DIR)/index.html,documentation/walletkit/)
-	@$(call docs_redirect,$(DOCS_DIR)/Testing/index.html,documentation/walletkittesting/)
+	@$(MAKE) --no-print-directory docs-index
 	@touch $(DOCS_DIR)/.nojekyll
 
-doc: docs
+# Landing page at the docs site root, linking WalletKit and WalletKitTesting.
+# Rebuild it alone (without regenerating DocC) after editing $(DOCS_SITE_DIR)/index.md.
+docs-index:
+	@echo "==> Building docs landing page from $(DOCS_SITE_DIR)/index.md"
+	@mkdir -p $(DOCS_DIR)
+	@pandoc $(DOCS_SITE_DIR)/index.md --standalone \
+		--template $(DOCS_SITE_DIR)/template.html --output $(DOCS_DIR)/index.html
 
 spm: walletkit-ffi sui-grpc
 	@swift build
