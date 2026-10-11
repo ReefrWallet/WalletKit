@@ -114,10 +114,9 @@ public final class EthereumNode {
         let sourceRoot = workingDirectory?.path
             ?? ProcessInfo.processInfo.environment["SRCROOT"]
             ?? URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
+                .deletingLastPathComponent() // WalletKitTesting/
+                .deletingLastPathComponent() // Sources/
+                .deletingLastPathComponent() // WalletKit/
                 .path
 
         let anvilPath = try resolveAnvilBinaryPath(misePath: misePath, sourceRoot: sourceRoot)

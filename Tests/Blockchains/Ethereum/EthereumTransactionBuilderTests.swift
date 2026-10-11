@@ -9,9 +9,9 @@
 // EIP-1559 type-2 path (options: []) are exercised for native ETH and
 // ERC-20 transfers.
 //
-// `anvil` is run via `mise x foundry -- anvil` (EthereumNode.swift). There's
-// no `withKnownIssue` gating: if the node can't start, the suite fails
-// loudly.
+// `anvil` is run via `mise x foundry -- anvil` (EthereumNode.swift). If the
+// node can't start, the suite fails loudly locally; `.localNode` allows it
+// to fail in CI only (see LocalNodeTrait.swift).
 
 import BigInt
 import Foundation
@@ -19,7 +19,7 @@ import Testing
 import WalletKit
 import WalletKitTesting
 
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)), .localNode)
 struct EthereumTransactionBuilderTests {
     // MARK: - Native ETH transfer (EIP-155 legacy)
 

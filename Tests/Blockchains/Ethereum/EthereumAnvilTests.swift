@@ -18,9 +18,9 @@
 //
 // `anvil` is run via `mise x foundry -- anvil` (EthereumNode.swift), which
 // auto-installs `foundry` on first use the same way this repo's other
-// mise-managed tools already do. There's no `withKnownIssue` gating here:
-// if `mise` can't find/run it, or the node never becomes ready, this suite
-// fails loudly rather than skipping quietly.
+// mise-managed tools already do. If `mise` can't find/run it, or the node
+// never becomes ready, this suite fails loudly locally; `.localNode` allows
+// it to fail in CI only (see LocalNodeTrait.swift).
 
 import BigInt
 import Foundation
@@ -79,7 +79,7 @@ private func makeSigner(privateKeyHex: String, chainId: UInt64) throws -> Ethere
     )
 }
 
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)), .localNode)
 struct EthereumAnvilTests {
     // MARK: - Fee estimation
 

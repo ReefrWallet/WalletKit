@@ -26,6 +26,7 @@ HEADERS_DIR := $(BUILD_DIR)/headers
 
 DOCS_DIR := docs
 DOCS_SITE_DIR := Site
+DOCS_BUILD_DIR := $(BUILD_DIR)/docs-site
 DOCS_BASE_PATH ?= WalletKit
 # $(call docs_redirect,<file>,<relative target>): write a static redirect page.
 docs_redirect = printf '%s\n' '<!doctype html>' '<meta charset="utf-8">' \
@@ -103,19 +104,35 @@ endif
 BINDGEN_SOURCE_LIB := $(TARGET_DIR)/aarch64-apple-darwin/release/$(LIB_NAME)
 
 .DEFAULT_GOAL := spm
-.PHONY: all bitcoin-testing clean doc docs docs-index rust-targets solana-testing sui-grpc test walletkit-ffi
+.PHONY: all bitcoin-testing clean docs docs-index docs-preview rust-targets solana-testing sui-grpc test walletkit-ffi
 
 all: $(XCFRAMEWORK) test docs docs-index
 
 docs: $(XCFRAMEWORK)
 	@echo "==> Building DocC documentation into $(DOCS_DIR)/"
-	@rm -rf $(DOCS_DIR)
-	@mkdir -p $(DOCS_DIR)
-	@swift package --allow-writing-to-directory $(DOCS_DIR) \
-		generate-documentation --target WalletKit --target WalletKitTesting --output-path $(DOCS_DIR) \
+	@rm -rf $(DOCS_BUILD_DIR)
+	@mkdir -p $(DOCS_BUILD_DIR)
+	@swift package --allow-writing-to-directory $(DOCS_BUILD_DIR) \
+		generate-documentation --target WalletKit --target WalletKitTesting \
+		--enable-experimental-combined-documentation --output-path $(DOCS_BUILD_DIR) \
 		--disable-indexing --transform-for-static-hosting --hosting-base-path $(DOCS_BASE_PATH)
+	@test -d $(DOCS_BUILD_DIR)/documentation/walletkit -a -d $(DOCS_BUILD_DIR)/documentation/walletkittesting || { \
+		echo "DocC didn't produce a combined site in $(DOCS_BUILD_DIR)"; exit 1; }
+	@mkdir -p $(DOCS_DIR)
+	@rsync -a --delete --exclude .DS_Store $(DOCS_BUILD_DIR)/ $(DOCS_DIR)/
 	@$(MAKE) --no-print-directory docs-index
 	@touch $(DOCS_DIR)/.nojekyll
+
+# Serve $(DOCS_DIR)/ at http://localhost:$(DOCS_PREVIEW_PORT)/$(DOCS_BASE_PATH)/, matching
+# GitHub Pages. DocC pages load their content with JavaScript from absolute
+# /$(DOCS_BASE_PATH)/ paths, so they render empty when opened as file:// URLs.
+DOCS_PREVIEW_PORT ?= 8000
+docs-preview:
+	@test -f $(DOCS_DIR)/index.html || { echo "No site in $(DOCS_DIR)/ — run 'make docs' first"; exit 1; }
+	@preview_root="$$(mktemp -d "$${TMPDIR:-/tmp}/walletkit-docs.XXXXXX")"; \
+		ln -s "$(CURDIR)/$(DOCS_DIR)" "$$preview_root/$(DOCS_BASE_PATH)"; \
+		echo "==> Serving http://localhost:$(DOCS_PREVIEW_PORT)/$(DOCS_BASE_PATH)/ (Ctrl-C to stop)"; \
+		python3 -m http.server $(DOCS_PREVIEW_PORT) --bind 127.0.0.1 --directory "$$preview_root"
 
 # Landing page at the docs site root, linking WalletKit and WalletKitTesting.
 # Rebuild it alone (without regenerating DocC) after editing $(DOCS_SITE_DIR)/index.md.
@@ -222,7 +239,11 @@ $(ELECTRS_STAMP):
 	@echo "==> Cloning + building electrs (Blockstream fork, new-index branch)"
 	@rm -rf $(BITCOIN_TESTING_DIR)/electrs-src
 	@git clone --branch new-index --depth 1 $(ELECTRS_REPO) $(BITCOIN_TESTING_DIR)/electrs-src
-	@cd $(BITCOIN_TESTING_DIR)/electrs-src && $(CARGO) build --release --bin electrs
+	@# electrs is a host-only tool: keep the exported deployment targets out of
+	@# it. With MACOSX_DEPLOYMENT_TARGET set, Xcode 27's linker emits proc-macro
+	@# dylibs that macOS 27's dyld rejects, surfacing as E0463 "can't find crate".
+	@cd $(BITCOIN_TESTING_DIR)/electrs-src && env -u MACOSX_DEPLOYMENT_TARGET -u IPHONEOS_DEPLOYMENT_TARGET \
+		$(CARGO) build --release --bin electrs
 	@mkdir -p $(BITCOIN_TESTING_BIN_DIR)
 	@cp $(BITCOIN_TESTING_DIR)/electrs-src/target/release/electrs $(BITCOIN_TESTING_BIN_DIR)/electrs
 	@touch $(ELECTRS_STAMP)

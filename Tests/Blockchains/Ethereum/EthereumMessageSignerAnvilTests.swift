@@ -50,7 +50,7 @@ private func makeAnvilDefaultSigner(chainId: UInt64) throws -> EthereumPKeySigne
     )
 }
 
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)), .localNode)
 struct EthereumMessageSignerAnvilTests {
     @Test func personalSignMatchesAnvilsOwnSignatureForTheSameKeyAndMessage() async throws {
         let node = try await EthereumNode.start()

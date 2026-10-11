@@ -9,9 +9,9 @@
 // history. Mirrors `SuiLocalnetTests`' "real infrastructure, not a mock"
 // philosophy.
 //
-// No `withKnownIssue` gating: if `make solana-testing` hasn't been run,
-// or the validator never becomes healthy, this fails loudly rather than
-// skipping quietly — the same choice `SuiLocalnetTests`/
+// If `make solana-testing` hasn't been run, or the validator never becomes
+// healthy, this fails loudly locally; `.localNode` allows it to fail in CI
+// only (see LocalNodeTrait.swift) — the same choice `SuiLocalnetTests`/
 // `EthereumAnvilTests` make for their own local nodes.
 
 import BigInt
@@ -52,7 +52,7 @@ private func send(
 // `.serialized`: each test spins up its own full local validator process
 // — see `SuiLocalnetTests`' identical note on why concurrent instances
 // blow past a tight per-test time limit.
-@Suite(.timeLimit(.minutes(1)), .serialized)
+@Suite(.timeLimit(.minutes(1)), .serialized, .localNode)
 struct SolanaLocalnetTests {
     @Test func recentPrioritizationFeeSucceeds() async throws {
         let node = try await SolanaNode.start()

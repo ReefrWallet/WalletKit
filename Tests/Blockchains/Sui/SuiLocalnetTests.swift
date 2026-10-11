@@ -12,10 +12,9 @@
 //
 // `sui start` is run via SuiNode.swift (`mise x sui -- sui ...`), which
 // auto-installs the pinned `sui` on first use the same way this repo's
-// other mise-managed tools already do. There's no `withKnownIssue` gating
-// here, unlike SuiGRPCClientTests.swift's public-testnet suite: if
-// `mise`/`sui` can't find/run it, or the node never becomes ready, this
-// fails loudly rather than skipping quietly — the same choice
+// other mise-managed tools already do. If `mise`/`sui` can't find/run it,
+// or the node never becomes ready, this fails loudly locally; `.localNode`
+// allows it to fail in CI only (see LocalNodeTrait.swift) — the same choice
 // EthereumAnvilTests.swift makes for Anvil.
 
 import Foundation
@@ -116,7 +115,7 @@ private func send(
 // startup): the limit is per test and must cover waiting on `SuiNodeGate`
 // (another suite's startup) plus the test's own startup, each bounded by
 // `SuiNode`'s 30s startup timeout — hence 2 minutes, still ≥ 20× measured.
-@Suite(.timeLimit(.minutes(2)), .serialized)
+@Suite(.timeLimit(.minutes(2)), .serialized, .localNode)
 struct SuiLocalnetTests {
     // MARK: - Fee estimation
 

@@ -134,11 +134,18 @@ struct RateLimitRetryPolicyTests {
         let requestTask = Task { try await Self.performRequest(session) }
         defer { requestTask.cancel() }
 
-        // Long enough for the local stub round trip + `retry()` handler to
-        // have fired, short enough to stay well inside the ~1s retry wait.
-        try await Task.sleep(for: .milliseconds(100))
+        // Poll rather than sleep a fixed interval: under a fully parallel
+        // test run the stub round trip + `retry()` handler can take longer
+        // than any fixed guess, and checking before it fires sees an
+        // unpenalized gate. Once it fires, the gate sits ~1s in the future,
+        // so the first poll after that sees well over 500ms remaining.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        var remaining = await gate.nextAllowedTime - ContinuousClock.now
+        while remaining <= .milliseconds(500), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+            remaining = await gate.nextAllowedTime - ContinuousClock.now
+        }
 
-        let remaining = await gate.nextAllowedTime - ContinuousClock.now
         #expect(remaining > .milliseconds(500))
     }
 

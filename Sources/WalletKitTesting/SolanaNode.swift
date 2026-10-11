@@ -107,6 +107,9 @@ public final class SolanaNode {
         let (rpcPort, faucetPort) = (ports[0], ports[1])
 
         let binDirectory = try resolveProvisionedBinaries()
+        // A working directory holding the ledger and, beside it, the log:
+        // `--reset` wipes the ledger directory on startup, so a log written
+        // inside it would be deleted before it could explain a failed start.
         let ledgerDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("solana-test-ledger-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: ledgerDirectory, withIntermediateDirectories: true)
@@ -115,7 +118,7 @@ public final class SolanaNode {
         let process = Process()
         process.executableURL = binDirectory.appendingPathComponent("solana-test-validator")
         process.arguments = [
-            "--ledger", ledgerDirectory.path,
+            "--ledger", ledgerDirectory.appendingPathComponent("ledger").path,
             "--rpc-port", "\(rpcPort)",
             "--faucet-port", "\(faucetPort)",
             "--quiet",
@@ -392,7 +395,13 @@ private extension SolanaNode {
 
         let logURL = ledgerDirectory.appendingPathComponent("solana-test-validator.log")
         let log = (try? String(contentsOf: logURL, encoding: .utf8)) ?? "(no log)"
-        throw SolanaLaunchError(description: "solana-test-validator never became healthy within 30s. Log tail:\n\(log.suffix(2000))")
+        let validatorLogURL = ledgerDirectory.appendingPathComponent("ledger/validator.log")
+        let validatorLog = (try? String(contentsOf: validatorLogURL, encoding: .utf8)) ?? "(no validator.log)"
+        let status = process.isRunning ? "still running" : "exited with status \(process.terminationStatus)"
+        throw SolanaLaunchError(
+            description: "solana-test-validator never became healthy within 30s (\(status)). "
+                + "Output tail:\n\(log.suffix(2000))\nvalidator.log tail:\n\(validatorLog.suffix(2000))"
+        )
     }
 
     func call<Params: Encodable, Result: Decodable>(_ envelope: Params) async throws -> Result {

@@ -93,7 +93,7 @@ let package = Package(
                 ".gitignore",
                 ".gitmodules",
                 "Derived",
-                "Docs",
+                "docs",
                 "Frameworks",
                 "LICENSE",
                 "Makefile",

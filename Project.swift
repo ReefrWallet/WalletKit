@@ -155,7 +155,6 @@ let project = Project(
     additionalFiles: [
         ".github/**/*",
         "*.md",
-        "docs/**/*",
         "Site/**/*",
         "Sources/Rust/walletkit-ffi/**/*",
         "Sources/Rust/Cargo.toml",

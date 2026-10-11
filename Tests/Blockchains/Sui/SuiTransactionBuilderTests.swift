@@ -5,8 +5,8 @@
 // them with SuiPKeySigner, broadcast, and confirm balances changed by
 // exactly the expected amount.
 //
-// No `withKnownIssue` gating: if `mise`/`sui` can't start, the suite
-// fails loudly.
+// `.localNode`: if `mise`/`sui` can't start, the suite fails loudly
+// locally but is allowed to fail in CI (see LocalNodeTrait.swift).
 
 import BigInt
 import Foundation
@@ -19,7 +19,7 @@ import WalletKitTesting
 // enough CPU contention to blow past the time limit. The 2-minute limit is
 // per test (measured 5–6s on a quiet machine): it must cover `SuiNodeGate`
 // queueing plus startup, see SuiLocalnetTests.swift.
-@Suite(.timeLimit(.minutes(2)), .serialized)
+@Suite(.timeLimit(.minutes(2)), .serialized, .localNode)
 struct SuiTransactionBuilderTests {
     // MARK: - Native SUI transfer
 
