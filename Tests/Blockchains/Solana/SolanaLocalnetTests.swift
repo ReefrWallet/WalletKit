@@ -10,8 +10,8 @@
 // philosophy.
 //
 // If `make solana-testing` hasn't been run, or the validator never becomes
-// healthy, this fails loudly locally; `.localNode` allows it to fail in CI
-// only (see LocalNodeTrait.swift) — the same choice `SuiLocalnetTests`/
+// healthy, this fails loudly locally; `.localNode` skips it in CI
+// (see LocalNodeTrait.swift) — the same choice `SuiLocalnetTests`/
 // `EthereumAnvilTests` make for their own local nodes.
 
 import BigInt

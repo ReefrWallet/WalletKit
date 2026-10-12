@@ -58,8 +58,8 @@ public struct EthereumTransactionBuilder: BlockchainTransactionBuilderProtocol {
         sender: EthereumAddress,
         recipient: EthereumAddress,
         amount: BigUInt,
-        token: String?,
-        options: [BlockchainTransactionBuilderOptions]
+        token: String? = nil,
+        options: [BlockchainTransactionBuilderOptions] = []
     ) async throws -> Data {
         let to: EthereumAddress
         let value: BigUInt

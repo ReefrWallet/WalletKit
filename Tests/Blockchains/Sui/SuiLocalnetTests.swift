@@ -14,7 +14,7 @@
 // auto-installs the pinned `sui` on first use the same way this repo's
 // other mise-managed tools already do. If `mise`/`sui` can't find/run it,
 // or the node never becomes ready, this fails loudly locally; `.localNode`
-// allows it to fail in CI only (see LocalNodeTrait.swift) — the same choice
+// skips it in CI (see LocalNodeTrait.swift) — the same choice
 // EthereumAnvilTests.swift makes for Anvil.
 
 import Foundation

@@ -69,8 +69,7 @@ public protocol BlockchainTransactionBuilderProtocol: Sendable {
     ///   - sender: The sending address.
     ///   - recipient: The destination address.
     ///   - amount: The transfer amount in the token's smallest unit.
-    ///   - token: A chain-specific token identifier, or `nil` for the native
-    ///     token.
+    ///   - token: A chain-specific token identifier, if supported, or `nil` for the native token.
     ///   - options: Chain-specific transaction-building options.
     /// - Returns: Unsigned transaction bytes, ready for
     ///   ``Signer/sign(transaction:)``.
@@ -94,7 +93,7 @@ public extension BlockchainTransactionBuilderProtocol {
         sender: Address,
         recipient: Address,
         amount: BigUInt,
-        token: String?
+        token: String? = nil
     ) async throws -> Data {
         try await buildTransfer(sender: sender, recipient: recipient, amount: amount, token: token, options: [])
     }

@@ -62,7 +62,7 @@ private let walletKit: Target = .target(
         .external(name: "BigInt"),
         .external(name: "GRPCCore"),
         .external(name: "GRPCNIOTransportHTTP2Posix"),
-        .externam(name: "Moya"),
+        .external(name: "Moya"),
         .target(name: "WalletKitGRPC"),
         .target(name: "WalletKitRust")
     ]

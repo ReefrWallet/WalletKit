@@ -6,7 +6,7 @@
 // exactly the expected amount.
 //
 // `.localNode`: if `mise`/`sui` can't start, the suite fails loudly
-// locally but is allowed to fail in CI (see LocalNodeTrait.swift).
+// locally; it isn't run in CI at all (see LocalNodeTrait.swift).
 
 import BigInt
 import Foundation

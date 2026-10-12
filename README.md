@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/kervich/WalletKit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kervich/WalletKit/actions/workflows/ci.yml)
 
-WalletKit is a Swift toolkit for building non-custodial wallet applications.
+WalletKit is a Swift toolkit for building non-custodial multi-chain crypto wallet applications on Apple platforms.
 
 > [!WARNING]
 > WalletKit is under active development and has not received a production security audit. Do not use it to protect real funds without completing your own security review and testing.
@@ -52,39 +52,32 @@ let rpcURL = URL(string: "https://your-mainnet-rpc.example.net")!
 let client = EthereumRPCClient(endpoint: rpcURL, chainId: 1)
 
 let mnemonic = Mnemonic.generate(wordCount: .`12`)
-let path = try DerivationPath(
-    .evm(EVMBlockchain(chainId: 1)),
-    accountIndex: 0,
-    curve: .secp256k1
-)
-
+let derivationPath = try DerivationPath(.evm(EVMBlockchain(chainId: 1)), accountIndex: 0)
 let privateKey = try mnemonic.toSeed()
-    .masterKey(curve: .secp256k1)
-    .derive(path)
+    .masterKey(curve: derivationPath.curve)
+    .derive(derivationPath)
     .privateKey()
-let signer = try EthereumPKeySigner(chainId: 1, privateKey: privateKey, derivationPath: path)
 
+let signer = try EthereumPKeySigner(chainId: 1, privateKey: privateKey, derivationPath: path)
 let myAddress = try signer.address()
 print("My address:", myAddress.checksummed)
 
 let weth = try EthereumAddress(string: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
-let balanceData = try await client.call(
+let balance = try await client.call(
     to: weth,
     data: EthereumABI.encodeCall(
         selector: EthereumABI.selector("balanceOf(address)"),
         parameters: [.address(myAddress)]
     )
 )
-print("My WETH balance (wei):", EthereumABI.decodeUInt256(balanceData))
+print("My WETH balance (wei):", EthereumABI.decodeUInt256(balance))
 
-// Wrap 0.01 ETH into WETH
 let builder = EthereumTransactionBuilder(client: client)
 let unsigned = try await builder.buildCall(
     sender: myAddress,
     to: weth,
     value: BigUInt(10).power(16),
-    data: EthereumABI.encodeCall(selector: EthereumABI.selector("deposit()")),
-    options: []
+    data: EthereumABI.encodeCall(selector: EthereumABI.selector("deposit()"))
 )
 
 let signed = try await signer.sign(transaction: unsigned)

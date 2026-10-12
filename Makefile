@@ -274,7 +274,13 @@ rust-tests:
 	@cd
 
 # Swift test suite (from Package.swift)
-swift-tests: $(XCFRAMEWORK) bitcoin-testing solana-testing
+# Local-node tests (`.localNode`, Tests/Support/LocalNodeTrait.swift) are
+# skipped in CI, so don't provision their bitcoind/electrs/Agave binaries there.
+ifeq ($(GITHUB_ACTIONS),)
+SWIFT_TEST_NODE_DEPS := bitcoin-testing solana-testing
+endif
+
+swift-tests: $(XCFRAMEWORK) $(SWIFT_TEST_NODE_DEPS)
 	@echo "==> Running Swift tests"
 	@swift test
 	@cd

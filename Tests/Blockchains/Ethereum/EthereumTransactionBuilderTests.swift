@@ -10,8 +10,8 @@
 // ERC-20 transfers.
 //
 // `anvil` is run via `mise x foundry -- anvil` (EthereumNode.swift). If the
-// node can't start, the suite fails loudly locally; `.localNode` allows it
-// to fail in CI only (see LocalNodeTrait.swift).
+// node can't start, the suite fails loudly locally; `.localNode` skips it
+// in CI (see LocalNodeTrait.swift).
 
 import BigInt
 import Foundation

@@ -19,8 +19,8 @@
 // `anvil` is run via `mise x foundry -- anvil` (EthereumNode.swift), which
 // auto-installs `foundry` on first use the same way this repo's other
 // mise-managed tools already do. If `mise` can't find/run it, or the node
-// never becomes ready, this suite fails loudly locally; `.localNode` allows
-// it to fail in CI only (see LocalNodeTrait.swift).
+// never becomes ready, this suite fails loudly locally; `.localNode` skips
+// it in CI (see LocalNodeTrait.swift).
 
 import BigInt
 import Foundation

@@ -37,11 +37,13 @@ public struct DerivationPath: Codable, Equatable, Hashable, Sendable {
     /// - Parameters:
     ///   - blockchain: The blockchain the account belongs to.
     ///   - accountIndex: The account's zero-based index.
-    ///   - curve: The curve used for the account's keys.
+    ///   - curve: The curve used for the account's keys (Sui only).
     /// - Throws: ``WalletKitError/invalidDerivationPath(path:)`` when the
     ///   resulting path is invalid, or ``WalletKitError/internalError(message:)``
-    ///   when the blockchain requires a specialized path.
-    public init(_ blockchain: Blockchain, accountIndex: UInt64, curve: Curve) throws {
+    ///   when the blockchain requires specialized derivation (Bitcoin:
+    ///   ``bitcoinAccount(network:scriptType:accountIndex:)``; Cardano:
+    ///   ``CardanoAccountDescriptor/init(entropy:network:accountIndex:)``).
+    public init(_ blockchain: Blockchain, accountIndex: UInt64, curve: Curve? = nil) throws {
         switch blockchain {
         case .evm:
             try self.init(string: "m/44'/60'/0'/0/\(accountIndex)")
@@ -57,6 +59,11 @@ public struct DerivationPath: Codable, Equatable, Hashable, Sendable {
         case .sui:
             // Sui wallet standard: purpose 44' for Ed25519, 54' for secp256k1.
             let purpose: UInt32
+
+            guard let curve else {
+                throw WalletKitError.internalError(message: "Sui derivation requires curve")
+            }
+
             switch curve {
             case .ed25519:
                 purpose = 44
@@ -71,8 +78,10 @@ public struct DerivationPath: Codable, Equatable, Hashable, Sendable {
                 message: "Bitcoin has no single derivation path — use DerivationPath.bitcoinAccount(network:scriptType:accountIndex:) instead"
             )
 
-        default:
-            throw WalletKitError.internalError(message: "Unsupported blockchain: \(blockchain)")
+        case .cardano:
+            throw WalletKitError.internalError( // swiftlint:disable:next line_length
+                message: "Cardano uses Icarus Ed25519-BIP32 — use CardanoAccountDescriptor(entropy:network:accountIndex:) instead"
+            )
         }
     }
 
