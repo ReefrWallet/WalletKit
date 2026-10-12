@@ -40,14 +40,10 @@ extension EthereumRPCClient: BlockchainClientProtocol {
 
     public func isActiveAccount(_ owner: EthereumAddress) async throws -> Bool {
         guard try await nativeBalance(of: owner) == 0 else {
-            return false
+            return true
         }
 
-        guard try await nonce(of: owner) == 0 else {
-            return false
-        }
-
-        return true
+        return try await nonce(of: owner) > 0
     }
 
     public func isSupported(_ feature: BlockchainClientFeature) -> Bool {

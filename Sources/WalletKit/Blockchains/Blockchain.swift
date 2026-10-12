@@ -6,7 +6,6 @@
 //  Copyright © 2026 Reefr Wallet. All rights reserved.
 //
 
-import SwiftUI
 import WalletKitRust
 
 // MARK: - Blockchain
@@ -88,23 +87,6 @@ public extension Blockchain {
             network == .mainnet
         case let .sui(network):
             network == .mainnet
-        }
-    }
-
-    var logoImage: Image {
-        switch self {
-        case .bitcoin:
-            Image("btc-logo")
-        case let .evm(chain):
-            chain.logoImage
-        case .tron:
-            Image("trx-logo")
-        case .solana:
-            Image("sol-logo")
-        case .cardano:
-            Image("ada-logo")
-        case .sui:
-            Image("sui-logo")
         }
     }
 

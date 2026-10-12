@@ -1,6 +1,6 @@
 //
 //  BlockchainClientProtocol.swift
-//  Reefr Wallet
+//  WalletKit
 //
 //  Created by Andrey Yurkevich on 18.02.26.
 //  Copyright © 2026 Reefr Wallet. All rights reserved.
