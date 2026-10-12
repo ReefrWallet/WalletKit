@@ -9,8 +9,10 @@ on:
 
 permissions:
   contents: read
-  id-token: write
-  pages: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -43,3 +45,29 @@ jobs:
 
       - name: Run tests
         run: make test
+
+      # Built on every run so PRs catch broken DocC; only `main` deploys it.
+      - name: Build documentation
+        run: make docs
+
+      - name: Upload documentation artifact
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs
+
+  deploy-docs:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}documentation/walletkit/
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

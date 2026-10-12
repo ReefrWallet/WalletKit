@@ -9,3 +9,4 @@ Sources/Generated/.DS_Store
 /Sources/Generated/
 /.build/
 .swiftpm/
+/docs/

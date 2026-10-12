@@ -23,6 +23,21 @@ WalletKit is a Swift toolkit for building non-custodial multi-chain crypto walle
 - **Sui**: address derivation and validation; coin balances and transaction history over gRPC; BCS transaction construction, and transaction and personal-message signing. Local signing only.
 - **Tron**: address derivation and validation; TRX and TRC-20 account data, transaction history, fee estimation, transaction construction, local or Trezor signing, and TronGrid broadcast.
 
+## Requirements
+
+- macOS with Xcode Command Line Tools for Apple-framework builds
+- `protoc`, `protoc-gen-swift`, and `protoc-gen-grpc-swift` v2:
+
+  ```shell
+  brew install protobuf swift-protobuf protoc-gen-grpc-swift
+  ```
+
+- `mise`:
+
+  ```shell
+  curl -fsSL https://mise.run | sh
+  ```
+
 ## Getting started
 
 Install mise dependencies:
@@ -85,31 +100,10 @@ let txHash = try await client.broadcast(signed)
 print("WETH deposit tx hash:", txHash)
 ```
 
-## Documentation
+## Full Documentation
 
 - [WalletKit API reference and guides](https://kervich.github.io/WalletKit/documentation/walletkit/)
 - [WalletKitTesting API reference](https://kervich.github.io/WalletKit/documentation/walletkittesting/)
-
-To regenerate the site in `docs/` (served by GitHub Pages from `main`), run:
-
-```shell
-make docs
-```
-
-## Requirements
-
-- macOS with Xcode Command Line Tools for Apple-framework builds
-- `protoc`, `protoc-gen-swift`, and `protoc-gen-grpc-swift` v2:
-
-  ```shell
-  brew install protobuf swift-protobuf protoc-gen-grpc-swift
-  ```
-
-- `mise`:
-
-  ```shell
-  curl -fsSL https://mise.run | sh
-  ```
 
 ## License
 
