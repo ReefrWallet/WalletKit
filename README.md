@@ -52,23 +52,32 @@ let rpcURL = URL(string: "https://your-mainnet-rpc.example.net")!
 let client = EthereumRPCClient(endpoint: rpcURL, chainId: 1)
 
 let mnemonic = Mnemonic.generate(wordCount: .`12`)
-let path = try DerivationPath(.evm(EVMBlockchain(chainId: 1)), accountIndex: 0, curve: .secp256k1)
+let path = try DerivationPath(
+    .evm(EVMBlockchain(chainId: 1)),
+    accountIndex: 0,
+    curve: .secp256k1
+)
+
 let privateKey = try mnemonic.toSeed()
     .masterKey(curve: .secp256k1)
     .derive(path)
     .privateKey()
-
 let signer = try EthereumPKeySigner(chainId: 1, privateKey: privateKey, derivationPath: path)
+
 let myAddress = try signer.address()
-print("Address:", myAddress.checksummed)
+print("My address:", myAddress.checksummed)
 
 let weth = try EthereumAddress(string: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
 let balanceData = try await client.call(
     to: weth,
-    data: EthereumABI.encodeCall(selector: EthereumABI.selector("balanceOf(address)"), parameters: [.address(myAddress)])
+    data: EthereumABI.encodeCall(
+        selector: EthereumABI.selector("balanceOf(address)"),
+        parameters: [.address(myAddress)]
+    )
 )
-print("Vitalik's WETH balance:", EthereumABI.decodeUInt256(balanceData))
+print("My WETH balance (wei):", EthereumABI.decodeUInt256(balanceData))
 
+// Wrap 0.01 ETH into WETH
 let builder = EthereumTransactionBuilder(client: client)
 let unsigned = try await builder.buildCall(
     sender: myAddress,
@@ -80,7 +89,7 @@ let unsigned = try await builder.buildCall(
 
 let signed = try await signer.sign(transaction: unsigned)
 let txHash = try await client.broadcast(signed)
-print("deposit() tx:", txHash)
+print("WETH deposit tx hash:", txHash)
 ```
 
 ## Documentation
