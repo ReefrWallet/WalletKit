@@ -7,6 +7,7 @@ import Foundation
 /// and an unlisted origin must still resolve to *this* provider's default,
 /// never a different provider's.
 public enum ProviderKind: Hashable, Sendable {
+    case aptosLabs
     case blockfrost
     case blockscout
     case esplora
@@ -80,6 +81,7 @@ public struct RateLimitPolicy: Sendable {
     /// given provider kind. `.blockfrost`/`.tronGrid`/`.jsonRPC` are
     /// reactive-only everywhere until a real limit is confirmed per origin.
     static let providerDefaults: [ProviderKind: RateLimitPolicy] = [
+        .aptosLabs: .reactiveOnly,
         .blockfrost: .reactiveOnly,
         .blockscout: .reactiveOnly,
         .esplora: .reactiveOnly,

@@ -73,7 +73,7 @@ public final class HardwareDevice: HardwareDeviceProtocol {
 
     private static func curve(for blockchain: Blockchain) -> Curve {
         switch blockchain {
-        case .sui: .ed25519
+        case .aptos, .sui: .ed25519
         case .solana, .cardano: .ed25519
         case .bitcoin, .evm, .tron: .secp256k1
         }

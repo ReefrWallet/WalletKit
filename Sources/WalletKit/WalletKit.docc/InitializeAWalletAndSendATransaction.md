@@ -21,7 +21,11 @@ import WalletKit
 let chainId: UInt64 = 11_155_111 // Sepolia
 
 let mnemonic = Mnemonic.generate(wordCount: .words24)
-let derivationPath = try DerivationPath(.evm(EVMBlockchain(chainId: chainId)), accountIndex: 0)
+
+let derivationPath = try DerivationPath(
+    .evm(EVMBlockchain(chainId: chainId)), 
+    accountIndex: 0
+)
 
 let privateKey = try mnemonic.toSeed()
     .masterKey(curve: derivationPath.curve)
@@ -54,15 +58,16 @@ let client = EthereumRPCClient(
     chainId: chainId
 )
 
-let recipient = try EthereumAddress(string: "0x000000000000000000000000000000000000dEaD")
+let recipient = try EthereumAddress(
+    string: "0x000000000000000000000000000000000000dEaD"
+)
 
 let transactionBuilder = EthereumTransactionBuilder(client: client)
 
 let unsignedTransaction = try await transactionBuilder.buildTransfer(
     sender: sender,
     recipient: recipient,
-    amount: BigUInt(1_000_000_000_000_000), // 0.001 ETH in wei
-    token: nil
+    amount: BigUInt(1_000_000_000_000_000) // 0.001 ETH in wei
 )
 
 let signedTransaction = try await signer.sign(transaction: unsignedTransaction)

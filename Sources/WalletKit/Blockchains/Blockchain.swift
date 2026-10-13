@@ -12,6 +12,7 @@ import WalletKitRust
 
 /// A chain identifier — one case per supported blockchain.
 public enum Blockchain: Equatable, Hashable, Codable, Sendable {
+    case aptos(AptosNetwork)
     case bitcoin(BitcoinNetwork)
     case evm(EVMBlockchain)
     case tron(TronNetwork)
@@ -21,6 +22,7 @@ public enum Blockchain: Equatable, Hashable, Codable, Sendable {
 
     init(raw: BlockchainFfi) {
         switch raw {
+        case .aptos: self = .aptos(.mainnet)
         case .bitcoin: self = .bitcoin(.mainnet)
         case let .ethereum(chainId): self = .evm(EVMBlockchain(chainId: chainId))
         case .tron: self = .tron(.mainnet)
@@ -34,6 +36,7 @@ public enum Blockchain: Equatable, Hashable, Codable, Sendable {
 public extension Blockchain {
     static var allMainnets: [Blockchain] {
         let mainnets: [Blockchain] = [
+            .aptos(.mainnet),
             .bitcoin(.mainnet),
             .cardano(.mainnet),
             .solana(.mainnet),
@@ -45,6 +48,8 @@ public extension Blockchain {
 
     var allNetworks: [Blockchain] {
         switch self {
+        case .aptos:
+            AptosNetwork.allNetworks
         case .bitcoin:
             BitcoinNetwork.allNetworks
         case let .evm(chain):
@@ -75,6 +80,8 @@ public extension Blockchain {
 
     var isMainnet: Bool {
         switch self {
+        case let .aptos(network):
+            network == .mainnet
         case let .bitcoin(network):
             network == .mainnet
         case let .evm(chain):
@@ -92,6 +99,7 @@ public extension Blockchain {
 
     var name: String {
         switch self {
+        case .aptos: "Aptos"
         case .bitcoin: "Bitcoin"
         case let .evm(chain): chain.name
         case .tron: "Tron"
@@ -104,6 +112,7 @@ public extension Blockchain {
     /// E. g. "Mainnet" or "Sepolia"
     var networkName: String {
         switch self {
+        case let .aptos(network): network.name
         case let .bitcoin(network): network.name
         case let .evm(blockchain): blockchain.networkName
         case let .tron(network): network.name
@@ -115,6 +124,7 @@ public extension Blockchain {
 
     var nativeToken: TokenInfo {
         switch self {
+        case .aptos: .aptos
         case .bitcoin: .bitcoin
         case .cardano: .ada
         case let .evm(chain): chain.nativeToken
@@ -126,6 +136,7 @@ public extension Blockchain {
 
     var raw: BlockchainFfi {
         switch self {
+        case .aptos: .aptos
         case .bitcoin: .bitcoin
         case let .evm(chain): .ethereum(chain.chainId)
         case .tron: .tron
@@ -137,6 +148,8 @@ public extension Blockchain {
 
     var rpcURL: URL {
         switch self {
+        case let .aptos(network):
+            network.rpcURL
         case let .bitcoin(network):
             network.rpcURL
         case let .evm(chain):

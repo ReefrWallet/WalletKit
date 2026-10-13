@@ -14,6 +14,11 @@ import Foundation
 /// Use an empty array for default behavior. Builders ignore unsupported
 /// options.
 public enum BlockchainTransactionBuilderOptions: Sendable {
+    /// Override the gas parameters for an Aptos transaction.
+    ///
+    /// `nil` sub-fields fall back to simulated or fetched values.
+    case aptosGasOverride(maxGasAmount: UInt64?, gasUnitPrice: UInt64?)
+
     /// Build a legacy EIP-155 transaction instead of the default EIP-1559
     /// (type-2) transaction.
     case legacyEip155

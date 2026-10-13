@@ -37,7 +37,7 @@ public struct DerivationPath: Codable, Equatable, Hashable, Sendable {
     /// - Parameters:
     ///   - blockchain: The blockchain the account belongs to.
     ///   - accountIndex: The account's zero-based index.
-    ///   - curve: The curve used for the account's keys (Sui only).
+    ///   - curve: The curve used for the account's keys (Aptos and Sui only).
     /// - Throws: ``WalletKitError/invalidDerivationPath(path:)`` when the
     ///   resulting path is invalid, or ``WalletKitError/internalError(message:)``
     ///   when the blockchain requires specialized derivation (Bitcoin:
@@ -45,6 +45,18 @@ public struct DerivationPath: Codable, Equatable, Hashable, Sendable {
     ///   ``CardanoAccountDescriptor/init(entropy:network:accountIndex:)``).
     public init(_ blockchain: Blockchain, accountIndex: UInt64, curve: Curve? = nil) throws {
         switch blockchain {
+        case .aptos:
+            guard let curve else {
+                throw WalletKitError.internalError(message: "Aptos derivation requires curve")
+            }
+
+            switch curve {
+            case .ed25519:
+                try self.init(string: "m/44'/637'/\(accountIndex)'/0'/0'")
+            case .secp256k1:
+                try self.init(string: "m/44'/637'/\(accountIndex)'/0/0")
+            }
+
         case .evm:
             try self.init(string: "m/44'/60'/0'/0/\(accountIndex)")
 

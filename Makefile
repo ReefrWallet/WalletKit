@@ -72,6 +72,19 @@ SOLANA_TESTING_DIR := $(BUILD_DIR)/solana-testing
 SOLANA_TESTING_BIN_DIR := $(SOLANA_TESTING_DIR)/bin
 SOLANA_RELEASE_STAMP := $(SOLANA_TESTING_DIR)/.solana-release-stamp
 
+# Aptos CLI for `aptos node run-localnet` (AptosNode). No `mise` registry
+# entry, so like `solana-testing` this downloads the release archive.
+APTOS_CLI_VERSION := 9.6.0
+ifeq ($(UNAME_ARCH),arm64)
+APTOS_PLATFORM := macOS-arm64
+else
+APTOS_PLATFORM := macOS-x86_64
+endif
+
+APTOS_TESTING_DIR := $(BUILD_DIR)/aptos-testing
+APTOS_TESTING_BIN_DIR := $(APTOS_TESTING_DIR)/bin
+APTOS_CLI_STAMP := $(APTOS_TESTING_DIR)/.aptos-cli-$(APTOS_CLI_VERSION)-stamp
+
 ifneq ($(GITHUB_ACTIONS),)
 # CI only runs tests: build the macOS arm64 slice alone.
 MACOS_TARGETS := aarch64-apple-darwin
@@ -104,7 +117,7 @@ endif
 BINDGEN_SOURCE_LIB := $(TARGET_DIR)/aarch64-apple-darwin/release/$(LIB_NAME)
 
 .DEFAULT_GOAL := spm
-.PHONY: all bitcoin-testing clean docs docs-index docs-preview rust-targets solana-testing sui-grpc test walletkit-ffi
+.PHONY: all aptos-testing bitcoin-testing clean docs docs-index docs-preview rust-targets solana-testing sui-grpc test walletkit-ffi
 
 all: $(XCFRAMEWORK) test docs docs-index
 
@@ -248,6 +261,18 @@ $(ELECTRS_STAMP):
 	@cp $(BITCOIN_TESTING_DIR)/electrs-src/target/release/electrs $(BITCOIN_TESTING_BIN_DIR)/electrs
 	@touch $(ELECTRS_STAMP)
 
+aptos-testing: $(APTOS_CLI_STAMP)
+
+$(APTOS_CLI_STAMP):
+	@echo "==> Downloading Aptos CLI $(APTOS_CLI_VERSION) ($(APTOS_PLATFORM))"
+	@mkdir -p $(APTOS_TESTING_BIN_DIR)
+	@curl -sfL -o $(APTOS_TESTING_DIR)/aptos-cli.zip \
+		https://github.com/aptos-labs/aptos-core/releases/download/aptos-cli-v$(APTOS_CLI_VERSION)/aptos-cli-$(APTOS_CLI_VERSION)-$(APTOS_PLATFORM).zip
+	@unzip -o -q $(APTOS_TESTING_DIR)/aptos-cli.zip -d $(APTOS_TESTING_BIN_DIR)
+	@chmod +x $(APTOS_TESTING_BIN_DIR)/aptos
+	@rm -f $(APTOS_TESTING_DIR)/aptos-cli.zip
+	@touch $(APTOS_CLI_STAMP)
+
 solana-testing: $(SOLANA_RELEASE_STAMP)
 
 # Downloads the official prebuilt Agave release tarball, which already
@@ -277,7 +302,7 @@ rust-tests:
 # Local-node tests (`.localNode`, Tests/Support/LocalNodeTrait.swift) are
 # skipped in CI, so don't provision their bitcoind/electrs/Agave binaries there.
 ifeq ($(GITHUB_ACTIONS),)
-SWIFT_TEST_NODE_DEPS := bitcoin-testing solana-testing
+SWIFT_TEST_NODE_DEPS := aptos-testing bitcoin-testing solana-testing
 endif
 
 swift-tests: $(XCFRAMEWORK) $(SWIFT_TEST_NODE_DEPS)

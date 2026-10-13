@@ -8,12 +8,10 @@
 
 import Foundation
 
-/// A minimal BCS (Binary Canonical Serialization) encoder — just the
-/// primitives a Sui `TransactionDataV1` needs: ULEB128 lengths,
-/// little-endian fixed-width integers, and length-prefixed byte vectors.
-///
-/// Used by the `UnsignedSui*` transaction builders to produce the raw BCS
-/// bytes that ``SuiPKeySigner/sign(transaction:)`` accepts as input.
+/// A minimal BCS (Binary Canonical Serialization) encoder — the primitives
+/// Sui `TransactionDataV1` and Aptos `RawTransaction` need: ULEB128
+/// lengths, little-endian fixed-width integers, and length-prefixed byte
+/// vectors.
 public enum BCS {
     /// Encodes `value` as ULEB128 — how BCS encodes `Vec<T>` lengths and
     /// enum variant tags.
@@ -53,5 +51,10 @@ public enum BCS {
     /// `CallArg::Pure` payload or an `ObjectDigest`.
     public static func byteVector(_ bytes: Data) -> Data {
         uleb128(bytes.count) + bytes
+    }
+
+    /// Encodes `string` as a length-prefixed UTF-8 byte vector.
+    public static func string(_ string: String) -> Data {
+        byteVector(Data(string.utf8))
     }
 }

@@ -156,7 +156,7 @@ let project = Project(
         ".github/**/*",
         "*.md",
         "Site/**/*",
-        "Sources/Rust/walletkit-ffi/**/*",
+        "Sources/Rust/walletkit-*/**/*",
         "Sources/Rust/Cargo.toml",
         "Sources/Rust/README.md",
         "Makefile",

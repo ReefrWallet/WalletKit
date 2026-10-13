@@ -7,6 +7,7 @@
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum BlockchainFfi {
+    Aptos,
     Bitcoin,
     Ethereum(u64),
     Tron,
@@ -28,6 +29,11 @@ mod tests {
     fn ethereum_variants_compare_by_chain_id() {
         assert_eq!(BlockchainFfi::Ethereum(1), BlockchainFfi::Ethereum(1));
         assert_ne!(BlockchainFfi::Ethereum(1), BlockchainFfi::Ethereum(11_155_111));
+    }
+
+    #[test]
+    fn aptos_case_is_distinct_from_others() {
+        assert_ne!(BlockchainFfi::Aptos, BlockchainFfi::Sui);
     }
 
     #[test]

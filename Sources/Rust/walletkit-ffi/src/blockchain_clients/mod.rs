@@ -17,6 +17,8 @@
 //! oracle reads, ...) rather than signing/address derivation. Every other
 //! chain client remains design-only.
 
+mod aptos_address;
+mod aptos_signer;
 pub mod bitcoin;
 pub mod cardano;
 mod ethereum_abi;
@@ -27,6 +29,8 @@ pub mod solana;
 mod sui_address;
 mod sui_signer;
 
+pub use aptos_address::AptosAddressFfi;
+pub use aptos_signer::{aptos_transaction_hash, AptosSignerFfi};
 pub use bitcoin::{
     bitcoin_build_unsigned_psbt, bitcoin_decode_transaction, bitcoin_estimate_vsize, bitcoin_fingerprint,
     bitcoin_psbt_fee, bitcoin_psbt_input_derivations, BitcoinAddressFfi, BitcoinDecodedInputFfi,

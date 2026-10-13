@@ -11,6 +11,10 @@ import Foundation
 /// is one chain's wire format; a ``MessageSigner`` conformer only
 /// implements the cases for its own chain.
 public enum SignableMessage: Sendable {
+    /// An Aptos message (`aptos:signMessage`) — the full message bytes the
+    /// wallet assembled, signed as-is.
+    case aptosMessage(Data)
+
     /// An EIP-191 personal message (`personal_sign`) — the raw message
     /// bytes, not yet hashed or prefixed.
     case ethereumPersonal(Data)

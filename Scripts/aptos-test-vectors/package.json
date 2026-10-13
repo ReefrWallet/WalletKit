@@ -1,0 +1,8 @@
+{
+  "name": "aptos-test-vectors",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@aptos-labs/ts-sdk": "7.5.0"
+  }
+}

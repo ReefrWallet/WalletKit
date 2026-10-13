@@ -72,6 +72,8 @@ ripemd = "0.1"
 secp256k1 = { version = "0.31", features = ["recovery"] }
 serde_json = "1"
 sha2 = "0.10"
+# SHA3-256 for Aptos addresses and signing messages.
+sha3 = "0.11"
 thiserror = "2"
 zeroize = "1"
 
