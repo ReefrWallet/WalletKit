@@ -94,7 +94,8 @@ pub struct TronTxFields {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TronContract {
     Transfer { owner_address: Vec<u8>, to_address: Vec<u8>, amount: u64 },
-    TriggerSmartContract { owner_address: Vec<u8>, contract_address: Vec<u8>, data: Vec<u8> },
+    /// `call_value` is native TRX (in SUN) sent along with the call.
+    TriggerSmartContract { owner_address: Vec<u8>, contract_address: Vec<u8>, call_value: Option<u64>, data: Vec<u8> },
 }
 
 /// One token account referenced by a Solana transaction's instructions —

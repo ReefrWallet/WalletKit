@@ -875,10 +875,15 @@ pub(super) fn tron_sign_tx(
                 &HardwareButtonRequest::ConfirmTransaction,
             )?
         }
-        walletkit_hardware::TronContract::TriggerSmartContract { owner_address, contract_address, data } => {
+        walletkit_hardware::TronContract::TriggerSmartContract { owner_address, contract_address, call_value, data } => {
             let mut contract = protos::TronTriggerSmartContract::new();
             contract.set_owner_address(owner_address);
             contract.set_contract_address(contract_address);
+            // Only a non-zero value: proto3 omits the default, and the
+            // device's re-serialized raw data must match the original.
+            if let Some(call_value) = call_value.filter(|value| *value > 0) {
+                contract.set_call_value(call_value);
+            }
             contract.set_data(data);
             drive_interaction(
                 trezor.call(contract, Box::new(|_, message: protos::TronSignature| Ok(message))),

@@ -351,6 +351,12 @@ fn to_tron_tx_fields(transaction: &str) -> Result<hw::TronTxFields, WalletKitErr
         Some("TriggerSmartContract") => hw::TronContract::TriggerSmartContract {
             owner_address,
             contract_address: address(payload, "contract_address")?,
+            call_value: match payload.get("call_value") {
+                None => None,
+                Some(value) => Some(value.as_u64().ok_or_else(|| WalletKitErrorFfi::SigningFailed {
+                    reason: "Tron contract call has an invalid call_value".to_string(),
+                })?),
+            },
             data: address(payload, "data")?,
         },
         _ => return Err(WalletKitErrorFfi::UnsupportedDevice { reason: "Trezor Tron signing supports only transfer and smart-contract calls".to_string() }),
@@ -418,10 +424,13 @@ pub fn tron_raw_data(transaction: String) -> Result<Vec<u8>, WalletKitErrorFfi> 
             wire_varint(&mut transfer, 3, amount);
             (1, "type.googleapis.com/protocol.TransferContract", transfer)
         }
-        hw::TronContract::TriggerSmartContract { owner_address, contract_address, data } => {
+        hw::TronContract::TriggerSmartContract { owner_address, contract_address, call_value, data } => {
             let mut trigger = Vec::new();
             wire_bytes(&mut trigger, 1, &owner_address);
             wire_bytes(&mut trigger, 2, &contract_address);
+            if let Some(call_value) = call_value.filter(|value| *value > 0) {
+                wire_varint(&mut trigger, 3, call_value);
+            }
             wire_bytes(&mut trigger, 4, &data);
             (31, "type.googleapis.com/protocol.TriggerSmartContract", trigger)
         }
@@ -612,6 +621,47 @@ mod tests {
         assert_eq!(fields.ref_block_bytes, vec![0xe9, 0x42]);
         assert_eq!(fields.ref_block_hash, hex::decode("6394747da9fee421").unwrap());
         assert!(matches!(fields.contract, hw::TronContract::Transfer { amount: 18_123_456, .. }));
+    }
+
+    /// `raw_data_hex` from TronWeb 6.5.1 for a TRC-20 call carrying
+    /// `call_value` and a memo — the dapp-browser case Trezor must reproduce.
+    #[test]
+    fn tron_raw_data_reproduces_a_call_with_call_value_and_memo() {
+        let transaction = r#"{
+            "raw_data": {
+                "ref_block_bytes": "e942",
+                "ref_block_hash": "6394747da9fee421",
+                "expiration": 1752562632000,
+                "timestamp": 1752562572000,
+                "fee_limit": 150000000,
+                "data": "6d656d6f",
+                "contract": [{
+                    "type": "TriggerSmartContract",
+                    "parameter": { "value": {
+                        "owner_address": "417e5f4552091a69125d5dfcb7b8c2659029395bdf",
+                        "contract_address": "41a614f803b6fd780986a42c78ec9c7f77e6ded13c",
+                        "call_value": 5000000,
+                        "data": "a9059cbb000000000000000000000000a614f803b6fd780986a42c78ec9c7f77e6ded13c00000000000000000000000000000000000000000000000000000000000f4240"
+                    }}
+                }]
+            }
+        }"#;
+        let expected = "0a02e94222086394747da9fee42140c08afee6803352046d656d6f5ab301081f12ae010a31747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e54726967676572536d617274436f6e747261637412790a15417e5f4552091a69125d5dfcb7b8c2659029395bdf121541a614f803b6fd780986a42c78ec9c7f77e6ded13c18c096b1022244a9059cbb000000000000000000000000a614f803b6fd780986a42c78ec9c7f77e6ded13c00000000000000000000000000000000000000000000000000000000000f424070e0b5fae68033900180a3c347";
+        assert_eq!(hex::encode(tron_raw_data(transaction.to_string()).unwrap()), expected);
+    }
+
+    #[test]
+    fn to_tron_tx_fields_rejects_a_non_integer_call_value() {
+        let transaction = r#"{
+            "raw_data": {
+                "ref_block_bytes": "e942", "ref_block_hash": "6394747da9fee421",
+                "expiration": 1, "timestamp": 1,
+                "contract": [{ "type": "TriggerSmartContract", "parameter": { "value": {
+                    "owner_address": "41", "contract_address": "41", "call_value": "5", "data": ""
+                }}}]
+            }
+        }"#;
+        assert!(matches!(to_tron_tx_fields(transaction), Err(WalletKitErrorFfi::SigningFailed { .. })));
     }
 
     #[test]

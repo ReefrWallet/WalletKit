@@ -188,7 +188,7 @@ public final class EthereumTrezorSigner: Signer, MessageSigner {
                 try await device.raw.ethereumSignTypedData(path: account.derivationPath.raw, fields: fields)
             }
 
-        case .aptosMessage, .solanaMessage, .suiPersonal:
+        case .aptosMessage, .solanaMessage, .suiPersonal, .tronMessage:
             throw WalletKitError.unsupportedFeature
         }
     }

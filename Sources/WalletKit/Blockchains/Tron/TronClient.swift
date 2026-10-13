@@ -12,14 +12,28 @@ import Moya
 public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disable:this type_body_length
     public typealias Address = TronAddress
 
+    private static let internalTransactionsPageSize = 50
+
     private let apiKey: String?
     private let endpoint: URL
     private let session: URLSession
+    private let tronScanAPIKey: String?
+    private let tronScanEndpoint: URL?
 
-    public init(endpoint: URL, apiKey: String? = nil, session: URLSession = .shared) {
+    /// - Parameter tronScanEndpoint: TronScan API used for internal TRX transfers
+    ///   (e.g. swap/relayer payouts), which TronGrid's account history omits.
+    public init(
+        endpoint: URL,
+        apiKey: String? = nil,
+        tronScanEndpoint: URL? = nil,
+        tronScanAPIKey: String? = nil,
+        session: URLSession = .shared
+    ) {
         self.endpoint = endpoint
         self.apiKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.session = session
+        self.tronScanAPIKey = tronScanAPIKey?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.tronScanEndpoint = tronScanEndpoint
     }
 
     public func getAllBalances(_ owner: TronAddress) async throws -> [String: BigUInt] {
@@ -108,45 +122,49 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         _ owner: TronAddress,
         request: BlockchainTransactionHistoryRequest
     ) async throws -> BlockchainTransactionPage {
-        let cursor = request.cursor.flatMap { try? JSONDecoder().decode(HistoryCursor.self, from: $0) }
+        var cursor = try await historyCursor(for: request)
 
-        async let native = historyResponse(
+        // Block-height bounds map to timestamps, the only range filter the indexers take.
+        // `head` is the solidified tip (or `upperBound`), so it's known even for accounts
+        // with no native transactions; without it forward sync never starts.
+        if let minTimestamp = cursor.minTimestamp, minTimestamp > cursor.maxTimestamp {
+            return BlockchainTransactionPage(transactions: [], nextCursor: nil, reachedBoundary: true, head: cursor.head)
+        }
+
+        async let native = historyPage(
             path: "v1/accounts/\(owner.string)/transactions",
             request: request,
-            fingerprint: cursor?.native
+            cursor: cursor,
+            position: cursor.native
         )
 
-        async let tokens = historyResponse(
+        async let tokens = historyPage(
             path: "v1/accounts/\(owner.string)/transactions/trc20",
             request: request,
-            fingerprint: cursor?.tokens
+            cursor: cursor,
+            position: cursor.tokens
         )
 
-        let (nativeResponse, tokenResponse) = try await (native, tokens)
-        let nativeTransactions = (nativeResponse["data"] as? [[String: Any]] ?? [])
-            .compactMap(Self.transaction(from:))
-        let tokenTransactions = (tokenResponse["data"] as? [[String: Any]] ?? [])
-            .compactMap(Self.tokenTransaction(from:))
-        let transactions = Self.merging(nativeTransactions + tokenTransactions)
+        async let internals = internalTransactionsPage(owner, cursor: cursor)
 
-        let nextCursor = HistoryCursor(
-            native: Self.fingerprint(in: nativeResponse),
-            tokens: Self.fingerprint(in: tokenResponse)
+        let (nativePage, tokenPage, internalPage) = try await (native, tokens, internals)
+        cursor.native = nativePage.next
+        cursor.tokens = tokenPage.next
+        cursor.internals = internalPage.next
+
+        let transactions = try await withBlockHeights(
+            Self.merging(
+                nativePage.data.compactMap(Self.transaction(from:))
+                    + internalPage.data.compactMap { Self.internalTransaction(from: $0, owner: owner.string) }
+                    + tokenPage.data.compactMap(Self.tokenTransaction(from:))
+            )
         )
-
-        let cursorData = try JSONEncoder().encode(nextCursor)
-
-        // `TransactionSyncService` needs `head` to establish `currentHead` and
-        // start forward polling — the same role `eth_blockNumber`/
-        // `GetServiceInfo.checkpointHeight` play for Ethereum/Sui. Without it,
-        // Tron's forward sync stays stalled forever after backfill.
-        let head = nativeTransactions.compactMap(\.blockHeight).max()
 
         return BlockchainTransactionPage(
             transactions: transactions,
-            nextCursor: nextCursor.native == nil && nextCursor.tokens == nil ? nil : cursorData,
-            reachedBoundary: nextCursor.native == nil && nextCursor.tokens == nil,
-            head: head
+            nextCursor: cursor.isExhausted ? nil : try JSONEncoder().encode(cursor),
+            reachedBoundary: cursor.isExhausted,
+            head: cursor.head
         )
     }
 
@@ -243,29 +261,64 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         return try JSONSerialization.data(withJSONObject: response)
     }
 
-    private func historyResponse(
+    private func block(number: UInt64?) async throws -> BlockStamp {
+        var body: [String: Any] = ["detail": false]
+        body["id_or_num"] = number.map(String.init)
+        let header = (try await post("walletsolidity/getblock", body: body)["block_header"] as? [String: Any])
+        let rawData = header?["raw_data"] as? [String: Any]
+
+        guard let timestamp = (rawData?["timestamp"] as? NSNumber)?.uint64Value else {
+            throw WalletKitError.internalError(message: "Tron node returned no solidified block.")
+        }
+
+        // Protobuf JSON omits zero values, so genesis has no `number`.
+        return BlockStamp(number: (rawData?["number"] as? NSNumber)?.uint64Value ?? 0, timestamp: timestamp)
+    }
+
+    private func historyCursor(for request: BlockchainTransactionHistoryRequest) async throws -> HistoryCursor {
+        if let data = request.cursor, let cursor = try? JSONDecoder().decode(HistoryCursor.self, from: data) {
+            return cursor
+        }
+
+        let head = try await block(number: request.upperBound)
+        var minTimestamp: UInt64?
+
+        if let lowerBound = request.lowerBound, lowerBound > 0 {
+            minTimestamp = lowerBound > head.number
+                ? head.timestamp + 1
+                : try await block(number: lowerBound - 1).timestamp + 1
+        }
+
+        return HistoryCursor(head: head.number, maxTimestamp: head.timestamp, minTimestamp: minTimestamp)
+    }
+
+    private func historyPage(
         path: String,
         request: BlockchainTransactionHistoryRequest,
-        fingerprint: String?
-    ) async throws -> [String: Any] {
+        cursor: HistoryCursor,
+        position: StreamPosition
+    ) async throws -> HistoryPage {
+        if position == .done {
+            return HistoryPage(data: [], next: .done)
+        }
+
         var components = URLComponents(url: endpoint.appending(path: path), resolvingAgainstBaseURL: false)
 
         var items = [
-            URLQueryItem(
-                name: "only_confirmed",
-                value: "true"
-            ),
-            URLQueryItem(
-                name: "limit",
-                value: "\(min(request.limit, 200))"
-            ),
+            URLQueryItem(name: "only_confirmed", value: "true"),
+            URLQueryItem(name: "limit", value: "\(min(request.limit, 200))"),
             URLQueryItem(
                 name: "order_by",
                 value: request.direction == .ascending ? "block_timestamp,asc" : "block_timestamp,desc"
-            )
+            ),
+            URLQueryItem(name: "max_timestamp", value: "\(cursor.maxTimestamp)")
         ]
 
-        if let fingerprint {
+        if let minTimestamp = cursor.minTimestamp {
+            items.append(URLQueryItem(name: "min_timestamp", value: "\(minTimestamp)"))
+        }
+
+        if case let .fingerprint(fingerprint) = position {
             items.append(URLQueryItem(name: "fingerprint", value: fingerprint))
         }
 
@@ -275,7 +328,105 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
             throw WalletKitError.internalError(message: "Cannot construct Tron history URL.")
         }
 
-        return try await get(url)
+        let response = try await get(url, apiKey: apiKey)
+
+        return HistoryPage(
+            data: response["data"] as? [[String: Any]] ?? [],
+            next: Self.fingerprint(in: response).map(StreamPosition.fingerprint) ?? .done
+        )
+    }
+
+    private func internalTransactionsPage(_ owner: TronAddress, cursor: HistoryCursor) async throws -> HistoryPage {
+        guard let tronScanEndpoint, cursor.internals != .done else {
+            return HistoryPage(data: [], next: .done)
+        }
+
+        let offset = if case let .offset(offset) = cursor.internals { offset } else { 0 }
+        let pageSize = Self.internalTransactionsPageSize
+        var components = URLComponents(
+            url: tronScanEndpoint.appending(path: "api/internal-transaction"),
+            resolvingAgainstBaseURL: false
+        )
+
+        var items = [
+            URLQueryItem(name: "address", value: owner.string),
+            URLQueryItem(name: "start", value: "\(offset)"),
+            URLQueryItem(name: "limit", value: "\(pageSize)"),
+            URLQueryItem(name: "end_timestamp", value: "\(cursor.maxTimestamp)")
+        ]
+
+        if let minTimestamp = cursor.minTimestamp {
+            items.append(URLQueryItem(name: "start_timestamp", value: "\(minTimestamp)"))
+        }
+
+        components?.queryItems = items
+
+        guard let url = components?.url else {
+            throw WalletKitError.internalError(message: "Cannot construct TronScan URL.")
+        }
+
+        let data = try await get(url, apiKey: tronScanAPIKey)["data"] as? [[String: Any]] ?? []
+
+        return HistoryPage(data: data, next: data.count < pageSize ? .done : .offset(offset + data.count))
+    }
+
+    /// TronGrid's TRC-20 history has no block numbers; without one a transaction reads as pending.
+    private func withBlockHeights(_ transactions: [BlockchainTransaction]) async throws -> [BlockchainTransaction] {
+        try await withThrowingTaskGroup(of: (Int, UInt64?).self) { group in
+            for (index, transaction) in transactions.enumerated() where transaction.blockHeight == nil {
+                group.addTask {
+                    let info = try await post("walletsolidity/gettransactioninfobyid", body: ["value": transaction.identifier])
+                    return (index, (info["blockNumber"] as? NSNumber)?.uint64Value)
+                }
+            }
+
+            var transactions = transactions
+
+            for try await (index, blockHeight) in group {
+                transactions[index] = transactions[index].with(blockHeight: blockHeight)
+            }
+
+            return transactions
+        }
+    }
+
+    /// Forwards one node HTTP request (e.g. TronWeb's `wallet/getaccount`)
+    /// to this endpoint with this client's API key and rate-limit
+    /// handling, returning the raw response body. The caller decides
+    /// which paths are allowed.
+    ///
+    /// - Parameters:
+    ///   - path: A relative path such as `wallet/triggerconstantcontract`.
+    ///   - query: Query items for a GET request.
+    ///   - body: The JSON body for a POST request; `nil` sends a GET.
+    public func relay(path: String, query: [URLQueryItem] = [], body: Data?) async throws -> Data {
+        let target: TronGridAPI
+        if let body {
+            target = .post(endpoint: endpoint, path: path, apiKey: apiKey, body: body)
+        } else {
+            var components = URLComponents(
+                url: endpoint.appendingPathComponent(path),
+                resolvingAgainstBaseURL: false
+            )
+
+            components?.queryItems = query.isEmpty ? nil : query
+
+            guard let url = components?.url else {
+                throw WalletKitError.internalError(message: "Invalid Tron relay path.")
+            }
+
+            target = .get(url: url, apiKey: apiKey)
+        }
+
+        let policy = RateGateRegistry.shared.makeRetryPolicy(for: origin, provider: .tronGrid)
+        let afSession = Session(configuration: session.configuration, interceptor: policy)
+        let provider = MoyaProvider<TronGridAPI>(session: afSession)
+
+        do {
+            return try await provider.requestData(target)
+        } catch is MoyaError {
+            throw WalletKitError.internalError(message: "Tron endpoint rejected \(path).")
+        }
     }
 
     private func post(_ path: String, body: [String: Any]) async throws -> [String: Any] {
@@ -286,14 +437,16 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         )
     }
 
-    private func get(_ url: URL) async throws -> [String: Any] {
+    private func get(_ url: URL, apiKey: String?) async throws -> [String: Any] {
         try await requestJSONObject(
             .get(url: url, apiKey: apiKey),
-            errorMessage: "TronGrid rejected account-history request."
+            errorMessage: "\(url.host ?? "Tron indexer") rejected account-history request."
         )
     }
 
     private func requestJSONObject(_ target: TronGridAPI, errorMessage: String) async throws -> [String: Any] {
+        // TronScan requests get their own rate gate.
+        let origin = Self.origin(of: target.baseURL)
         let policy = RateGateRegistry.shared.makeRetryPolicy(for: origin, provider: .tronGrid)
         let afSession = Session(configuration: session.configuration, interceptor: policy)
         let provider = MoyaProvider<TronGridAPI>(session: afSession)
@@ -313,11 +466,15 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
     /// `origin`: scheme + host + explicit port only (not a default one) —
     /// matches ``RateGateRegistry``'s keying.
     private var origin: String {
+        Self.origin(of: endpoint)
+    }
+
+    private static func origin(of url: URL) -> String {
         var components = URLComponents()
-        components.scheme = endpoint.scheme
-        components.host = endpoint.host
-        components.port = endpoint.port
-        return components.string ?? endpoint.absoluteString
+        components.scheme = url.scheme
+        components.host = url.host
+        components.port = url.port
+        return components.string ?? url.absoluteString
     }
 
     private func constantCall(
@@ -438,6 +595,42 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         )
     }
 
+    /// A TronScan internal TRX transfer, e.g. a swap router paying out to `owner`.
+    private static func internalTransaction(from value: [String: Any], owner: String) -> BlockchainTransaction? {
+        guard let identifier = value["hash"] as? String,
+              let sender = value["from"] as? String,
+              let recipient = value["to"] as? String,
+              sender == owner || recipient == owner,
+              (value["token_id"] as? String ?? "_") == "_",
+              let amount = (value["call_value"] as? NSNumber)?.uint64Value, amount > 0,
+              value["confirmed"] as? Bool != false,
+              value["rejected"] as? Bool != true,
+              value["revert"] as? Bool != true else {
+            return nil
+        }
+
+        let timestamp = (value["timestamp"] as? NSNumber)
+            .map { Date(timeIntervalSince1970: $0.doubleValue / 1_000) }
+
+        return BlockchainTransaction(
+            identifier: identifier,
+            blockHeight: (value["block"] as? NSNumber)?.uint64Value,
+            timestamp: timestamp,
+            sender: sender,
+            recipient: recipient,
+            status: .confirmed,
+            effects: [
+                BlockchainTransactionEffect(
+                    index: 0,
+                    kind: .nativeTransfer,
+                    amount: String(amount),
+                    from: sender,
+                    to: recipient
+                )
+            ]
+        )
+    }
+
     private static func fingerprint(in response: [String: Any]) -> String? {
         (response["meta"] as? [String: Any])?["fingerprint"] as? String
     }
@@ -475,7 +668,7 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
 
             return BlockchainTransaction(
                 identifier: first.identifier,
-                blockHeight: first.blockHeight,
+                blockHeight: group.lazy.compactMap(\.blockHeight).first,
                 blockHash: first.blockHash,
                 timestamp: first.timestamp,
                 transactionIndex: first.transactionIndex,
@@ -488,9 +681,52 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         }
     }
 
+    private struct BlockStamp {
+        let number: UInt64
+        let timestamp: UInt64
+    }
+
+    /// One history range, `(minTimestamp, maxTimestamp]`, paged per stream.
     private struct HistoryCursor: Codable {
-        let native: String?
-        let tokens: String?
+        let head: UInt64
+        let maxTimestamp: UInt64
+        let minTimestamp: UInt64?
+        var internals = StreamPosition.start
+        var native = StreamPosition.start
+        var tokens = StreamPosition.start
+
+        var isExhausted: Bool {
+            internals == .done && native == .done && tokens == .done
+        }
+    }
+
+    private struct HistoryPage {
+        let data: [[String: Any]]
+        let next: StreamPosition
+    }
+
+    private enum StreamPosition: Codable, Equatable {
+        case done
+        case fingerprint(String)
+        case offset(Int)
+        case start
+    }
+}
+
+private extension BlockchainTransaction {
+    func with(blockHeight: UInt64?) -> BlockchainTransaction {
+        BlockchainTransaction(
+            identifier: identifier,
+            blockHeight: blockHeight ?? self.blockHeight,
+            blockHash: blockHash,
+            timestamp: timestamp,
+            transactionIndex: transactionIndex,
+            sender: sender,
+            recipient: recipient,
+            status: status,
+            rawPayload: rawPayload,
+            effects: effects
+        )
     }
 }
 

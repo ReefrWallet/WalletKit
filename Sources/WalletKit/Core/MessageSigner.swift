@@ -35,7 +35,11 @@ public enum SignableMessage: Sendable {
     /// message bytes, not yet BCS-wrapped or intent-prefixed.
     case suiPersonal(Data)
 
-    // Later: .tronV2, .cardanoCIP8, .bitcoinBIP322.
+    /// A TIP-191 Tron message (TronWeb's `signMessageV2`) — the raw
+    /// message bytes, not yet prefixed or hashed.
+    case tronMessage(Data)
+
+    // Later: .cardanoCIP8, .bitcoinBIP322.
 }
 
 /// A ``Signer`` that can also sign a ``SignableMessage`` —

@@ -38,6 +38,34 @@ struct TronClientTests {
         #expect(stub.capturedRequest?.url?.path == "/wallet/getaccount")
     }
 
+    @Test func relayPostsTheBodyWithTheAPIKeyAndReturnsTheRawResponse() async throws {
+        let response = Data(#"{"balance":7}"#.utf8)
+        let stub = StubURLProtocol.makeSession(response: .success(body: response))
+        let client = TronClient(endpoint: endpoint, apiKey: "test-key", session: stub.urlSession)
+
+        let data = try await client.relay(path: "wallet/getaccount", body: Data(#"{"visible":true}"#.utf8))
+
+        #expect(data == response)
+        #expect(stub.capturedRequest?.httpMethod == "POST")
+        #expect(stub.capturedRequest?.url?.path == "/wallet/getaccount")
+        #expect(stub.capturedRequest?.value(forHTTPHeaderField: "TRON-PRO-API-KEY") == "test-key")
+        #expect(try requestBody(stub)["visible"] as? Bool == true)
+    }
+
+    @Test func relayGetsWithQueryItems() async throws {
+        let stub = StubURLProtocol.makeSession(response: .success(body: Data("{}".utf8)))
+        let client = TronClient(endpoint: endpoint, session: stub.urlSession)
+
+        _ = try await client.relay(
+            path: "v1/blocks/1/events",
+            query: [URLQueryItem(name: "limit", value: "20")],
+            body: nil
+        )
+
+        #expect(stub.capturedRequest?.httpMethod == "GET")
+        #expect(stub.capturedRequest?.url?.absoluteString == "https://example.com/v1/blocks/1/events?limit=20")
+    }
+
     @Test func getTRC20BalanceEncodesBalanceOfCall() async throws {
         let response = #"{"constant_result":["000000000000000000000000000000000000000000000000000000000000002a"]}"#
         let stub = StubURLProtocol.makeSession(response: .success(body: Data(response.utf8)))
@@ -110,15 +138,8 @@ struct TronClientTests {
         #expect(TronNetwork.testnet.rpcURL == URL(string: "https://nile.trongrid.io")!)
     }
 
-    @Test func transactionHistoryReportsHeadFromNativeTransactionsSoForwardSyncCanStart() async throws {
-        let nativeBody = Data(#"""
-        {"data":[{"txID":"abc","blockNumber":100,"block_timestamp":1000,"raw_data":{"contract":[]}}]}
-        """#.utf8)
-        let trc20Body = Data(#"{"data":[]}"#.utf8)
-        let stub = StubURLProtocol.makeSession(responsesByPath: [
-            "/v1/accounts/\(owner.string)/transactions": .success(body: nativeBody),
-            "/v1/accounts/\(owner.string)/transactions/trc20": .success(body: trc20Body)
-        ])
+    @Test func transactionHistoryReportsSolidifiedHeadEvenWithoutNativeTransactions() async throws {
+        let stub = StubURLProtocol.makeSession(responsesByPath: historyResponses(trc20: "[]"))
         let client = TronClient(endpoint: endpoint, session: stub.urlSession)
 
         let page = try await client.transactionHistory(
@@ -126,7 +147,81 @@ struct TronClientTests {
             request: BlockchainTransactionHistoryRequest(direction: .descending, limit: 20)
         )
 
-        #expect(page.head == 100)
+        #expect(page.head == 500)
+        #expect(page.reachedBoundary)
+    }
+
+    @Test func transactionHistoryResolvesTokenTransferBlockHeights() async throws {
+        let trc20 = #"""
+        [{"transaction_id":"tok","token_info":{"address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"},
+          "block_timestamp":1000,"from":"TA","to":"\#(owner.string)","value":"5"}]
+        """#
+        var responses = historyResponses(trc20: trc20)
+        responses["/walletsolidity/gettransactioninfobyid"] = .success(body: Data(#"{"blockNumber":321}"#.utf8))
+        let stub = StubURLProtocol.makeSession(responsesByPath: responses)
+        let client = TronClient(endpoint: endpoint, session: stub.urlSession)
+
+        let page = try await client.transactionHistory(
+            owner,
+            request: BlockchainTransactionHistoryRequest(direction: .descending, limit: 20)
+        )
+
+        #expect(page.transactions.map(\.blockHeight) == [321])
+    }
+
+    @Test func transactionHistoryIncludesTronScanInternalTransfers() async throws {
+        var responses = historyResponses(trc20: "[]")
+        responses["/api/internal-transaction"] = .success(body: Data(#"""
+        {"data":[
+          {"hash":"swap","block":400,"timestamp":1000,"from":"TKzxdSv2FZKQrEqkKVgp5DcwEXBEKMg2Ax",
+           "to":"\#(owner.string)","token_id":"_","call_value":134174645,"confirmed":true,"revert":false},
+          {"hash":"other","block":401,"timestamp":1000,"from":"TA","to":"TB","token_id":"_","call_value":1}
+        ]}
+        """#.utf8))
+        let stub = StubURLProtocol.makeSession(responsesByPath: responses)
+        let client = TronClient(
+            endpoint: endpoint,
+            tronScanEndpoint: URL(string: "https://scan.example.com")!,
+            session: stub.urlSession
+        )
+
+        let page = try await client.transactionHistory(
+            owner,
+            request: BlockchainTransactionHistoryRequest(direction: .descending, limit: 20)
+        )
+
+        let transaction = try #require(page.transactions.first)
+        #expect(page.transactions.count == 1)
+        #expect(transaction.identifier == "swap")
+        #expect(transaction.blockHeight == 400)
+        #expect(transaction.effects.first?.kind == .nativeTransfer)
+        #expect(transaction.effects.first?.amount == "134174645")
+        #expect(transaction.effects.first?.to == owner.string)
+    }
+
+    @Test func transactionHistoryPastTheSolidifiedHeadIsAnEmptyBoundaryPage() async throws {
+        let stub = StubURLProtocol.makeSession(responsesByPath: historyResponses(trc20: "[]"))
+        let client = TronClient(endpoint: endpoint, session: stub.urlSession)
+
+        let page = try await client.transactionHistory(
+            owner,
+            request: BlockchainTransactionHistoryRequest(direction: .ascending, lowerBound: 501, limit: 20)
+        )
+
+        #expect(page.transactions.isEmpty)
+        #expect(page.reachedBoundary)
+        #expect(page.head == 500)
+        #expect(stub.capturedRequest?.url?.path == "/walletsolidity/getblock")
+    }
+
+    private func historyResponses(trc20: String) -> [String: StubURLProtocol.StubResponse] {
+        [
+            "/walletsolidity/getblock": .success(
+                body: Data(#"{"block_header":{"raw_data":{"number":500,"timestamp":1500000}}}"#.utf8)
+            ),
+            "/v1/accounts/\(owner.string)/transactions": .success(body: Data(#"{"data":[]}"#.utf8)),
+            "/v1/accounts/\(owner.string)/transactions/trc20": .success(body: Data(#"{"data":\#(trc20)}"#.utf8))
+        ]
     }
 
     private func requestBody(_ stub: StubURLProtocol.Session) throws -> [String: Any] {

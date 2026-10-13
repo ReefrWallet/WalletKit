@@ -99,7 +99,7 @@ public final class EthereumPKeySigner: Signer, MessageSigner {
         case .ethereumTypedData(let json):
             digest = try remappingWalletKitError { try ethereumTypedDataHash(json: json) }
 
-        case .aptosMessage, .solanaMessage, .suiPersonal:
+        case .aptosMessage, .solanaMessage, .suiPersonal, .tronMessage:
             throw WalletKitError.unsupportedFeature
         }
 

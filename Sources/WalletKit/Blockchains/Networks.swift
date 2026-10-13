@@ -177,4 +177,14 @@ public enum TronNetwork: Codable, Equatable, Hashable, Sendable {
             URL(string: "https://nile.trongrid.io")!
         }
     }
+
+    /// TronScan API, the source for internal transfers TronGrid doesn't index.
+    public var tronScanURL: URL {
+        switch self {
+        case .mainnet:
+            URL(string: "https://apilist.tronscanapi.com")!
+        case .testnet:
+            URL(string: "https://nileapi.tronscan.org")!
+        }
+    }
 }
