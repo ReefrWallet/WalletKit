@@ -158,3 +158,13 @@ func remappingWalletKitError<T>(_ body: () async throws -> T) async rethrows -> 
         throw WalletKitError(error)
     }
 }
+
+extension WalletKitError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case let .internalError(message): message
+        case let .signingFailed(reason): reason
+        default: nil
+        }
+    }
+}

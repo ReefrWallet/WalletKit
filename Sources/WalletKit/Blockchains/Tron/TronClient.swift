@@ -209,7 +209,17 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
             return knownTxId
         }
 
-        throw WalletKitError.internalError(message: "Tron node rejected transaction broadcast.")
+        throw WalletKitError.internalError(message: "Tron node rejected transaction broadcast: \(Self.rejectionReason(response))")
+    }
+
+    /// java-tron's `code` plus its hex-encoded ASCII `message`.
+    private static func rejectionReason(_ response: [String: Any]) -> String {
+        let code = response["code"] as? String
+        let message = (response["message"] as? String)
+            .flatMap { try? Data(hexString: $0) }
+            .flatMap { String(data: $0, encoding: .utf8) }
+
+        return [code, message].compactMap { $0 }.joined(separator: ": ")
     }
 
     private static func looksLikeDuplicate(_ response: [String: Any]) -> Bool {
@@ -256,7 +266,7 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
             response = try await post("wallet/createtransaction", body: [
                 "owner_address": sender.string,
                 "to_address": recipient.string,
-                "amount": amount.description,
+                "amount": UInt64(amount),
                 "visible": true
             ])
         }
@@ -265,7 +275,8 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         let transaction = (response["transaction"] as? [String: Any]) ?? response
 
         guard transaction["raw_data_hex"] != nil else {
-            throw WalletKitError.internalError(message: "Tron node did not construct a transaction.")
+            let reason = (response["Error"] as? String) ?? Self.rejectionReason(response)
+            throw WalletKitError.internalError(message: "Tron node did not construct a transaction: \(reason)")
         }
 
         return try JSONSerialization.data(withJSONObject: transaction)
