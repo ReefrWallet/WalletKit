@@ -46,5 +46,5 @@ For macOS test targets only, not for an app's production runtime.
 
 ::::
 
-Source code, issues and releases are on [GitHub](https://github.com/kervich/WalletKit).
+Source code, issues and releases are on [GitHub](https://github.com/ReefrWallet/WalletKit).
 WalletKit is licensed under the BSD 3-Clause License.

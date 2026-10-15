@@ -1,6 +1,6 @@
 # WalletKit
 
-[![CI](https://github.com/kervich/WalletKit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kervich/WalletKit/actions/workflows/ci.yml)
+[![CI](https://github.com/ReefrWallet/WalletKit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ReefrWallet/WalletKit/actions/workflows/ci.yml)
 
 WalletKit is a Swift toolkit for building non-custodial multi-chain crypto wallet applications on Apple platforms.
 
@@ -102,8 +102,8 @@ print("WETH deposit tx hash:", txHash)
 
 ## Full Documentation
 
-- [WalletKit API reference and guides](https://kervich.github.io/WalletKit/documentation/walletkit/)
-- [WalletKitTesting API reference](https://kervich.github.io/WalletKit/documentation/walletkittesting/)
+- [WalletKit API reference and guides](https://reefrwallet.github.io/WalletKit/documentation/walletkit/)
+- [WalletKitTesting API reference](https://reefrwallet.github.io/WalletKit/documentation/walletkittesting/)
 
 ## License
 
