@@ -13,19 +13,47 @@ import WalletKitRust
 /// A fail-closed decoder for a Tron `Transaction.raw` protobuf — the
 /// `raw_data_hex` bytes a Tron signature covers (`sha256(raw) == txID`).
 ///
-/// Accepts exactly one `TransferContract` or `TriggerSmartContract` with
-/// the default permission. Rejects every other contract type, multi-sig
-/// permission ids, `auths`/`scripts`, TRC-10 call values, unknown or
-/// repeated fields, wire-type mismatches, negative `int64`s and trailing
-/// bytes, so what is previewed is exactly what gets signed.
+/// Accepts exactly one `TransferContract`, `TriggerSmartContract` or
+/// Stake 2.0 (`FreezeBalanceV2Contract`, `UnfreezeBalanceV2Contract`,
+/// `WithdrawExpireUnfreezeContract`) with the default permission. Rejects
+/// every other contract type, multi-sig permission ids, `auths`/`scripts`,
+/// TRC-10 call values, unknown or repeated fields, wire-type mismatches,
+/// negative `int64`s and trailing bytes, so what is previewed is exactly
+/// what gets signed.
 public struct TronRawTransaction: Equatable, Sendable {
+    /// The resource a Stake 2.0 freeze/unfreeze applies to
+    /// (`protocol.ResourceCode`).
+    public enum Resource: UInt64, Equatable, Sendable {
+        case bandwidth = 0
+        case energy = 1
+        case tronPower = 2
+
+        var name: String {
+            switch self {
+            case .bandwidth: "BANDWIDTH"
+            case .energy: "ENERGY"
+            case .tronPower: "TRON_POWER"
+            }
+        }
+    }
+
     public enum Contract: Equatable, Sendable {
         case transfer(owner: TronAddress, to: TronAddress, amount: UInt64)
         case triggerSmartContract(owner: TronAddress, contract: TronAddress, callValue: UInt64, data: Data)
+        /// Stake 2.0 stake: freezes `amount` SUN for `resource`.
+        case freezeBalanceV2(owner: TronAddress, amount: UInt64, resource: Resource)
+        /// Stake 2.0 unstake: starts unfreezing `amount` SUN of `resource`.
+        case unfreezeBalanceV2(owner: TronAddress, amount: UInt64, resource: Resource)
+        /// Stake 2.0: withdraws unstaked TRX whose waiting period has ended.
+        case withdrawExpireUnfreeze(owner: TronAddress)
 
         public var owner: TronAddress {
             switch self {
-            case let .transfer(owner, _, _), let .triggerSmartContract(owner, _, _, _):
+            case let .transfer(owner, _, _),
+                 let .triggerSmartContract(owner, _, _, _),
+                 let .freezeBalanceV2(owner, _, _),
+                 let .unfreezeBalanceV2(owner, _, _),
+                 let .withdrawExpireUnfreeze(owner):
                 owner
             }
         }
@@ -145,15 +173,59 @@ public struct TronRawTransaction: Equatable, Sendable {
             }
 
             return ["parameter": ["type_url": Self.triggerTypeURL, "value": value], "type": "TriggerSmartContract"]
+        case let .freezeBalanceV2(owner, amount, resource):
+            return Self.stakeJSON(
+                "FreezeBalanceV2Contract",
+                owner: owner,
+                amount: ("frozen_balance", amount),
+                resource: resource
+            )
+        case let .unfreezeBalanceV2(owner, amount, resource):
+            return Self.stakeJSON(
+                "UnfreezeBalanceV2Contract",
+                owner: owner,
+                amount: ("unfreeze_balance", amount),
+                resource: resource
+            )
+        case let .withdrawExpireUnfreeze(owner):
+            return Self.stakeJSON("WithdrawExpireUnfreezeContract", owner: owner)
         }
+    }
+
+    /// TronGrid JSON for the Stake 2.0 contracts; zero/default fields are
+    /// omitted, as protobuf does.
+    private static func stakeJSON(
+        _ type: String,
+        owner: TronAddress,
+        amount: (key: String, value: UInt64)? = nil,
+        resource: Resource = .bandwidth
+    ) -> [String: Any] {
+        var value: [String: Any] = ["owner_address": owner.rawBytes.bareHex]
+
+        if let amount, amount.value > 0 {
+            value[amount.key] = amount.value
+        }
+
+        if resource != .bandwidth {
+            value["resource"] = resource.name
+        }
+
+        return ["parameter": ["type_url": typeURL(type), "value": value], "type": type]
     }
 }
 
 // MARK: - Contract decoding
 
 private extension TronRawTransaction {
-    static let transferTypeURL = "type.googleapis.com/protocol.TransferContract"
-    static let triggerTypeURL = "type.googleapis.com/protocol.TriggerSmartContract"
+    static let transferTypeURL = typeURL("TransferContract")
+    static let triggerTypeURL = typeURL("TriggerSmartContract")
+    static let freezeV2TypeURL = typeURL("FreezeBalanceV2Contract")
+    static let unfreezeV2TypeURL = typeURL("UnfreezeBalanceV2Contract")
+    static let withdrawExpireUnfreezeTypeURL = typeURL("WithdrawExpireUnfreezeContract")
+
+    static func typeURL(_ type: String) -> String {
+        "type.googleapis.com/protocol.\(type)"
+    }
 
     static func decodeContract(_ bytes: Data) throws -> Contract {
         let fields = try ProtoFields(bytes, allowed: [1: .varint, 2: .bytes, 5: .varint])
@@ -172,9 +244,30 @@ private extension TronRawTransaction {
             return try decodeTransfer(value)
         case (31, triggerTypeURL):
             return try decodeTrigger(value)
+        case (54, freezeV2TypeURL):
+            let (owner, amount, resource) = try decodeStake(value)
+            return .freezeBalanceV2(owner: owner, amount: amount, resource: resource)
+        case (55, unfreezeV2TypeURL):
+            let (owner, amount, resource) = try decodeStake(value)
+            return .unfreezeBalanceV2(owner: owner, amount: amount, resource: resource)
+        case (56, withdrawExpireUnfreezeTypeURL):
+            let fields = try ProtoFields(value, allowed: [1: .bytes])
+            return .withdrawExpireUnfreeze(owner: try address(fields.requiredBytes(1)))
         default:
             throw invalid("unsupported contract type \(type)")
         }
+    }
+
+    /// `FreezeBalanceV2Contract` / `UnfreezeBalanceV2Contract`: owner (1),
+    /// amount in SUN (2), `ResourceCode` (3, default `BANDWIDTH`).
+    static func decodeStake(_ bytes: Data) throws -> (TronAddress, UInt64, Resource) {
+        let fields = try ProtoFields(bytes, allowed: [1: .bytes, 2: .varint, 3: .varint])
+
+        guard let resource = Resource(rawValue: try fields.optionalInt64(3) ?? 0) else {
+            throw invalid("unsupported staking resource")
+        }
+
+        return (try address(fields.requiredBytes(1)), try fields.optionalInt64(2) ?? 0, resource)
     }
 
     static func decodeTransfer(_ bytes: Data) throws -> Contract {

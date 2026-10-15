@@ -52,6 +52,25 @@ struct TronClientTests {
         #expect(try requestBody(stub)["visible"] as? Bool == true)
     }
 
+    /// One stubbed body answers all three calls (dry run, resources,
+    /// chain parameters).
+    @Test func estimateFeeBurnsEnergyBeyondTheAccountsResources() async throws {
+        let response = #"""
+        {"energy_used": 30000, "EnergyLimit": 10000, "EnergyUsed": 0, "freeNetLimit": 600, "freeNetUsed": 0,
+         "chainParameter": [{"key": "getEnergyFee", "value": 100}, {"key": "getTransactionFee", "value": 1000}]}
+        """#
+        let stub = StubURLProtocol.makeSession(response: .success(body: Data(response.utf8)))
+        let client = TronClient(endpoint: endpoint, session: stub.urlSession)
+        let transaction = try TronRawTransaction(rawBytes: Data(hexString: TronRawTransactionTests.triggerHex))
+
+        let fee = try await client.estimateFee(for: transaction)
+
+        #expect(fee.energy == 30_000)
+        #expect(fee.bandwidth == UInt64(transaction.rawBytes.count) + 135)
+        // (30 000 - 10 000) energy × 100 SUN; bandwidth fits in the free 600.
+        #expect(fee.burnedSun == 2_000_000)
+    }
+
     @Test func relayGetsWithQueryItems() async throws {
         let stub = StubURLProtocol.makeSession(response: .success(body: Data("{}".utf8)))
         let client = TronClient(endpoint: endpoint, session: stub.urlSession)

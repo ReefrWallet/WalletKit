@@ -96,6 +96,19 @@ pub enum TronContract {
     Transfer { owner_address: Vec<u8>, to_address: Vec<u8>, amount: u64 },
     /// `call_value` is native TRX (in SUN) sent along with the call.
     TriggerSmartContract { owner_address: Vec<u8>, contract_address: Vec<u8>, call_value: Option<u64>, data: Vec<u8> },
+    /// Stake 2.0 stake (`FreezeBalanceV2Contract`): `balance` SUN for `resource`.
+    FreezeBalanceV2 { owner_address: Vec<u8>, balance: u64, resource: TronResource },
+    /// Stake 2.0 unstake (`UnfreezeBalanceV2Contract`).
+    UnfreezeBalanceV2 { owner_address: Vec<u8>, balance: u64, resource: TronResource },
+    /// Stake 2.0 withdrawal of expired unstakes (`WithdrawExpireUnfreezeContract`).
+    WithdrawExpireUnfreeze { owner_address: Vec<u8> },
+}
+
+/// The `ResourceCode`s Trezor can stake for (it has no `TRON_POWER`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TronResource {
+    Bandwidth,
+    Energy,
 }
 
 /// One token account referenced by a Solana transaction's instructions —
@@ -233,7 +246,8 @@ pub trait HardwareDevice: Send + Sync {
         fields: EthereumTypedDataFields,
     ) -> Result<EthereumSignature, HardwareError>;
 
-    /// Signs a Tron `TransferContract` or `TriggerSmartContract` on-device.
+    /// Signs a Tron `TransferContract`, `TriggerSmartContract` or Stake 2.0
+    /// stake/unstake/withdraw on-device.
     async fn tron_sign_tx(
         &self,
         path: Vec<HardwarePathSegment>,

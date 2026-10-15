@@ -128,24 +128,31 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         // `head` is the solidified tip (or `upperBound`), so it's known even for accounts
         // with no native transactions; without it forward sync never starts.
         if let minTimestamp = cursor.minTimestamp, minTimestamp > cursor.maxTimestamp {
-            return BlockchainTransactionPage(transactions: [], nextCursor: nil, reachedBoundary: true, head: cursor.head)
+            return BlockchainTransactionPage(
+                transactions: [],
+                nextCursor: nil,
+                reachedBoundary: true,
+                head: cursor.head
+            )
         }
+
+        let start = cursor
 
         async let native = historyPage(
             path: "v1/accounts/\(owner.string)/transactions",
             request: request,
-            cursor: cursor,
-            position: cursor.native
+            cursor: start,
+            position: start.native
         )
 
         async let tokens = historyPage(
             path: "v1/accounts/\(owner.string)/transactions/trc20",
             request: request,
-            cursor: cursor,
-            position: cursor.tokens
+            cursor: start,
+            position: start.tokens
         )
 
-        async let internals = internalTransactionsPage(owner, cursor: cursor)
+        async let internals = internalTransactionsPage(owner, cursor: start)
 
         let (nativePage, tokenPage, internalPage) = try await (native, tokens, internals)
         cursor.native = nativePage.next
@@ -375,7 +382,11 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         try await withThrowingTaskGroup(of: (Int, UInt64?).self) { group in
             for (index, transaction) in transactions.enumerated() where transaction.blockHeight == nil {
                 group.addTask {
-                    let info = try await post("walletsolidity/gettransactioninfobyid", body: ["value": transaction.identifier])
+                    let info = try await post(
+                        "walletsolidity/gettransactioninfobyid",
+                        body: ["value": transaction.identifier]
+                    )
+
                     return (index, (info["blockNumber"] as? NSNumber)?.uint64Value)
                 }
             }
@@ -424,8 +435,8 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
 
         do {
             return try await provider.requestData(target)
-        } catch is MoyaError {
-            throw WalletKitError.internalError(message: "Tron endpoint rejected \(path).")
+        } catch let error as MoyaError {
+            throw Self.requestFailed("Tron request \(path)", error)
         }
     }
 
@@ -433,18 +444,18 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         return try await requestJSONObject(
             .post(endpoint: endpoint, path: path, apiKey: apiKey, body: bodyData),
-            errorMessage: "Tron endpoint rejected \(path)."
+            context: "Tron request \(path)"
         )
     }
 
     private func get(_ url: URL, apiKey: String?) async throws -> [String: Any] {
         try await requestJSONObject(
             .get(url: url, apiKey: apiKey),
-            errorMessage: "\(url.host ?? "Tron indexer") rejected account-history request."
+            context: "\(url.host ?? "Tron indexer") account-history request"
         )
     }
 
-    private func requestJSONObject(_ target: TronGridAPI, errorMessage: String) async throws -> [String: Any] {
+    private func requestJSONObject(_ target: TronGridAPI, context: String) async throws -> [String: Any] {
         // TronScan requests get their own rate gate.
         let origin = Self.origin(of: target.baseURL)
         let policy = RateGateRegistry.shared.makeRetryPolicy(for: origin, provider: .tronGrid)
@@ -458,9 +469,34 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
             // response whose body isn't a JSON object yields an empty
             // dictionary rather than a thrown error.
             return [:]
-        } catch is MoyaError {
-            throw WalletKitError.internalError(message: errorMessage)
+        } catch let error as MoyaError {
+            throw Self.requestFailed(context, error)
         }
+    }
+
+    /// Wraps a failed request with what actually went wrong — the HTTP
+    /// status plus the start of the body (where TronGrid puts its reason),
+    /// or the transport error (timeout, offline, cancellation, ...) — so
+    /// those don't all collapse into one generic "rejected" message.
+    private static func requestFailed(_ context: String, _ error: MoyaError) -> WalletKitError {
+        let detail: String = switch error {
+        case let .statusCode(response),
+             let .underlying(_, response?):
+            describe(response)
+        case let .underlying(underlying, nil):
+            underlying.localizedDescription
+        default:
+            error.localizedDescription
+        }
+
+        return .internalError(message: "\(context) failed: \(detail)")
+    }
+
+    private static func describe(_ response: Response) -> String {
+        let body = String(decoding: response.data.prefix(200), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return body.isEmpty ? "HTTP \(response.statusCode)" : "HTTP \(response.statusCode): \(body)"
     }
 
     /// `origin`: scheme + host + explicit port only (not a default one) —

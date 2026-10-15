@@ -18,7 +18,7 @@ pub use device::{
     CardanoAsset, CardanoTxFields, CardanoTxInput, CardanoTxOutput, CardanoWitness,
     EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields, EthereumTypedDataFields,
     HardwareBitcoinNetwork, HardwareCurve, HardwareDevice, SolanaTokenAccountInfo, SolanaTxFields, TronContract,
-    TronTxFields,
+    TronResource, TronTxFields,
 };
 pub use error::HardwareError;
 pub use info::{HardwareDeviceInfo, HardwareTransportKind, HardwareVendor};

@@ -148,8 +148,9 @@ impl HardwareDeviceFfi {
         encode_message_signature(signature)
     }
 
-    /// Signs the raw TronGrid transaction response on the device. WalletKit
-    /// currently constructs `TransferContract` and `TriggerSmartContract`.
+    /// Signs the raw TronGrid transaction response on the device:
+    /// `TransferContract`, `TriggerSmartContract` and the Stake 2.0
+    /// `FreezeBalanceV2`/`UnfreezeBalanceV2`/`WithdrawExpireUnfreeze`.
     pub async fn tron_sign_tx(
         &self,
         path: DerivationPathFfi,
@@ -359,7 +360,20 @@ fn to_tron_tx_fields(transaction: &str) -> Result<hw::TronTxFields, WalletKitErr
             },
             data: address(payload, "data")?,
         },
-        _ => return Err(WalletKitErrorFfi::UnsupportedDevice { reason: "Trezor Tron signing supports only transfer and smart-contract calls".to_string() }),
+        Some("FreezeBalanceV2Contract") => hw::TronContract::FreezeBalanceV2 {
+            owner_address,
+            balance: tron_optional_amount(payload, "frozen_balance")?,
+            resource: tron_resource(payload)?,
+        },
+        Some("UnfreezeBalanceV2Contract") => hw::TronContract::UnfreezeBalanceV2 {
+            owner_address,
+            balance: tron_optional_amount(payload, "unfreeze_balance")?,
+            resource: tron_resource(payload)?,
+        },
+        Some("WithdrawExpireUnfreezeContract") => hw::TronContract::WithdrawExpireUnfreeze { owner_address },
+        _ => return Err(WalletKitErrorFfi::UnsupportedDevice {
+            reason: "Trezor Tron signing supports only transfers, smart-contract calls and Stake 2.0 stake/unstake/withdraw".to_string(),
+        }),
     };
     Ok(hw::TronTxFields {
         ref_block_bytes: bytes("ref_block_bytes")?,
@@ -370,6 +384,28 @@ fn to_tron_tx_fields(transaction: &str) -> Result<hw::TronTxFields, WalletKitErr
         data: raw.get("data").and_then(serde_json::Value::as_str).map(hex::decode).transpose().map_err(|_| WalletKitErrorFfi::SigningFailed { reason: "invalid Tron memo hex".to_string() })?,
         contract,
     })
+}
+
+/// A SUN amount that TronGrid omits when zero (proto3 default).
+fn tron_optional_amount(payload: &serde_json::Value, name: &str) -> Result<u64, WalletKitErrorFfi> {
+    match payload.get(name) {
+        None => Ok(0),
+        Some(value) => value.as_u64().ok_or_else(|| WalletKitErrorFfi::SigningFailed {
+            reason: format!("Tron contract has an invalid {name}"),
+        }),
+    }
+}
+
+/// `resource` as TronGrid writes it: absent for `BANDWIDTH` (proto3
+/// default), otherwise the enum name. Trezor has no `TRON_POWER`.
+fn tron_resource(payload: &serde_json::Value) -> Result<hw::TronResource, WalletKitErrorFfi> {
+    match payload.get("resource").map(|value| value.as_str()) {
+        None | Some(Some("BANDWIDTH")) => Ok(hw::TronResource::Bandwidth),
+        Some(Some("ENERGY")) => Ok(hw::TronResource::Energy),
+        _ => Err(WalletKitErrorFfi::UnsupportedDevice {
+            reason: "Trezor can stake only for bandwidth or energy".to_string(),
+        }),
+    }
 }
 
 fn to_solana_tx_fields(transaction: &str) -> Result<hw::SolanaTxFields, WalletKitErrorFfi> {
@@ -434,6 +470,17 @@ pub fn tron_raw_data(transaction: String) -> Result<Vec<u8>, WalletKitErrorFfi> 
             wire_bytes(&mut trigger, 4, &data);
             (31, "type.googleapis.com/protocol.TriggerSmartContract", trigger)
         }
+        hw::TronContract::FreezeBalanceV2 { owner_address, balance, resource } => {
+            (54, "type.googleapis.com/protocol.FreezeBalanceV2Contract", stake_contract(&owner_address, balance, resource))
+        }
+        hw::TronContract::UnfreezeBalanceV2 { owner_address, balance, resource } => {
+            (55, "type.googleapis.com/protocol.UnfreezeBalanceV2Contract", stake_contract(&owner_address, balance, resource))
+        }
+        hw::TronContract::WithdrawExpireUnfreeze { owner_address } => {
+            let mut withdraw = Vec::new();
+            wire_bytes(&mut withdraw, 1, &owner_address);
+            (56, "type.googleapis.com/protocol.WithdrawExpireUnfreezeContract", withdraw)
+        }
     };
     let mut any = Vec::new();
     wire_bytes(&mut any, 1, contract.1.as_bytes());
@@ -454,6 +501,20 @@ pub fn tron_raw_data(transaction: String) -> Result<Vec<u8>, WalletKitErrorFfi> 
         wire_varint(&mut output, 18, fee_limit);
     }
     Ok(output)
+}
+
+/// `FreezeBalanceV2Contract`/`UnfreezeBalanceV2Contract`: proto3 omits a
+/// zero amount and the default `BANDWIDTH` resource.
+fn stake_contract(owner_address: &[u8], balance: u64, resource: hw::TronResource) -> Vec<u8> {
+    let mut contract = Vec::new();
+    wire_bytes(&mut contract, 1, owner_address);
+    if balance > 0 {
+        wire_varint(&mut contract, 2, balance);
+    }
+    if resource == hw::TronResource::Energy {
+        wire_varint(&mut contract, 3, 1);
+    }
+    contract
 }
 
 fn wire_bytes(output: &mut Vec<u8>, field: u64, value: &[u8]) {
@@ -648,6 +709,62 @@ mod tests {
         }"#;
         let expected = "0a02e94222086394747da9fee42140c08afee6803352046d656d6f5ab301081f12ae010a31747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e54726967676572536d617274436f6e747261637412790a15417e5f4552091a69125d5dfcb7b8c2659029395bdf121541a614f803b6fd780986a42c78ec9c7f77e6ded13c18c096b1022244a9059cbb000000000000000000000000a614f803b6fd780986a42c78ec9c7f77e6ded13c00000000000000000000000000000000000000000000000000000000000f424070e0b5fae68033900180a3c347";
         assert_eq!(hex::encode(tron_raw_data(transaction.to_string()).unwrap()), expected);
+    }
+
+    fn stake_transaction(contract_type: &str, value: &str) -> String {
+        format!(r#"{{
+            "raw_data": {{
+                "ref_block_bytes": "e942", "ref_block_hash": "6394747da9fee421",
+                "expiration": 1752562632000, "timestamp": 1752562572000,
+                "contract": [{{ "type": "{contract_type}", "parameter": {{ "value": {value} }} }}]
+            }}
+        }}"#)
+    }
+
+    /// `raw_data_hex` from TronWeb 6.5.1 for each Stake 2.0 contract, as
+    /// `TronRawTransactionTests` in Swift uses.
+    #[test]
+    fn tron_raw_data_reproduces_stake_2_contracts() {
+        let owner = r#""owner_address": "417e5f4552091a69125d5dfcb7b8c2659029395bdf""#;
+        let cases = [
+            (
+                stake_transaction("FreezeBalanceV2Contract", &format!(r#"{{ {owner}, "frozen_balance": 100000000, "resource": "ENERGY" }}"#)),
+                "0a02e94222086394747da9fee42140c08afee680335a5a083612560a34747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e467265657a6542616c616e63655632436f6e7472616374121e0a15417e5f4552091a69125d5dfcb7b8c2659029395bdf1080c2d72f180170e0b5fae68033",
+            ),
+            (
+                stake_transaction("FreezeBalanceV2Contract", &format!(r#"{{ {owner}, "frozen_balance": 25000000 }}"#)),
+                "0a02e94222086394747da9fee42140c08afee680335a58083612540a34747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e467265657a6542616c616e63655632436f6e7472616374121c0a15417e5f4552091a69125d5dfcb7b8c2659029395bdf10c0f0f50b70e0b5fae68033",
+            ),
+            (
+                stake_transaction("UnfreezeBalanceV2Contract", &format!(r#"{{ {owner}, "unfreeze_balance": 40000000, "resource": "ENERGY" }}"#)),
+                "0a02e94222086394747da9fee42140c08afee680335a5c083712580a36747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e556e667265657a6542616c616e63655632436f6e7472616374121e0a15417e5f4552091a69125d5dfcb7b8c2659029395bdf1080b48913180170e0b5fae68033",
+            ),
+            (
+                stake_transaction("WithdrawExpireUnfreezeContract", &format!("{{ {owner} }}")),
+                "0a02e94222086394747da9fee42140c08afee680335a5a083812560a3b747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e5769746864726177457870697265556e667265657a65436f6e747261637412170a15417e5f4552091a69125d5dfcb7b8c2659029395bdf70e0b5fae68033",
+            ),
+        ];
+        for (transaction, expected) in cases {
+            assert_eq!(hex::encode(tron_raw_data(transaction).unwrap()), expected);
+        }
+    }
+
+    #[test]
+    fn to_tron_tx_fields_parses_a_bandwidth_freeze_without_a_resource() {
+        let transaction = stake_transaction("FreezeBalanceV2Contract", r#"{ "owner_address": "41", "frozen_balance": 7 }"#);
+        assert!(matches!(
+            to_tron_tx_fields(&transaction).unwrap().contract,
+            hw::TronContract::FreezeBalanceV2 { balance: 7, resource: hw::TronResource::Bandwidth, .. }
+        ));
+    }
+
+    #[test]
+    fn to_tron_tx_fields_rejects_tron_power() {
+        let transaction = stake_transaction(
+            "FreezeBalanceV2Contract",
+            r#"{ "owner_address": "41", "frozen_balance": 7, "resource": "TRON_POWER" }"#,
+        );
+        assert!(matches!(to_tron_tx_fields(&transaction), Err(WalletKitErrorFfi::UnsupportedDevice { .. })));
     }
 
     #[test]

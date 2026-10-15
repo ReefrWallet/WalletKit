@@ -831,8 +831,8 @@ fn parse_i256(text: &str) -> Result<alloy_primitives::I256, String> {
 }
 
 /// Drives Trezor's `TronSignTx` → contract → `TronSignature` exchange for
-/// the two contract types WalletKit can build: native transfers and TRC-20
-/// calls. The device displays these structured fields before signing.
+/// native transfers, smart-contract calls and Stake 2.0 stake/unstake/
+/// withdraw. The device displays these structured fields before signing.
 pub(super) fn tron_sign_tx(
     trezor: &mut Trezor,
     path: &[HardwarePathSegment],
@@ -892,12 +892,55 @@ pub(super) fn tron_sign_tx(
                 &HardwareButtonRequest::ConfirmTransaction,
             )?
         }
+        walletkit_hardware::TronContract::FreezeBalanceV2 { owner_address, balance, resource } => {
+            let mut contract = protos::TronFreezeBalanceV2Contract::new();
+            contract.set_owner_address(owner_address);
+            contract.set_balance(balance);
+            contract.set_resource(tron_resource_code(resource));
+            drive_interaction(
+                trezor.call(contract, Box::new(|_, message: protos::TronSignature| Ok(message))),
+                delegate,
+                runtime,
+                &HardwareButtonRequest::ConfirmTransaction,
+            )?
+        }
+        walletkit_hardware::TronContract::UnfreezeBalanceV2 { owner_address, balance, resource } => {
+            let mut contract = protos::TronUnfreezeBalanceV2Contract::new();
+            contract.set_owner_address(owner_address);
+            contract.set_balance(balance);
+            contract.set_resource(tron_resource_code(resource));
+            drive_interaction(
+                trezor.call(contract, Box::new(|_, message: protos::TronSignature| Ok(message))),
+                delegate,
+                runtime,
+                &HardwareButtonRequest::ConfirmTransaction,
+            )?
+        }
+        walletkit_hardware::TronContract::WithdrawExpireUnfreeze { owner_address } => {
+            let mut contract = protos::TronWithdrawUnfreeze::new();
+            contract.set_owner_address(owner_address);
+            drive_interaction(
+                trezor.call(contract, Box::new(|_, message: protos::TronSignature| Ok(message))),
+                delegate,
+                runtime,
+                &HardwareButtonRequest::ConfirmTransaction,
+            )?
+        }
     };
 
     if !signature.has_signature() {
         return Err(HardwareError::SigningFailed { reason: "Trezor returned an empty Tron signature".to_string() });
     }
     Ok(signature.signature().to_vec())
+}
+
+/// The firmware omits `BANDWIDTH` (the proto3 default) when it
+/// re-serializes, matching java-tron/TronWeb, so it's always safe to set.
+fn tron_resource_code(resource: walletkit_hardware::TronResource) -> protos::TronResourceCode {
+    match resource {
+        walletkit_hardware::TronResource::Bandwidth => protos::TronResourceCode::BANDWIDTH,
+        walletkit_hardware::TronResource::Energy => protos::TronResourceCode::ENERGY,
+    }
 }
 
 /// Runs on the device's worker thread. Reads the ed25519 public key at
