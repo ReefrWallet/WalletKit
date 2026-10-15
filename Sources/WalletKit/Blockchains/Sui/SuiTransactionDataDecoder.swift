@@ -157,6 +157,7 @@ public enum SuiTransactionDataDecoder {
         guard let gasOwnerBytes = reader.readBytes(32), let gasOwner = try? SuiAddress(rawBytes: gasOwnerBytes) else {
             return nil
         }
+
         guard let gasPrice = reader.readU64() else {
             return nil
         }

@@ -111,6 +111,7 @@ struct AptosVectorTests {
         let authenticator = try await signer.sign(transaction: raw)
         let signed = raw + authenticator
         #expect(signed == (try Data(hexString: vector.signedTransactionBcsHex)))
+        // swiftlint:disable:next line_length
         #expect(try await signer.signAccountAuthenticator(transaction: raw) == Data(hexString: vector.accountAuthenticatorBcsHex))
         #expect(AptosClient.transactionHash(of: signed) == vector.transactionHashHex)
     }
@@ -126,7 +127,12 @@ struct AptosVectorTests {
             payload = .aptTransfer(to: recipient, amount: 123_456_789)
             sequenceNumber = 7
         } else if vector.label.hasSuffix("coin-transfer") {
-            payload = .coinTransfer(coinType: try MoveType(parsing: AptosClient.nativeCoinType), to: recipient, amount: 42)
+            payload = .coinTransfer(
+                coinType: try MoveType(parsing: AptosClient.nativeCoinType),
+                to: recipient,
+                amount: 42
+            )
+
             sequenceNumber = 8
         } else {
             payload = .fungibleAssetTransfer(metadata: try AptosAddress(string: "0xa"), to: recipient, amount: 1_000)

@@ -180,6 +180,7 @@ public struct TronRawTransaction: Equatable, Sendable {
                 amount: ("frozen_balance", amount),
                 resource: resource
             )
+
         case let .unfreezeBalanceV2(owner, amount, resource):
             return Self.stakeJSON(
                 "UnfreezeBalanceV2Contract",
@@ -187,6 +188,7 @@ public struct TronRawTransaction: Equatable, Sendable {
                 amount: ("unfreeze_balance", amount),
                 resource: resource
             )
+
         case let .withdrawExpireUnfreeze(owner):
             return Self.stakeJSON("WithdrawExpireUnfreezeContract", owner: owner)
         }
@@ -217,6 +219,12 @@ public struct TronRawTransaction: Equatable, Sendable {
 // MARK: - Contract decoding
 
 private extension TronRawTransaction {
+    struct Stake {
+        let amount: UInt64
+        let owner: TronAddress
+        let resource: Resource
+    }
+
     static let transferTypeURL = typeURL("TransferContract")
     static let triggerTypeURL = typeURL("TriggerSmartContract")
     static let freezeV2TypeURL = typeURL("FreezeBalanceV2Contract")
@@ -245,11 +253,11 @@ private extension TronRawTransaction {
         case (31, triggerTypeURL):
             return try decodeTrigger(value)
         case (54, freezeV2TypeURL):
-            let (owner, amount, resource) = try decodeStake(value)
-            return .freezeBalanceV2(owner: owner, amount: amount, resource: resource)
+            let stake = try decodeStake(value)
+            return .freezeBalanceV2(owner: stake.owner, amount: stake.amount, resource: stake.resource)
         case (55, unfreezeV2TypeURL):
-            let (owner, amount, resource) = try decodeStake(value)
-            return .unfreezeBalanceV2(owner: owner, amount: amount, resource: resource)
+            let stake = try decodeStake(value)
+            return .unfreezeBalanceV2(owner: stake.owner, amount: stake.amount, resource: stake.resource)
         case (56, withdrawExpireUnfreezeTypeURL):
             let fields = try ProtoFields(value, allowed: [1: .bytes])
             return .withdrawExpireUnfreeze(owner: try address(fields.requiredBytes(1)))
@@ -260,14 +268,18 @@ private extension TronRawTransaction {
 
     /// `FreezeBalanceV2Contract` / `UnfreezeBalanceV2Contract`: owner (1),
     /// amount in SUN (2), `ResourceCode` (3, default `BANDWIDTH`).
-    static func decodeStake(_ bytes: Data) throws -> (TronAddress, UInt64, Resource) {
+    static func decodeStake(_ bytes: Data) throws -> Stake {
         let fields = try ProtoFields(bytes, allowed: [1: .bytes, 2: .varint, 3: .varint])
 
         guard let resource = Resource(rawValue: try fields.optionalInt64(3) ?? 0) else {
             throw invalid("unsupported staking resource")
         }
 
-        return (try address(fields.requiredBytes(1)), try fields.optionalInt64(2) ?? 0, resource)
+        return Stake(
+            amount: try fields.optionalInt64(2) ?? 0,
+            owner: try address(fields.requiredBytes(1)),
+            resource: resource
+        )
     }
 
     static func decodeTransfer(_ bytes: Data) throws -> Contract {

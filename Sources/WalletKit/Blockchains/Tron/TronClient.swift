@@ -496,7 +496,7 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
     }
 
     private static func describe(_ response: Response) -> String {
-        let body = String(decoding: response.data.prefix(200), as: UTF8.self)
+        let body = (String(bytes: response.data.prefix(200), encoding: .utf8) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
         return body.isEmpty ? "HTTP \(response.statusCode)" : "HTTP \(response.statusCode): \(body)"

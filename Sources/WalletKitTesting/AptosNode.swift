@@ -216,7 +216,8 @@ public final class AptosNode {
         guard (response as? HTTPURLResponse)?.statusCode == 200,
               let hashes = try? JSONDecoder().decode([String].self, from: data),
               let hash = hashes.first else {
-            throw AptosLaunchError(description: "faucet mint for \(address.string) failed: \(String(decoding: data, as: UTF8.self))")
+            let responseBody = String(bytes: data, encoding: .utf8) ?? ""
+            throw AptosLaunchError(description: "faucet mint for \(address.string) failed: \(responseBody)")
         }
 
         _ = try await waitForCommit("0x" + hash.replacingOccurrences(of: "0x", with: ""))
@@ -316,7 +317,8 @@ private func terminateOrphanedNodes() {
         return
     }
 
-    let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    let output = String(bytes: data, encoding: .utf8) ?? ""
     ps.waitUntilExit()
 
     for line in output.split(separator: "\n") {
@@ -334,10 +336,10 @@ private func terminateOrphanedNodes() {
 private func resolveProvisionedBinary() throws -> URL {
     let sourceRoot = ProcessInfo.processInfo.environment["SRCROOT"]
         ?? URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent() // WalletKitTesting/
-            .deletingLastPathComponent() // Sources/
-            .deletingLastPathComponent() // WalletKit/
-            .path
+        .deletingLastPathComponent() // WalletKitTesting/
+        .deletingLastPathComponent() // Sources/
+        .deletingLastPathComponent() // WalletKit/
+        .path
 
     let binary = URL(fileURLWithPath: sourceRoot).appendingPathComponent(".build/aptos-testing/bin/aptos")
 

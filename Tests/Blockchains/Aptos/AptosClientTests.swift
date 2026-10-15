@@ -10,7 +10,12 @@ struct AptosClientTests {
     )
 
     private func client(_ stub: StubURLProtocol.Session, apiKey: String? = "key") -> AptosClient {
-        AptosClient(endpoint: endpoint, indexerURL: AptosNetwork.testnet.indexerURL, apiKey: apiKey, session: stub.urlSession)
+        AptosClient(
+            endpoint: endpoint,
+            indexerURL: AptosNetwork.testnet.indexerURL,
+            apiKey: apiKey,
+            session: stub.urlSession
+        )
     }
 
     private func json(_ text: String) -> StubURLProtocol.StubResponse {
@@ -48,6 +53,7 @@ struct AptosClientTests {
     }
 
     @Test func simulationDecodesResultsWithoutAType() async throws {
+        // swiftlint:disable:next line_length
         let body = #"[{"hash":"0x1","gas_used":"5414","gas_unit_price":"100","success":true,"vm_status":"Executed successfully"}]"#
         let stub = StubURLProtocol.makeSession(response: json(body))
 
@@ -58,11 +64,17 @@ struct AptosClientTests {
     }
 
     @Test func broadcastPostsBcsAndReturnsTheNodeHash() async throws {
-        let stub = StubURLProtocol.makeSession(response: .success(statusCode: 202, body: Data(#"{"hash":"0xabc"}"#.utf8)))
+        let stub = StubURLProtocol.makeSession(
+            response: .success(statusCode: 202, body: Data(#"{"hash":"0xabc"}"#.utf8))
+        )
 
         #expect(try await client(stub).broadcast(transaction: Data([1, 2]), signature: Data([3])) == "0xabc")
         #expect(stub.capturedRequest?.url?.path == "/v1/transactions")
-        #expect(stub.capturedRequest?.value(forHTTPHeaderField: "Content-Type") == AptosClient.signedTransactionContentType)
+
+        #expect(
+            stub.capturedRequest?.value(forHTTPHeaderField: "Content-Type") == AptosClient.signedTransactionContentType
+        )
+
         #expect(stub.capturedBody == Data([1, 2, 3]))
     }
 
@@ -87,8 +99,12 @@ struct AptosClientTests {
     @Test func allBalancesUseCanonicalAssetTypes() async throws {
         let response = """
         {"data":{"current_fungible_asset_balances":[
-          {"amount":48934400,"asset_type":"0x1::aptos_coin::AptosCoin","asset_type_v2":"0x000000000000000000000000000000000000000000000000000000000000000a"},
-          {"amount":"7","asset_type":"0x00000000000000000000000000000000000000000000000000000000000000bb","asset_type_v2":null}
+          {"amount":48934400,
+           "asset_type":"0x1::aptos_coin::AptosCoin",
+           "asset_type_v2":"0x000000000000000000000000000000000000000000000000000000000000000a"},
+          {"amount":"7",
+           "asset_type":"0x00000000000000000000000000000000000000000000000000000000000000bb",
+           "asset_type_v2":null}
         ]}}
         """
         let stub = StubURLProtocol.makeSession(response: json(response))
@@ -121,6 +137,7 @@ struct AptosClientTests {
     }
 
     @Test func missingProcessorFailsTheHead() async throws {
+        // swiftlint:disable:next line_length
         let response = #"{"data":{"processor_status":[{"processor":"fungible_asset_processor","last_success_version":5}]}}"#
         let stub = StubURLProtocol.makeSession(response: json(response))
         await #expect(throws: BlockchainClientError.self) { _ = try await client(stub).indexedHead() }
@@ -166,8 +183,10 @@ struct AptosClientTests {
         #expect(!noIndexer.isSupported(.transactionHistory))
         #expect(!noIndexer.isSupported(.allBalances))
         #expect(!noIndexer.isSupported(.transactionSubscription))
-        #expect(AptosClient(endpoint: endpoint, indexerURL: AptosNetwork.testnet.indexerURL, apiKey: nil)
-            .isSupported(.transactionHistory))
+        #expect(
+            AptosClient(endpoint: endpoint, indexerURL: AptosNetwork.testnet.indexerURL, apiKey: nil)
+                    .isSupported(.transactionHistory)
+        )
     }
 
     @Test func nativeAssetFormsAreRecognised() {
@@ -182,13 +201,25 @@ struct AptosClientTests {
         let recipient = owner
 
         #expect(try AptosTransactionBuilder.payload(recipient: recipient, amount: 1, token: nil).identifier
-            == "0x1::aptos_account::transfer")
+                    == "0x1::aptos_account::transfer")
         #expect(try AptosTransactionBuilder.payload(recipient: recipient, amount: 1, token: "0xa").identifier
-            == "0x1::aptos_account::transfer")
-        #expect(try AptosTransactionBuilder.payload(recipient: recipient, amount: 1, token: "0x1::usdc::USDC").identifier
-            == "0x1::aptos_account::transfer_coins")
-        #expect(try AptosTransactionBuilder.payload(recipient: recipient, amount: 1, token: "0xbb").identifier
-            == "0x1::primary_fungible_store::transfer")
+                    == "0x1::aptos_account::transfer")
+        #expect(
+            try AptosTransactionBuilder.payload(
+                recipient: recipient,
+                amount: 1,
+                token: "0x1::usdc::USDC"
+            ).identifier == "0x1::aptos_account::transfer_coins"
+        )
+
+        #expect(
+            try AptosTransactionBuilder.payload(
+                recipient: recipient,
+                amount: 1,
+                token: "0xbb"
+            ).identifier == "0x1::primary_fungible_store::transfer"
+        )
+        
         #expect(throws: BlockchainTransactionBuilderError.self) {
             try AptosTransactionBuilder.payload(recipient: recipient, amount: 1, token: "nope")
         }

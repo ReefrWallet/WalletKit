@@ -86,6 +86,7 @@ struct AptosLocalnetTests {
                 expirationTimestampSecs: ledger.ledgerTimestamp / 1_000_000 + 600,
                 chainId: ledger.chainId
             )
+
             fees += try await send(transaction.bcs, signer: signer, node: node)
         }
 
@@ -123,6 +124,7 @@ struct AptosLocalnetTests {
             token: nil,
             options: [.aptosGasOverride(maxGasAmount: 30_000, gasUnitPrice: 150)]
         )
+
         let fee = try await send(transaction, signer: signer, node: node)
 
         #expect(fee.isMultiple(of: 150))
