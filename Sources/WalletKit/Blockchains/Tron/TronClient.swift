@@ -261,11 +261,14 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
             ])
         }
 
-        guard response["raw_data_hex"] != nil else {
+        // `triggersmartcontract` nests the transaction under `transaction`.
+        let transaction = (response["transaction"] as? [String: Any]) ?? response
+
+        guard transaction["raw_data_hex"] != nil else {
             throw WalletKitError.internalError(message: "Tron node did not construct a transaction.")
         }
 
-        return try JSONSerialization.data(withJSONObject: response)
+        return try JSONSerialization.data(withJSONObject: transaction)
     }
 
     private func block(number: UInt64?) async throws -> BlockStamp {
