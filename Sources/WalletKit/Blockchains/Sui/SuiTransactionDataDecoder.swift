@@ -47,6 +47,9 @@ public struct SuiTransactionDataSummary: Sendable, Equatable {
     /// `SuiTransactionDataDecoder` itself does not know which account is
     /// authorized; it only reports what the bytes claim.
     public let sender: SuiAddress
+    /// The account paying for the transaction's gas. Wallets that do not
+    /// support sponsored transactions must require this to equal `sender`.
+    public let gasOwner: SuiAddress
     /// The transaction's gas budget, in MIST.
     public let gasBudget: UInt64
     /// The transaction's gas price, in MIST per gas unit.
@@ -58,7 +61,8 @@ public struct SuiTransactionDataSummary: Sendable, Equatable {
     public let moveCalls: [SuiMoveCallSummary]
 
     public static func == (lhs: SuiTransactionDataSummary, rhs: SuiTransactionDataSummary) -> Bool {
-        lhs.sender == rhs.sender && lhs.gasBudget == rhs.gasBudget && lhs.gasPrice == rhs.gasPrice
+        lhs.sender == rhs.sender && lhs.gasOwner == rhs.gasOwner && lhs.gasBudget == rhs.gasBudget
+            && lhs.gasPrice == rhs.gasPrice
             && lhs.commandCount == rhs.commandCount && lhs.moveCalls == rhs.moveCalls
     }
 }
@@ -150,9 +154,9 @@ public enum SuiTransactionDataDecoder {
             }
         }
 
-        guard reader.readBytes(32) != nil else {
+        guard let gasOwnerBytes = reader.readBytes(32), let gasOwner = try? SuiAddress(rawBytes: gasOwnerBytes) else {
             return nil
-        } // gas owner — not surfaced in the summary
+        }
         guard let gasPrice = reader.readU64() else {
             return nil
         }
@@ -178,6 +182,7 @@ public enum SuiTransactionDataDecoder {
 
         return SuiTransactionDataSummary(
             sender: sender,
+            gasOwner: gasOwner,
             gasBudget: gasBudget,
             gasPrice: gasPrice,
             commandCount: commandCount,
