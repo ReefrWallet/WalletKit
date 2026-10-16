@@ -162,9 +162,29 @@ func remappingWalletKitError<T>(_ body: () async throws -> T) async rethrows -> 
 extension WalletKitError: LocalizedError {
     public var errorDescription: String? {
         switch self {
-        case let .internalError(message): message
-        case let .signingFailed(reason): reason
-        default: nil
+        case .decryptionFailed: "Decryption failed."
+        case .deviceBusy: "The hardware device is busy with another operation."
+        case .deviceDisconnected: "The hardware device disconnected during the operation."
+        case .deviceLocked: "The hardware device is locked. Unlock it and try again."
+        case .deviceNotFound: "No matching hardware device was found."
+        case let .firmwareOutdated(minimumVersion): "The device firmware is outdated. Update to version \(minimumVersion) or later."
+        case let .internalError(message): "Internal error: \(message)"
+        case let .invalidAddress(reason): "Invalid address: \(reason)"
+        case let .invalidBigInt(reason): "Invalid number: \(reason)"
+        case let .invalidDerivationPath(path): "Invalid derivation path: \(path)"
+        case .invalidEntropy: "Invalid entropy for mnemonic generation."
+        case let .invalidMnemonic(reason): "Invalid mnemonic phrase: \(reason)"
+        case .invalidPassphrase: "Invalid passphrase."
+        case let .invalidSeed(reason): "Invalid seed: \(reason)"
+        case .keyNotFound: "The private key is not available (watch-only account?)."
+        case let .signingFailed(reason): "Signing failed: \(reason)"
+        case let .transportUnavailable(reason): "Device connection is unavailable: \(reason)"
+        case let .unsupportedCurve(curve): "Operation is not supported for the \(curve.rawValue) curve."
+        case let .unsupportedDevice(reason): "Unsupported device: \(reason)"
+        case .unsupportedFeature: "This feature is not supported."
+        case let .unsupportedWordCount(count): "Unsupported mnemonic word count: \(count). Use 12, 15, 18, 21 or 24."
+        case .userCancelled: "The request was cancelled."
+        case .userRejectedOnDevice: "The operation was rejected on the device."
         }
     }
 }

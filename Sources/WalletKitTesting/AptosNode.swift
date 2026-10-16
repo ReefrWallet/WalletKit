@@ -6,8 +6,10 @@ import WalletKit
 
 /// An error raised when the local Aptos network cannot be provisioned,
 /// started, or queried.
-public struct AptosLaunchError: Error, CustomStringConvertible {
+public struct AptosLaunchError: LocalizedError, CustomStringConvertible {
     public let description: String
+
+    public var errorDescription: String? { description }
 
     public init(description: String) {
         self.description = description

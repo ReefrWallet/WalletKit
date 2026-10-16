@@ -6,9 +6,11 @@ import WalletKit
 
 /// An error raised when the local Bitcoin regtest node (`bitcoind` +
 /// `electrs`) cannot be provisioned, started, or queried.
-public struct BitcoinLaunchError: Error, CustomStringConvertible {
+public struct BitcoinLaunchError: LocalizedError, CustomStringConvertible {
     /// A description of the failed local-node operation.
     public let description: String
+
+    public var errorDescription: String? { description }
 
     /// Creates an error with a diagnostic description.
     public init(description: String) {

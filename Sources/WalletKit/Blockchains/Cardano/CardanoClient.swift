@@ -394,8 +394,14 @@ extension CardanoClient {
     }
 }
 
-private enum HTTPError: Swift.Error {
+private enum HTTPError: Swift.Error, LocalizedError {
     case notFound
+
+    var errorDescription: String? {
+        switch self {
+        case .notFound: "Not found on the Cardano node."
+        }
+    }
 }
 
 private enum BlockfrostAPI: TargetType {

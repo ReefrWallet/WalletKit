@@ -6,9 +6,11 @@ import WalletKit
 
 /// An error raised when the local `solana-test-validator` node cannot be
 /// provisioned, started, or queried.
-public struct SolanaLaunchError: Error, CustomStringConvertible {
+public struct SolanaLaunchError: LocalizedError, CustomStringConvertible {
     /// A description of the failed local-node operation.
     public let description: String
+
+    public var errorDescription: String? { description }
 
     /// Creates an error with a diagnostic description.
     public init(description: String) {

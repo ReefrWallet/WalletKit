@@ -6,9 +6,11 @@ import Foundation
 import WalletKit
 
 /// An error raised when the local Anvil test node cannot be started or queried.
-public struct EthereumLaunchError: Error, CustomStringConvertible {
+public struct EthereumLaunchError: LocalizedError, CustomStringConvertible {
     /// A description of the failed local-node operation.
     public let description: String
+
+    public var errorDescription: String? { description }
 
     /// Creates an error with a diagnostic description.
     public init(description: String) {

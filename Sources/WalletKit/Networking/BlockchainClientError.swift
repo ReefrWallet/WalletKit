@@ -34,3 +34,14 @@ public enum BlockchainClientError: Error, Equatable {
     /// count, ...). `reason` describes what went wrong.
     case decodingFailed(reason: String)
 }
+
+extension BlockchainClientError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case let .decodingFailed(reason): "Unexpected node result: \(reason)"
+        case let .invalidResponse(reason): "Invalid node response: \(reason)"
+        case let .rpcError(code, message): "Node rejected the request (\(code)): \(message)"
+        case let .transportError(reason): "Couldn't reach the node: \(reason)"
+        }
+    }
+}

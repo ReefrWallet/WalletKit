@@ -7,9 +7,11 @@ import WalletKit
 import WalletKitGRPC
 
 /// An error raised when the local Sui network cannot be started or queried.
-public struct SuiLaunchError: Error, CustomStringConvertible {
+public struct SuiLaunchError: LocalizedError, CustomStringConvertible {
     /// A description of the failed local-node operation.
     public let description: String
+
+    public var errorDescription: String? { description }
 }
 
 /// Binds two distinct ephemeral TCP ports via the kernel (port 0) and reads
