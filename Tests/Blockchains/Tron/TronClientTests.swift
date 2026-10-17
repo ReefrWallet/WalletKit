@@ -25,7 +25,7 @@ struct TronClientTests {
         let body = try requestBody(stub)
         #expect(body["owner_address"] as? String == owner.string)
         #expect(body["to_address"] as? String == recipient.string)
-        #expect(body["amount"] as? String == "42")
+        #expect(body["amount"] as? UInt64 == 42)
         #expect(body["visible"] as? Bool == true)
     }
 
@@ -186,6 +186,41 @@ struct TronClientTests {
         )
 
         #expect(page.transactions.map(\.blockHeight) == [321])
+    }
+
+    @Test func transactionHistoryDecodesTRC20TransferFromTheContractCall() async throws {
+        let token = try TronAddress(string: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t")
+        let recipient = try TronAddress(string: "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb")
+        let data = "a9059cbb" + String(repeating: "0", count: 24) + recipient.rawBytes.dropFirst().bareHex
+            + String(5, radix: 16).leftPadding(to: 64)
+        let native = #"""
+        {"data":[{"txID":"call","blockNumber":321,"block_timestamp":1000,"raw_data":{"contract":[
+          {"type":"TriggerSmartContract","parameter":{"value":{"owner_address":"\#(owner.rawBytes.bareHex)",
+           "contract_address":"\#(token.rawBytes.bareHex)","data":"\#(data)"}}}]},"ret":[{"contractRet":"SUCCESS"}]}]}
+        """#
+        let indexed = #"""
+        [{"transaction_id":"call","token_info":{"address":"\#(token.string)"},"block_timestamp":1000,
+          "from":"\#(owner.string)","to":"\#(recipient.string)","value":"5"}]
+        """#
+
+        for trc20 in ["[]", indexed] {
+            var responses = historyResponses(trc20: trc20)
+            responses["/v1/accounts/\(owner.string)/transactions"] = .success(body: Data(native.utf8))
+            let stub = StubURLProtocol.makeSession(responsesByPath: responses)
+            let client = TronClient(endpoint: endpoint, session: stub.urlSession)
+
+            let page = try await client.transactionHistory(
+                owner,
+                request: BlockchainTransactionHistoryRequest(direction: .descending, limit: 20)
+            )
+
+            let effects = try #require(page.transactions.first).effects
+            #expect(effects.count == 1)
+            #expect(effects.first?.kind == .tokenTransfer)
+            #expect(effects.first?.assetIdentifier == token.string)
+            #expect(effects.first?.amount == "5")
+            #expect(effects.first?.to == recipient.string)
+        }
     }
 
     @Test func transactionHistoryIncludesTronScanInternalTransfers() async throws {

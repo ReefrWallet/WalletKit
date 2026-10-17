@@ -599,7 +599,7 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
 
         let effects = amount.map {
             [BlockchainTransactionEffect(index: 0, kind: .nativeTransfer, amount: $0, from: sender, to: recipient)]
-        } ?? []
+        } ?? trc20Effect(in: contracts).map { [$0] } ?? []
 
         let result = (value["ret"] as? [[String: Any]])?.first
         let contractResult = result?["contractRet"] as? String
@@ -616,6 +616,38 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
             method: (contracts.first?["type"] as? String).map(Self.method(contractType:))
         )
     }
+
+    /// The TRC-20 `transfer(address,uint256)` a `TriggerSmartContract` makes. The
+    /// dedicated TRC-20 index lags the node, so this lets balances refresh without it.
+    private static func trc20Effect(in contracts: [[String: Any]]) -> BlockchainTransactionEffect? {
+        guard
+            let call = contracts.first(where: { ($0["type"] as? String) == "TriggerSmartContract" }),
+            let payload = (call["parameter"] as? [String: Any])?["value"] as? [String: Any],
+            let owner = (payload["owner_address"] as? String).flatMap({ try? Data(hexString: $0) }),
+            let token = (payload["contract_address"] as? String).flatMap({ try? Data(hexString: $0) }),
+            let data = payload["data"] as? String,
+            data.count == 8 + 128,
+            data.hasPrefix(trc20TransferSelector),
+            let amount = BigUInt(data.suffix(64), radix: 16),
+            let recipient = try? Data(hexString: "41" + data.dropFirst(8 + 24).prefix(40)),
+            let from = try? TronAddress(rawBytes: owner),
+            let to = try? TronAddress(rawBytes: recipient),
+            let asset = try? TronAddress(rawBytes: token)
+        else {
+            return nil
+        }
+
+        return BlockchainTransactionEffect(
+            index: 0,
+            kind: .tokenTransfer,
+            assetIdentifier: asset.string,
+            amount: String(amount),
+            from: from.string,
+            to: to.string
+        )
+    }
+
+    private static let trc20TransferSelector = "a9059cbb"
 
     /// `TransferContract` → `Transfer TRX`, `TriggerSmartContract` → `Trigger Contract`.
     static func method(contractType: String) -> String {
@@ -724,7 +756,13 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
 
             let first = group[0]
 
-            let effects = group.flatMap(\.effects).enumerated().map { index, effect in
+            // The node's decoded TRC-20 call and the TRC-20 index describe the same transfer.
+            var seen: Set<[String?]> = []
+            let distinct = group.flatMap(\.effects).filter {
+                $0.kind != .tokenTransfer || seen.insert([$0.assetIdentifier, $0.amount, $0.from, $0.to]).inserted
+            }
+
+            let effects = distinct.enumerated().map { index, effect in
                 BlockchainTransactionEffect(
                     index: UInt64(index),
                     kind: effect.kind,

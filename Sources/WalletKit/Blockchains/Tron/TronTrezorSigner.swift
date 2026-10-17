@@ -37,12 +37,27 @@ public final class TronTrezorSigner: Signer {
             throw WalletKitError.deviceDisconnected
         }
 
-        guard let transaction = String(data: transaction, encoding: .utf8) else {
+        guard let transaction = String(data: Self.hexAddressed(transaction), encoding: .utf8) else {
             throw WalletKitError.signingFailed(reason: "A Trezor Tron transaction must be valid UTF-8 JSON.")
         }
 
         return try await remappingWalletKitError {
             try await device.raw.tronSignTx(path: account.derivationPath.raw, transaction: transaction)
         }
+    }
+
+    /// Node responses built with `visible: true` carry base58 addresses, but
+    /// Trezor needs hex. Rebuilds the envelope from `raw_data_hex` when it decodes.
+    private static func hexAddressed(_ transaction: Data) -> Data {
+        guard
+            let json = try? JSONSerialization.jsonObject(with: transaction) as? [String: Any],
+            let hex = json["raw_data_hex"] as? String,
+            let rawBytes = try? Data(hexString: hex),
+            let envelope = try? TronRawTransaction(rawBytes: rawBytes).signingEnvelope()
+        else {
+            return transaction
+        }
+
+        return envelope
     }
 }
