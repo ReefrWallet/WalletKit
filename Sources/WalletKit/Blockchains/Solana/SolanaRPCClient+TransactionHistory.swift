@@ -96,8 +96,33 @@ extension SolanaRPCClient {
         let signer: Bool
     }
 
+    private struct TransactionInstruction: Decodable {
+        let parsedType: String?
+        let program: String?
+        let programId: String
+
+        private enum CodingKeys: String, CodingKey {
+            case parsed
+            case program
+            case programId
+        }
+
+        private struct Parsed: Decodable {
+            let type: String?
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            // `parsed` is an object for known programs and a plain string for memos.
+            parsedType = (try? container.decodeIfPresent(Parsed.self, forKey: .parsed))?.type
+            program = try container.decodeIfPresent(String.self, forKey: .program)
+            programId = try container.decode(String.self, forKey: .programId)
+        }
+    }
+
     private struct TransactionMessage: Decodable {
         let accountKeys: [TransactionAccountKey]
+        let instructions: [TransactionInstruction]?
     }
 
     private struct TransactionEnvelope: Decodable {
@@ -213,14 +238,38 @@ extension SolanaRPCClient {
             }
         }
 
+        let instruction = response.transaction.message.instructions?
+            .first { $0.programId != SolanaProgram.computeBudget.string }
+
         return BlockchainTransaction(
             identifier: signature,
             blockHeight: response.slot,
             timestamp: timestamp,
             sender: response.transaction.message.accountKeys.first(where: \.signer)?.pubkey,
+            recipient: instruction?.programId,
             status: status,
-            effects: effects
+            effects: effects,
+            counterpartyName: instruction.flatMap { SolanaProgram.displayNames[$0.programId] },
+            fee: response.meta.map { String($0.fee) },
+            method: instruction.map(Self.method)
         )
+    }
+
+    private static func method(_ instruction: TransactionInstruction) -> String {
+        let action = instruction.parsedType?.titleCasedWords
+
+        switch (instruction.program, action) {
+        case let ("stake", .some(action)):
+            return "SOL: \(action)"
+        case let (_, .some(action)):
+            return action
+        default:
+            if instruction.programId == SolanaProgram.jupiterV6 {
+                return "Jupiter: Swap"
+            }
+
+            return SolanaProgram.displayNames[instruction.programId] ?? "Program Call"
+        }
     }
 
     /// Every address whose signature list makes up `owner`'s history:
@@ -374,4 +423,18 @@ struct JSONValue: Decodable {
     init(from decoder: Decoder) throws {
         _ = try decoder.singleValueContainer()
     }
+}
+
+private extension SolanaProgram {
+    static let jupiterV6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+
+    static let displayNames: [String: String] = [
+        associatedToken.string: "Associated Token Program",
+        jupiterV6: "Jupiter Aggregator v6",
+        "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr": "Memo Program",
+        "Stake11111111111111111111111111111111111111": "Stake Program",
+        system.string: "System Program",
+        token.string: "Token Program",
+        token2022.string: "Token-2022 Program"
+    ]
 }

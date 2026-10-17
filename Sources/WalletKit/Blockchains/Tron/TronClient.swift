@@ -601,15 +601,33 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
             [BlockchainTransactionEffect(index: 0, kind: .nativeTransfer, amount: $0, from: sender, to: recipient)]
         } ?? []
 
+        let result = (value["ret"] as? [[String: Any]])?.first
+        let contractResult = result?["contractRet"] as? String
+
         return BlockchainTransaction(
             identifier: identifier,
             blockHeight: blockHeight,
             timestamp: timestamp,
             sender: sender,
             recipient: recipient,
-            status: .confirmed,
-            effects: effects
+            status: contractResult == nil || contractResult == "SUCCESS" ? .confirmed : .failed,
+            effects: effects,
+            fee: (result?["fee"] as? NSNumber)?.stringValue,
+            method: (contracts.first?["type"] as? String).map(Self.method(contractType:))
         )
+    }
+
+    /// `TransferContract` → `Transfer TRX`, `TriggerSmartContract` → `Trigger Contract`.
+    static func method(contractType: String) -> String {
+        switch contractType {
+        case "TransferContract":
+            "Transfer TRX"
+        case "TriggerSmartContract":
+            "Trigger Contract"
+        default:
+            String(contractType.hasSuffix("Contract") ? contractType.dropLast(8) : Substring(contractType))
+                .titleCasedWords
+        }
     }
 
     private static func tokenTransaction(from value: [String: Any]) -> BlockchainTransaction? {
@@ -641,7 +659,9 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
                     from: sender,
                     to: recipient
                 )
-            ]
+            ],
+            counterpartyName: tokenInfo["name"] as? String,
+            method: "TRC-20 Transfer"
         )
     }
 
@@ -716,6 +736,8 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
                 )
             }
 
+            let methods = group.compactMap(\.method)
+
             return BlockchainTransaction(
                 identifier: first.identifier,
                 blockHeight: group.lazy.compactMap(\.blockHeight).first,
@@ -724,9 +746,13 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
                 transactionIndex: first.transactionIndex,
                 sender: first.sender,
                 recipient: first.recipient,
-                status: first.status,
+                status: group.contains { $0.status == .failed } ? .failed : first.status,
                 rawPayload: first.rawPayload,
-                effects: effects
+                effects: effects,
+                counterpartyName: group.lazy.compactMap(\.counterpartyName).first,
+                fee: group.lazy.compactMap(\.fee).first,
+                // A token leg names a contract call better than the generic `Trigger Contract`.
+                method: methods.first { $0 != "Trigger Contract" } ?? methods.first
             )
         }
     }
@@ -775,7 +801,10 @@ private extension BlockchainTransaction {
             recipient: recipient,
             status: status,
             rawPayload: rawPayload,
-            effects: effects
+            effects: effects,
+            counterpartyName: counterpartyName,
+            fee: fee,
+            method: method
         )
     }
 }

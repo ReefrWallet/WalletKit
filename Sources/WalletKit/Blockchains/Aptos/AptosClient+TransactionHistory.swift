@@ -248,7 +248,9 @@ extension AptosClient {
             timestamp: status.timestamp.map { Date(timeIntervalSince1970: TimeInterval($0) / 1_000_000) },
             sender: status.sender.flatMap { try? AptosAddress(chainString: $0).string },
             status: status.success == false ? .reverted : .confirmed,
-            effects: effects
+            effects: effects,
+            fee: status.fee.map(String.init),
+            method: status.entryFunction?.split(separator: ":").last.map { String($0).titleCasedWords }
         )
     }
 }

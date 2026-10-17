@@ -124,6 +124,8 @@ public struct AptosSimulation: Sendable {
 
 /// A committed (or still pending) transaction as the node reports it.
 public struct AptosTransactionStatus: Sendable {
+    /// `address::module::function` of an entry-function payload.
+    public let entryFunction: String?
     public let gasUnitPrice: UInt64?
     public let gasUsed: UInt64?
     public let hash: String
@@ -401,9 +403,14 @@ private struct PendingTransactionResponse: Decodable {
 }
 
 private struct UserTransactionResponse: Decodable {
+    struct Payload: Decodable {
+        let function: String?
+    }
+
     let gasUnitPrice: UInt64?
     let gasUsed: UInt64?
     let hash: String
+    let payload: Payload?
     let sender: String?
     let success: Bool?
     let timestamp: UInt64?
@@ -416,6 +423,7 @@ private struct UserTransactionResponse: Decodable {
         case gasUnitPrice = "gas_unit_price"
         case gasUsed = "gas_used"
         case hash
+        case payload
         case sender
         case success
         case timestamp
@@ -429,6 +437,7 @@ private struct UserTransactionResponse: Decodable {
         gasUnitPrice = try container.decodeNumericStringIfPresent(forKey: .gasUnitPrice)
         gasUsed = try container.decodeNumericStringIfPresent(forKey: .gasUsed)
         hash = try container.decode(String.self, forKey: .hash)
+        payload = try? container.decodeIfPresent(Payload.self, forKey: .payload)
         sender = try container.decodeIfPresent(String.self, forKey: .sender)
         success = try container.decodeIfPresent(Bool.self, forKey: .success)
         timestamp = try container.decodeNumericStringIfPresent(forKey: .timestamp)
@@ -439,6 +448,7 @@ private struct UserTransactionResponse: Decodable {
 
     var status: AptosTransactionStatus {
         AptosTransactionStatus(
+            entryFunction: payload?.function,
             gasUnitPrice: gasUnitPrice,
             gasUsed: gasUsed,
             hash: hash,
@@ -493,4 +503,4 @@ private struct MetadataResponse: Decodable {
     enum CodingKeys: String, CodingKey {
         case fungibleAssetMetadata = "fungible_asset_metadata"
     }
-}
+} // swiftlint:disable:this file_length

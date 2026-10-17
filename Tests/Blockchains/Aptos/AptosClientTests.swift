@@ -160,7 +160,7 @@ struct AptosClientTests {
         let decoded = try JSONDecoder().decode([AptosActivity].self, from: Data(activities.utf8))
         let fungibleAsset = "0x" + String(repeating: "0", count: 62) + "cc"
         let status = AptosTransactionStatus(
-            gasUnitPrice: 100, gasUsed: 5_000, hash: "0x58f7", isPending: false, sender: "0xbd8c", success: false,
+            entryFunction: "0x1::aptos_account::transfer_coins", gasUnitPrice: 100, gasUsed: 5_000, hash: "0x58f7", isPending: false, sender: "0xbd8c", success: false,
             timestamp: 1_791_836_552_383_680, version: 2, vmStatus: "Move abort"
         )
 
@@ -170,6 +170,8 @@ struct AptosClientTests {
 
         #expect(transaction.identifier == "0x58f7")
         #expect(transaction.blockHeight == 2)
+        #expect(transaction.fee == "500000")
+        #expect(transaction.method == "Transfer Coins")
         #expect(transaction.status == .reverted)
         #expect(transaction.sender == "0x" + String(repeating: "0", count: 60) + "bd8c")
         #expect(transaction.effects.map(\.assetIdentifier) == [nil, "0x1::usdc::USDC"])

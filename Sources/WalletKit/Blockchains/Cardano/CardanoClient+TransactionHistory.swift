@@ -69,6 +69,8 @@ extension CardanoClient {
                 ownedAddresses: addresses
             )
 
+            let details: TransactionDetails? = try? await get("txs/\(transaction.txHash)")
+
             blockchainTransactions.append(
                 BlockchainTransaction(
                     identifier: transaction.txHash,
@@ -76,7 +78,9 @@ extension CardanoClient {
                     blockHash: transaction.block,
                     timestamp: Date(timeIntervalSince1970: TimeInterval(transaction.blockTime)),
                     status: .confirmed,
-                    effects: effect.map { [$0] } ?? []
+                    effects: effect.map { [$0] } ?? [],
+                    fee: details?.fees,
+                    method: effect.map { $0.from != nil ? "Sent" : $0.to != nil ? "Received" : "Self Transfer" }
                 )
             )
         }
@@ -132,6 +136,11 @@ private extension CardanoClient {
     /// `blocks/latest`. `height` is null only for the genesis block.
     struct Block: Decodable {
         let height: UInt64?
+    }
+
+    /// `txs/{hash}`; only the fee is read.
+    struct TransactionDetails: Decodable {
+        let fees: String?
     }
 
     struct TransactionUTxOs: Decodable {

@@ -175,12 +175,17 @@ extension BitcoinClient {
             to: netSats > 0 ? owner.string : counterparty
         )
 
+        let inputSats = transaction.inputs.reduce(UInt64(0)) { $0 + $1.valueSats }
+        let outputSats = transaction.outputs.reduce(UInt64(0)) { $0 + $1.valueSats }
+
         return BlockchainTransaction(
             identifier: transaction.txid,
             blockHeight: entry.height,
             timestamp: transaction.blockTime,
             status: entry.height != nil ? .confirmed : .unconfirmed,
-            effects: [effect]
+            effects: [effect],
+            fee: inputSats > outputSats ? String(inputSats - outputSats) : nil,
+            method: netSats < 0 ? "Sent" : netSats > 0 ? "Received" : "Self Transfer"
         )
     }
 }

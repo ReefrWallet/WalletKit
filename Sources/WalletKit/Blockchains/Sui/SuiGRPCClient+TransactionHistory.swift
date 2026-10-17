@@ -56,7 +56,8 @@ extension SuiGRPCClient {
                 }
 
                 $0.readMask.paths = [
-                    "digest", "transaction.sender", "checkpoint", "timestamp", "balance_changes", "effects"
+                    "digest", "transaction.sender", "transaction.kind", "checkpoint", "timestamp",
+                    "balance_changes", "effects"
                 ]
             }
 
@@ -201,15 +202,56 @@ private extension SuiGRPCClient {
             )
         }
 
+        let commands = transaction.transaction.kind.programmableTransaction.commands
+        let moveCalls = commands.compactMap { command -> Sui_Rpc_V2_MoveCall? in
+            guard case let .moveCall(call)? = command.command else {
+                return nil
+            }
+
+            return call
+        }
+
+        let isSuccess = !transaction.effects.hasStatus || transaction.effects.status.success
+
         return BlockchainTransaction(
             identifier: transaction.digest,
             blockHeight: transaction.hasCheckpoint ? transaction.checkpoint : nil,
             timestamp: timestamp,
             transactionIndex: transaction.hasTransactionIndex ? transaction.transactionIndex : nil,
             sender: transaction.hasTransaction ? transaction.transaction.sender : nil,
-            status: .confirmed,
+            status: isSuccess ? .confirmed : .failed,
             rawPayload: try? transaction.serializedData(),
-            effects: effects
+            effects: effects,
+            counterpartyName: moveCalls.first.flatMap { isSuiSystem($0.package) ? "Sui System" : nil },
+            fee: transaction.effects.hasGasUsed ? fee(transaction.effects.gasUsed) : nil,
+            method: method(commands: commands, moveCalls: moveCalls)
         )
+    }
+
+    static func fee(_ gas: Sui_Rpc_V2_GasCostSummary) -> String {
+        let cost = Int64(gas.computationCost) + Int64(gas.storageCost) - Int64(gas.storageRebate)
+        return String(max(cost, 0))
+    }
+
+    static func isSuiSystem(_ package: String) -> Bool {
+        package.drop0x.drop { $0 == "0" } == "3"
+    }
+
+    static func method(commands: [Sui_Rpc_V2_Command], moveCalls: [Sui_Rpc_V2_MoveCall]) -> String? {
+        switch moveCalls.count {
+        case 0:
+            return commands.isEmpty ? nil : "Send"
+        case 1:
+            let function = moveCalls[0].function
+            return ["request_add_stake": "Stake", "request_withdraw_stake": "Unstake"][function] ?? function
+        default:
+            return "Programmable Tx"
+        }
+    }
+}
+
+private extension String {
+    var drop0x: Substring {
+        hasPrefix("0x") ? dropFirst(2) : Substring(self)
     }
 }

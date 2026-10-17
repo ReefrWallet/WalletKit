@@ -69,6 +69,12 @@ public struct BlockchainTransaction: Codable, Hashable, Sendable {
     public let status: BlockchainTransactionStatus
     public let rawPayload: Data?
     public let effects: [BlockchainTransactionEffect]
+    /// Human-readable name of the contract, program or package the transaction targets.
+    public let counterpartyName: String?
+    /// Network fee paid, in the native asset's smallest unit.
+    public let fee: String?
+    /// Chain-specific method/action label, e.g. "Transfer", "Approve", "SOL: Stake".
+    public let method: String?
 
     public init(
         identifier: String,
@@ -80,7 +86,10 @@ public struct BlockchainTransaction: Codable, Hashable, Sendable {
         recipient: String? = nil,
         status: BlockchainTransactionStatus,
         rawPayload: Data? = nil,
-        effects: [BlockchainTransactionEffect] = []
+        effects: [BlockchainTransactionEffect] = [],
+        counterpartyName: String? = nil,
+        fee: String? = nil,
+        method: String? = nil
     ) {
         self.identifier = identifier
         self.blockHeight = blockHeight
@@ -92,6 +101,62 @@ public struct BlockchainTransaction: Codable, Hashable, Sendable {
         self.status = status
         self.rawPayload = rawPayload
         self.effects = effects
+        self.counterpartyName = counterpartyName
+        self.fee = fee
+        self.method = method
+    }
+}
+
+public extension BlockchainTransaction {
+    /// Copy with the given fields replaced; `nil` keeps the current value.
+    func with(
+        effects: [BlockchainTransactionEffect]? = nil,
+        fee: String? = nil,
+        method: String? = nil,
+        status: BlockchainTransactionStatus? = nil
+    ) -> BlockchainTransaction {
+        BlockchainTransaction(
+            identifier: identifier,
+            blockHeight: blockHeight,
+            blockHash: blockHash,
+            timestamp: timestamp,
+            transactionIndex: transactionIndex,
+            sender: sender,
+            recipient: recipient,
+            status: status ?? self.status,
+            rawPayload: rawPayload,
+            effects: effects ?? self.effects,
+            counterpartyName: counterpartyName,
+            fee: fee ?? self.fee,
+            method: method ?? self.method
+        )
+    }
+}
+
+extension String {
+    /// `transferChecked`/`request_add_stake` → `Transfer Checked`/`Request Add Stake`.
+    var titleCasedWords: String {
+        var words: [String] = []
+        var current = ""
+
+        for character in self {
+            if character == "_" || character == " " {
+                words.append(current)
+                current = ""
+            } else if character.isUppercase, let last = current.last, last.isLowercase {
+                words.append(current)
+                current = String(character)
+            } else {
+                current.append(character)
+            }
+        }
+
+        words.append(current)
+
+        return words
+            .filter { !$0.isEmpty }
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
     }
 }
 

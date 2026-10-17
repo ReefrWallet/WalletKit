@@ -34,6 +34,7 @@ private struct EVMHistoryBlock: Codable {
 private struct EVMHistoryTransaction: Codable {
     let hash: String
     let from: String
+    let input: String?
     let to: String?
     let value: String?
     let transactionIndex: String?
@@ -57,7 +58,20 @@ private struct EVMHistoryLog: Codable {
 }
 
 private struct EVMTransactionReceipt: Decodable {
+    let effectiveGasPrice: String?
+    let gasUsed: String?
     let status: String?
+
+    var fee: String? {
+        guard
+            let gasUsed = gasUsed.flatMap({ BigUInt($0.drop0xPrefix(), radix: 16) }),
+            let gasPrice = effectiveGasPrice.flatMap({ BigUInt($0.drop0xPrefix(), radix: 16) })
+        else {
+            return nil
+        }
+
+        return (gasUsed * gasPrice).description
+    }
 }
 
 private struct EVMHeadSubscriptionResponse: Decodable {
@@ -166,24 +180,14 @@ extension EthereumRPCClient {
                     recipient: transaction.to,
                     status: .unconfirmed,
                     rawPayload: rawPayload,
-                    effects: nativeTransferEffect(transaction).map { [$0] } ?? []
+                    effects: nativeTransferEffect(transaction).map { [$0] } ?? [],
+                    method: EVMMethodSelector.name(input: transaction.input)
                 )
             }
 
             for effect in effectsByBlock[block, default: []] {
                 if let current = records[effect.transactionHash] {
-                    records[effect.transactionHash] = BlockchainTransaction(
-                        identifier: current.identifier,
-                        blockHeight: current.blockHeight,
-                        blockHash: current.blockHash,
-                        timestamp: current.timestamp,
-                        transactionIndex: current.transactionIndex,
-                        sender: current.sender,
-                        recipient: current.recipient,
-                        status: current.status,
-                        rawPayload: current.rawPayload,
-                        effects: current.effects + [effect.effect]
-                    )
+                    records[effect.transactionHash] = current.with(effects: current.effects + [effect.effect])
                 } else {
                     records[effect.transactionHash] = BlockchainTransaction(
                         identifier: effect.transactionHash,
@@ -317,18 +321,7 @@ private extension EthereumRPCClient {
                 return transaction
             }
 
-            return BlockchainTransaction(
-                identifier: transaction.identifier,
-                blockHeight: transaction.blockHeight,
-                blockHash: transaction.blockHash,
-                timestamp: transaction.timestamp,
-                transactionIndex: transaction.transactionIndex,
-                sender: transaction.sender,
-                recipient: transaction.recipient,
-                status: status == "0x1" ? .confirmed : .failed,
-                rawPayload: transaction.rawPayload,
-                effects: transaction.effects
-            )
+            return transaction.with(fee: receipt?.fee, status: status == "0x1" ? .confirmed : .failed)
         }
     }
 
