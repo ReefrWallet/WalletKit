@@ -26,6 +26,7 @@ final class StubURLProtocol: URLProtocol {
         fileprivate let id: UUID
 
         var capturedRequest: URLRequest? { StubURLProtocol.state(for: id)?.request }
+        var capturedRequests: [URLRequest] { StubURLProtocol.state(for: id)?.requests ?? [] }
         var capturedBody: Data? { StubURLProtocol.state(for: id)?.body }
     }
 
@@ -35,6 +36,7 @@ final class StubURLProtocol: URLProtocol {
         var responseSequence: [StubResponse]?
         var sequenceIndex = 0
         var request: URLRequest?
+        var requests: [URLRequest] = []
         var body: Data?
     }
 
@@ -124,6 +126,7 @@ final class StubURLProtocol: URLProtocol {
         let capturedRequest = request
         Self.lock.withLock {
             Self.statesById[id]?.request = capturedRequest
+            Self.statesById[id]?.requests.append(capturedRequest)
             Self.statesById[id]?.body = body
             Self.statesById[id]?.sequenceIndex += 1
         }

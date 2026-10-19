@@ -232,6 +232,23 @@ public final class BitcoinNode {
     ///   been run yet, either process fails to launch, or `electrs` never
     ///   finishes its initial sync within 15 seconds.
     public static func start() async throws -> BitcoinNode {
+        // Ports are released before the daemons bind them, so another
+        // process (e.g. a concurrent localnet suite) can steal one in
+        // between; `bitcoind` then exits at startup. Retry on fresh ports.
+        var lastError: Error = BitcoinLaunchError(description: "no launch attempt made")
+
+        for _ in 0..<3 {
+            do {
+                return try await launch()
+            } catch let error as BitcoinLaunchError {
+                lastError = error
+            }
+        }
+
+        throw lastError
+    }
+
+    private static func launch() async throws -> BitcoinNode {
         let ports = try allocatePorts()
         let (bitcoindPath, bitcoinCLIPath, electrsPath) = try resolveProvisionedBinaries()
 
@@ -247,7 +264,13 @@ public final class BitcoinNode {
             ports: ports
         )
 
-        try await waitForCookie(dataDirectory: dataDirectory, process: bitcoindProcess)
+        do {
+            try await waitForCookie(dataDirectory: dataDirectory, process: bitcoindProcess)
+        } catch {
+            bitcoindProcess.terminateAndWait()
+            try? FileManager.default.removeItem(at: dataDirectory)
+            throw error
+        }
 
         let (electrsProcess, electrsLogHandle) = try makeElectrsProcess(
             dataDirectory: dataDirectory,
@@ -269,8 +292,19 @@ public final class BitcoinNode {
             electrsLogHandle: electrsLogHandle
         )
 
-        try await node.waitUntilRPCReady()
-        try node.bitcoinCLI(["createwallet", node.walletName])
+        do {
+            try await node.finishStartup(electrsPath: electrsPath)
+        } catch {
+            node.stop()
+            throw error
+        }
+
+        return node
+    }
+
+    private func finishStartup(electrsPath: String) async throws {
+        try await waitUntilRPCReady()
+        try bitcoinCLI(["createwallet", walletName])
 
         // A freshly created regtest chain (zero blocks, no peers) stays
         // stuck reporting `initialblockdownload: true` forever — Bitcoin
@@ -282,18 +316,16 @@ public final class BitcoinNode {
         // confirmations before it's spendable (a consensus rule that
         // applies on regtest too), and ``fund(address:amountSats:)``
         // needs the wallet to actually have a spendable balance.
-        let genesisAddress = try node.newWalletAddress()
-        try node.bitcoinCLI(["-rpcwallet=\(node.walletName)", "generatetoaddress", "101", genesisAddress])
+        let genesisAddress = try newWalletAddress()
+        try bitcoinCLI(["-rpcwallet=\(walletName)", "generatetoaddress", "101", genesisAddress])
 
         do {
             try electrsProcess.run()
         } catch {
-            bitcoindProcess.terminate()
             throw BitcoinLaunchError(description: "failed to launch electrs at \(electrsPath): \(error.localizedDescription)")
         }
 
-        try await node.waitUntilElectrsReady()
-        return node
+        try await waitUntilElectrsReady()
     }
 
     /// Stops the Bitcoin and indexer processes.
@@ -406,6 +438,13 @@ public final class BitcoinNode {
         var lastError = "no attempt made"
 
         while ContinuousClock.now < deadline {
+            guard bitcoindProcess.isRunning else {
+                let log = (try? String(contentsOf: dataDirectory.appendingPathComponent("bitcoind.log"), encoding: .utf8)) ?? "(no log)"
+                throw BitcoinLaunchError(
+                    description: "bitcoind exited with status \(bitcoindProcess.terminationStatus). Log tail:\n\(log.suffix(2000))"
+                )
+            }
+
             do {
                 try bitcoinCLI(["getblockcount"])
                 return

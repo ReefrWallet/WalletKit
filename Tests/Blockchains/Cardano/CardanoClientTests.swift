@@ -221,9 +221,8 @@ struct CardanoClientTests {
         #expect(query.contains(URLQueryItem(name: "from", value: "123:8")))
         #expect(query.contains(URLQueryItem(name: "page", value: "1")))
         #expect(second.reachedBoundary)
-        // An idle poll costs exactly one request: the page carried a block
-        // height, so no `blocks/latest` read followed it.
-        #expect(stub.capturedRequest?.url?.path.hasSuffix("/transactions") == true)
+        // The page carried a block height, so no `blocks/latest` read followed it.
+        #expect(!stub.capturedRequests.contains { $0.url?.path.hasSuffix("/blocks/latest") == true })
     }
 
     @Test func backfillPagesArePinnedToTheHeadItStartedFrom() async throws {
@@ -272,7 +271,8 @@ private extension CardanoClientTests {
     }
 
     func queryItems(of stub: StubURLProtocol.Session) throws -> [URLQueryItem] {
-        let url = try #require(stub.capturedRequest?.url)
+        let historyRequest = stub.capturedRequests.last { $0.url?.path.hasSuffix("/transactions") == true }
+        let url = try #require(historyRequest?.url)
         return try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
     }
 }
