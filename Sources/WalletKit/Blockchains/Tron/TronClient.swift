@@ -20,8 +20,13 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
     private let tronScanAPIKey: String?
     private let tronScanEndpoint: URL?
 
-    /// - Parameter tronScanEndpoint: TronScan API used for internal TRX transfers
-    ///   (e.g. swap/relayer payouts), which TronGrid's account history omits.
+    /// - Parameters:
+    ///   - endpoint: TronGrid API endpoint.
+    ///   - apiKey: Optional TronGrid API key.
+    ///   - tronScanEndpoint: TronScan API used for internal TRX transfers
+    ///     (e.g. swap/relayer payouts), which TronGrid's account history omits.
+    ///   - tronScanAPIKey: Optional TronScan API key.
+    ///   - session: URL session used for requests.
     public init(
         endpoint: URL,
         apiKey: String? = nil,
