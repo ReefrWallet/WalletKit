@@ -103,6 +103,26 @@ public struct CardanoAccountDescriptor: BlockchainAddress {
         return try CardanoAddress(string: string, network: network)
     }
 
+    /// The CIP-1852 external (role 0) and internal (role 1) paths of the
+    /// `addresses` this account owns, searched up to `searchLimit` indices per role.
+    func signingPaths(
+        for addresses: Set<String>,
+        searchLimit: UInt32 = 1_000
+    ) throws -> [String: CardanoSigningPathFfi] {
+        var paths: [String: CardanoSigningPathFfi] = [:]
+
+        for index in 0..<searchLimit where paths.count < addresses.count {
+            for role: UInt32 in [0, 1] {
+                let address = try address(role: role, index: index).string
+                if addresses.contains(address) {
+                    paths[address] = CardanoSigningPathFfi(index: index, role: role)
+                }
+            }
+        }
+
+        return paths
+    }
+
     public var receiveAddress: CardanoAddress {
         try! address(role: 0, index: 0) // swiftlint:disable:this force_try
     }
@@ -143,5 +163,32 @@ public enum CardanoTransactionAddress: BlockchainAddress {
         }
 
         try self.init(string: string)
+    }
+}
+
+/// Matches a built transaction's inputs back to the payment paths of the UTxOs they spend.
+enum CardanoInputPaths {
+    static func key(txHash: Data, outputIndex: UInt32) -> String {
+        "\(txHash.base64EncodedString())#\(outputIndex)"
+    }
+
+    /// One witness path per distinct address the inputs spend from.
+    static func signingPaths(
+        of inputs: [CardanoTransactionInputFfi],
+        pathsByInput: [String: CardanoSigningPathFfi]
+    ) throws -> [CardanoSigningPathFfi] {
+        var paths: [CardanoSigningPathFfi] = []
+
+        for input in inputs {
+            guard let path = pathsByInput[key(txHash: input.txHash, outputIndex: input.outputIndex)] else {
+                throw WalletKitError.internalError(message: "Cardano input has no signing path")
+            }
+
+            if !paths.contains(path) {
+                paths.append(path)
+            }
+        }
+
+        return paths
     }
 }

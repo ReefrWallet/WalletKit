@@ -67,8 +67,8 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
         }
     }
 
-    /// Builds an ADA or native-asset transfer from UTxOs held at the current
-    /// receive address. A token output requires an explicit lovelace amount.
+    /// Builds an ADA or native-asset transfer from UTxOs at any of the account's
+    /// payment addresses. A token output requires an explicit lovelace amount.
     func buildTransfer(
         _ owner: CardanoAccountDescriptor,
         recipientLovelace: UInt64?,
@@ -80,9 +80,48 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
             throw BlockchainTransactionBuilderError.amountTooLarge
         }
 
-        let utxos = try await accountUTxOs(owner).compactMap { utxo -> CardanoUtxoFfi? in
+        let (utxos, pathsByInput) = try await spendableUTxOs(owner)
+        let parameters: ProtocolParameters = try await get("epochs/latest/parameters")
+        let selectedAsset: CardanoAssetFfi?
+
+        if let token {
+            guard let asset = CardanoAssetId(unit: token) else {
+                throw WalletKitError.invalidAddress(reason: "Invalid Cardano asset identifier")
+            }
+
+            selectedAsset = asset.ffi(quantity: amount.description)
+        } else {
+            selectedAsset = nil
+        }
+
+        var result = try remappingWalletKitError {
+            try cardanoBuildTransfer(
+                amount: amount.description,
+                changeAddress: owner.receiveAddress.string,
+                recipientLovelace: token == nil ? amount.description : String(recipientLovelace ?? 0),
+                protocolParameters: parameters.ffi,
+                recipient: recipient.string,
+                token: selectedAsset,
+                utxos: utxos
+            )
+        }
+
+        result.signingPaths = try CardanoInputPaths.signingPaths(of: result.inputs, pathsByInput: pathsByInput)
+        return result
+    }
+
+    /// The account's UTxOs it can sign for, keyed to their payment paths.
+    /// UTxOs at addresses outside the derivation search are skipped.
+    private func spendableUTxOs(
+        _ owner: CardanoAccountDescriptor
+    ) async throws -> (utxos: [CardanoUtxoFfi], pathsByInput: [String: CardanoSigningPathFfi]) {
+        let entries = try await accountUTxOs(owner)
+        let paths = try owner.signingPaths(for: Set(entries.map(\.address)))
+        var pathsByInput: [String: CardanoSigningPathFfi] = [:]
+
+        let utxos = entries.compactMap { utxo -> CardanoUtxoFfi? in
             guard
-                utxo.address == owner.receiveAddress.string,
+                let path = paths[utxo.address],
                 let lovelace = utxo.amount.first(where: { $0.unit == "lovelace" }),
                 let hash = try? Data(hexString: utxo.txHash)
             else {
@@ -97,6 +136,7 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
                 return CardanoAssetFfi(name: parsed.name, policyId: parsed.policyId, quantity: asset.quantity)
             }
 
+            pathsByInput[CardanoInputPaths.key(txHash: hash, outputIndex: utxo.outputIndex)] = path
             return CardanoUtxoFfi(
                 address: utxo.address,
                 assets: assets,
@@ -106,32 +146,7 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
             )
         }
 
-        let parameters: ProtocolParameters = try await get("epochs/latest/parameters")
-        let selectedAsset: CardanoAssetFfi?
-
-        if let token {
-            guard let asset = CardanoAssetId(unit: token) else {
-                throw WalletKitError.invalidAddress(reason: "Invalid Cardano asset identifier")
-            }
-
-            selectedAsset = asset.ffi(quantity: amount.description)
-        } else {
-            selectedAsset = nil
-        }
-
-        let result = try remappingWalletKitError {
-            try cardanoBuildTransfer(
-                amount: amount.description,
-                changeAddress: owner.receiveAddress.string,
-                recipientLovelace: token == nil ? amount.description : String(recipientLovelace ?? 0),
-                protocolParameters: parameters.ffi,
-                recipient: recipient.string,
-                token: selectedAsset,
-                utxos: utxos
-            )
-        }
-
-        return result
+        return (utxos, pathsByInput)
     }
 
     public func getAllBalances(_ owner: CardanoAccountDescriptor) async throws -> [String: BigUInt] {
@@ -252,6 +267,19 @@ private extension CardanoClient {
             case minFeeA = "min_fee_a"
             case minFeeB = "min_fee_b"
             case poolDeposit = "pool_deposit"
+        }
+
+        /// Blockfrost sends some of these as decimal strings (e.g.
+        /// `coins_per_utxo_size`, `key_deposit`) and others as numbers.
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            coinsPerUtxoSize = try container.decodeNumericString(forKey: .coinsPerUtxoSize)
+            keyDeposit = try container.decodeNumericString(forKey: .keyDeposit)
+            maxTxSize = try container.decodeNumericUInt32(forKey: .maxTxSize)
+            maxValSize = try container.decodeNumericUInt32(forKey: .maxValSize)
+            minFeeA = try container.decodeNumericString(forKey: .minFeeA)
+            minFeeB = try container.decodeNumericString(forKey: .minFeeB)
+            poolDeposit = try container.decodeNumericString(forKey: .poolDeposit)
         }
     }
 

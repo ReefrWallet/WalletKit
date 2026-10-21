@@ -243,7 +243,8 @@ pub fn cardano_transaction_body_hash(transaction_body: Vec<u8>) -> Result<Vec<u8
     Ok(Blake2b::<U32>::digest(body.to_bytes()).to_vec())
 }
 
-/// Builds an ADA or native-asset transfer from UTxOs owned by external address 0.
+/// Builds an ADA or native-asset transfer from `utxos`. `signing_paths` assumes
+/// external address 0; callers spending from other addresses replace it.
 #[uniffi::export]
 pub fn cardano_build_transfer(
     amount: String,

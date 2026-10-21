@@ -173,7 +173,7 @@ struct AptosIndexerNumber: Decodable, Sendable, CustomStringConvertible {
 }
 
 extension KeyedDecodingContainer {
-    /// Aptos encodes `u64` as decimal strings.
+    /// A `u64` sent as a decimal string (Aptos, Blockfrost) or a JSON number.
     func decodeNumericString(forKey key: Key) throws -> UInt64 {
         guard let value = try decodeNumericStringIfPresent(forKey: key) else {
             throw DecodingError.keyNotFound(key, .init(codingPath: codingPath, debugDescription: "missing \(key)"))
@@ -192,5 +192,14 @@ extension KeyedDecodingContainer {
         }
 
         return try decodeIfPresent(UInt64.self, forKey: key)
+    }
+
+    func decodeNumericUInt32(forKey key: Key) throws -> UInt32 {
+        let value = try decodeNumericString(forKey: key)
+        guard let narrowed = UInt32(exactly: value) else {
+            throw DecodingError.dataCorruptedError(forKey: key, in: self, debugDescription: "not a u32: \(value)")
+        }
+
+        return narrowed
     }
 }
