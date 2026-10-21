@@ -48,7 +48,7 @@ public enum BlockchainTransactionBuilderOptions: Sendable {
     case tronFeeLimit(UInt64?)
 
     /// Overrides the compute-unit price (the priority fee, in
-    /// micro-lamports per compute unit validators are paid on top of the
+    /// µLamports per compute unit validators are paid on top of the
     /// base fee) and/or compute-unit limit for a Solana transaction.
     ///
     /// `microLamportsPerComputeUnit` defaults to the cluster's recent

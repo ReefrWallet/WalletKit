@@ -173,7 +173,7 @@ public enum ComputeBudgetProgram {
     }
 
     /// Builds a `SetComputeUnitPrice` instruction — the priority fee, in
-    /// micro-lamports per compute unit, validators are paid on top of the
+    /// µLamports per compute unit, validators are paid on top of the
     /// base fee to prioritize this transaction.
     public static func setComputeUnitPrice(microLamports: UInt64) -> SolanaInstruction {
         var data = Data([setComputeUnitPriceDiscriminant])

@@ -11,7 +11,7 @@ public struct SolanaFeeEstimate: Sendable, Equatable {
     /// The message's `SetComputeUnitLimit`, if set.
     public let computeUnitLimit: UInt32?
 
-    /// The message's `SetComputeUnitPrice`, in micro-lamports per compute
+    /// The message's `SetComputeUnitPrice`, in µLamports per compute
     /// unit; 0 if unset.
     public let computeUnitPrice: UInt64
 

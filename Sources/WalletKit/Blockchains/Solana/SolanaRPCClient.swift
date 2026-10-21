@@ -337,7 +337,7 @@ extension SolanaRPCClient {
         let prioritizationFee: UInt64
     }
 
-    /// Returns a representative recent priority fee, in micro-lamports
+    /// Returns a representative recent priority fee, in µLamports
     /// per compute unit — the median of `getRecentPrioritizationFees`'
     /// non-zero samples, or 0 if every recent sample was 0 (an idle
     /// cluster).
