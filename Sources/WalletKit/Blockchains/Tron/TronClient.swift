@@ -391,7 +391,16 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
             throw WalletKitError.internalError(message: "Cannot construct TronScan URL.")
         }
 
-        let data = try await get(url, apiKey: tronScanAPIKey)["data"] as? [[String: Any]] ?? []
+        let data: [[String: Any]]
+
+        do {
+            data = try await get(url, apiKey: tronScanAPIKey)["data"] as? [[String: Any]] ?? []
+        } catch {
+            // Internal transfers are supplementary: an unreachable TronScan must not
+            // fail the whole page, or forward sync and its repairs never run.
+            try Swift.Task.checkCancellation()
+            return HistoryPage(data: [], next: .done)
+        }
 
         return HistoryPage(data: data, next: data.count < pageSize ? .done : .offset(offset + data.count))
     }

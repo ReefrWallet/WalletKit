@@ -253,6 +253,30 @@ struct TronClientTests {
         #expect(transaction.effects.first?.to == owner.string)
     }
 
+    @Test func transactionHistorySurvivesAnUnreachableTronScan() async throws {
+        let trc20 = #"""
+        [{"transaction_id":"tok","token_info":{"address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"},
+          "block_timestamp":1000,"from":"TA","to":"\#(owner.string)","value":"5","block_number":7}]
+        """#
+        var responses = historyResponses(trc20: trc20)
+        responses["/api/internal-transaction"] = .failure(.secureConnectionFailed)
+        responses["/walletsolidity/gettransactioninfobyid"] = .success(body: Data(#"{"blockNumber":7}"#.utf8))
+        let stub = StubURLProtocol.makeSession(responsesByPath: responses)
+        let client = TronClient(
+            endpoint: endpoint,
+            tronScanEndpoint: URL(string: "https://scan.example.com")!,
+            session: stub.urlSession
+        )
+
+        let page = try await client.transactionHistory(
+            owner,
+            request: BlockchainTransactionHistoryRequest(direction: .descending, limit: 20)
+        )
+
+        #expect(page.transactions.map(\.identifier) == ["tok"])
+        #expect(page.reachedBoundary)
+    }
+
     @Test func transactionHistoryPastTheSolidifiedHeadIsAnEmptyBoundaryPage() async throws {
         let stub = StubURLProtocol.makeSession(responsesByPath: historyResponses(trc20: "[]"))
         let client = TronClient(endpoint: endpoint, session: stub.urlSession)
