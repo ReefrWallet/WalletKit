@@ -22,11 +22,13 @@ public struct CardanoUnsignedTransaction: Codable, Sendable {
         ttl = raw.ttl
     }
 
-    public func signed(entropy: Data, accountIndex: UInt32) throws -> Data {
-        try remappingWalletKitError {
+    /// - Parameter path: The signing account's path, `m/1852'/1815'/N'`.
+    public func signed(entropy: Data, path: DerivationPath) throws -> Data {
+        try path.validate(for: .cardano(.mainnet)) // the path shape is network-independent
+        return try remappingWalletKitError {
             try cardanoSignTransaction(
                 entropy: entropy,
-                accountIndex: accountIndex,
+                accountIndex: path.segments[2].index,
                 signingPaths: signingPaths,
                 transactionBody: transactionBody
             )

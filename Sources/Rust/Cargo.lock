@@ -3334,6 +3334,7 @@ dependencies = [
  "bitcoin",
  "hex",
  "protobuf",
+ "rusb",
  "serde_json",
  "tokio",
  "trezor-client",

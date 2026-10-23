@@ -115,7 +115,7 @@ struct CardanoTransactionBuilderTests {
         )
 
         let transaction = try JSONDecoder().decode(CardanoUnsignedTransaction.self, from: envelope)
-        let signed = try transaction.signed(entropy: entropy, accountIndex: 0)
+        let signed = try transaction.signed(entropy: entropy, path: .cardanoAccount(accountIndex: 0))
 
         #expect(!transaction.transactionBody.isEmpty)
         #expect(!signed.isEmpty)
@@ -173,7 +173,7 @@ struct CardanoTransactionBuilderTests {
     @Test func spendsUtxosAtOtherAccountAddressesWithTheirSigningPaths() async throws {
         let account = try descriptor(network: .preprod)
         let otherEntropy = Data(repeating: 1, count: 16)
-        let foreign = try CardanoAccountDescriptor(entropy: otherEntropy, network: .preprod, accountIndex: 0)
+        let foreign = try CardanoAccountDescriptor(entropy: otherEntropy, network: .preprod, path: .cardanoAccount(accountIndex: 0))
         let utxos = """
         [
           {
@@ -213,7 +213,7 @@ struct CardanoTransactionBuilderTests {
         #expect(transaction.inputs.count == 2)
         #expect(!transaction.inputs.contains { $0.txHash == Data(repeating: 0x0c, count: 32) })
         #expect(paths == ["0/3", "1/2"])
-        #expect(!(try transaction.signed(entropy: entropy, accountIndex: 0)).isEmpty)
+        #expect(!(try transaction.signed(entropy: entropy, path: .cardanoAccount(accountIndex: 0))).isEmpty)
     }
 }
 
@@ -248,6 +248,6 @@ private extension CardanoTransactionBuilderTests {
     }
 
     func descriptor(network: CardanoNetwork) throws -> CardanoAccountDescriptor {
-        try CardanoAccountDescriptor(entropy: entropy, network: network, accountIndex: 0)
+        try CardanoAccountDescriptor(entropy: entropy, network: network, path: .cardanoAccount(accountIndex: 0))
     }
 }

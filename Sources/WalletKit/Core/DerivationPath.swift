@@ -13,7 +13,7 @@ import WalletKitRust
 /// standard path string with ``init(string:)``, or use
 /// ``init(_:accountIndex:curve:)`` for a blockchain's conventional account
 /// path.
-public struct DerivationPath: Codable, Equatable, Hashable, Sendable {
+public struct DerivationPath: Codable, Comparable, Equatable, Hashable, Sendable {
     let raw: DerivationPathFfi
 
     /// The ordered segments that make up this path.
@@ -168,6 +168,93 @@ public struct DerivationPath: Codable, Equatable, Hashable, Sendable {
         self.init(segments: segments)
     }
 
+    /// The Cardano account path `m/1852'/1815'/{accountIndex}'`.
+    public static func cardanoAccount(accountIndex: UInt32) throws -> DerivationPath {
+        try DerivationPath(string: "m/1852'/1815'/\(accountIndex)'")
+    }
+
+    /// Parses `string` and checks it with ``validate(for:curve:scriptType:)``.
+    ///
+    /// - Throws: ``WalletKitError/invalidDerivationPath(path:)`` if `string`
+    ///   doesn't parse or doesn't match.
+    public init(
+        string: String,
+        for blockchain: Blockchain,
+        curve: Curve? = nil,
+        scriptType: BitcoinScriptType? = nil
+    ) throws {
+        try self.init(string: string)
+        try validate(for: blockchain, curve: curve, scriptType: scriptType)
+    }
+
+    /// Checks this path has the shape of an account path for `blockchain`:
+    ///
+    /// - Bitcoin: ``bitcoinAccount(network:scriptType:accountIndex:)``, so
+    ///   `scriptType` is required.
+    /// - Cardano: `m/1852'/1815'/N'`.
+    /// - EVM, Tron: `m/44'/{60|195}'/A'/C/I`.
+    /// - Solana: `m/44'/501'/A'` or `m/44'/501'/A'/C'`.
+    /// - Aptos, Sui: `m/44'/{637|784}'/A'/C'/I'` for Ed25519; Aptos secp256k1
+    ///   is `m/44'/637'/A'/C/I`, Sui secp256k1 `m/54'/784'/A'/C'/I'`.
+    ///   `curve` is required.
+    ///
+    /// - Throws: ``WalletKitError/invalidDerivationPath(path:)`` if it
+    ///   doesn't match; any index must be below `2^31`.
+    public func validate(for blockchain: Blockchain, curve: Curve? = nil, scriptType: BitcoinScriptType? = nil) throws {
+        let patterns: [[Rule]]
+        switch (blockchain, curve) {
+        case let (.bitcoin(network), _):
+            guard let scriptType, let index = segments.last?.index,
+                  try self == Self.bitcoinAccount(network: network, scriptType: scriptType, accountIndex: index)
+            else {
+                throw WalletKitError.invalidDerivationPath(path: string)
+            }
+
+            return
+        case (.cardano, _):
+            patterns = [[.hardened(1852), .hardened(1815), .hardened()]]
+        case (.evm, _):
+            patterns = [[.hardened(44), .hardened(60), .hardened(), .plain, .plain]]
+        case (.tron, _):
+            patterns = [[.hardened(44), .hardened(195), .hardened(), .plain, .plain]]
+        case (.solana, _):
+            patterns = [
+                [.hardened(44), .hardened(501), .hardened()],
+                [.hardened(44), .hardened(501), .hardened(), .hardened()]
+            ]
+        case (.aptos, .ed25519?):
+            patterns = [[.hardened(44), .hardened(637), .hardened(), .hardened(), .hardened()]]
+        case (.aptos, .secp256k1?):
+            patterns = [[.hardened(44), .hardened(637), .hardened(), .plain, .plain]]
+        case (.sui, .ed25519?):
+            patterns = [[.hardened(44), .hardened(784), .hardened(), .hardened(), .hardened()]]
+        case (.sui, .secp256k1?):
+            patterns = [[.hardened(54), .hardened(784), .hardened(), .hardened(), .hardened()]]
+        case (.aptos, nil), (.sui, nil):
+            throw WalletKitError.invalidDerivationPath(path: string)
+        }
+
+        guard patterns.contains(where: { $0.matches(segments) }) else {
+            throw WalletKitError.invalidDerivationPath(path: string)
+        }
+    }
+
+    /// Orders paths segment by segment, the way BIP-32 orders child indices
+    /// (hardened after non-hardened), with a shorter prefix first.
+    ///
+    /// Every supported chain puts the account, then change, then address
+    /// index left to right, except Sui, whose account index is the last
+    /// segment behind constant ones; so this order is the account order
+    /// within a chain and purpose (e.g. Sui Ed25519 `44'` before
+    /// secp256k1 `54'`).
+    public static func < (lhs: DerivationPath, rhs: DerivationPath) -> Bool {
+        let keys = { (path: DerivationPath) in
+            path.segments.map { UInt64($0.index) + ($0.hardened ? 0x8000_0000 : 0) }
+        }
+
+        return keys(lhs).lexicographicallyPrecedes(keys(rhs))
+    }
+
     /// The `m/44'/60'/0'/0/0`-style string representation of this path.
     public var string: String {
         var result = "m"
@@ -189,5 +276,33 @@ public struct DerivationPath: Codable, Equatable, Hashable, Sendable {
 
     private enum CodingKeys: CodingKey {
         case segments
+    }
+}
+
+// MARK: - Validation rules
+
+private enum Rule {
+    case hardened(UInt32? = nil)
+    case plain
+}
+
+private extension [Rule] {
+    func matches(_ segments: [Segment]) -> Bool {
+        guard count == segments.count else {
+            return false
+        }
+
+        return zip(self, segments).allSatisfy { rule, segment in
+            guard segment.index < 0x8000_0000 else {
+                return false
+            }
+
+            switch rule {
+            case let .hardened(index):
+                return segment.hardened && (index ?? segment.index) == segment.index
+            case .plain:
+                return !segment.hardened
+            }
+        }
     }
 }

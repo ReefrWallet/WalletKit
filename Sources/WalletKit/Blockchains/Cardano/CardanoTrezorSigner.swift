@@ -10,8 +10,10 @@ public final class CardanoTrezorSigner {
     private let device: HardwareDevice
     private let network: CardanoNetwork
 
-    public init(network: CardanoNetwork, accountIndex: UInt32, device: HardwareDevice) throws {
-        accountPath = try DerivationPath(string: "m/1852'/1815'/\(accountIndex)'")
+    /// - Parameter path: The account path, `m/1852'/1815'/N'`.
+    public init(network: CardanoNetwork, path: DerivationPath, device: HardwareDevice) throws {
+        try path.validate(for: .cardano(network))
+        accountPath = path
         self.device = device
         self.network = network
     }

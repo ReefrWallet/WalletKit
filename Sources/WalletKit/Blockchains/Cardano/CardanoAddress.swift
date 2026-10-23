@@ -67,9 +67,11 @@ public struct CardanoAccountDescriptor: BlockchainAddress {
         xpub = components[2]
     }
 
-    public init(entropy: Data, network: CardanoNetwork, accountIndex: UInt32) throws {
+    /// - Parameter path: The account path, `m/1852'/1815'/N'`.
+    public init(entropy: Data, network: CardanoNetwork, path: DerivationPath) throws {
+        try path.validate(for: .cardano(network))
         self.network = network
-        xpub = try cardanoAccountXpubFromEntropy(entropy: entropy, accountIndex: accountIndex)
+        xpub = try cardanoAccountXpubFromEntropy(entropy: entropy, accountIndex: path.segments[2].index)
     }
 
     public init(xpub: String, network: CardanoNetwork) throws {
