@@ -113,7 +113,8 @@ extension SuiGRPCClient {
     public func transactionHeads(
         _ owner: SuiAddress
     ) -> AsyncThrowingStream<BlockchainTransactionHead, any Swift.Error> {
-        AsyncThrowingStream { continuation in
+        // Checkpoints (~4/s) outpace scans; a scan covers everything up to its head.
+        AsyncThrowingStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             let task = Task {
                 do {
                     try await withSubscriptionServiceClient { service in

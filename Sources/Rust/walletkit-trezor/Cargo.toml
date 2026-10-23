@@ -25,4 +25,7 @@ alloy-primitives = "1"
 bitcoin = "0.32"
 hex = "0.4"
 protobuf = "=3.7.2"
+# Draining stale replies from the WebUSB endpoint before connecting
+# (`worker::drain_stale_replies`); same version `trezor-client` uses.
+rusb = "0.9"
 serde_json = "1"

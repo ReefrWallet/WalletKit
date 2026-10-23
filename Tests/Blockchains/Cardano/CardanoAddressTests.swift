@@ -9,7 +9,7 @@ struct CardanoAddressTests {
         let descriptor = try CardanoAccountDescriptor(
             entropy: entropy,
             network: .preprod,
-            accountIndex: 0
+            path: .cardanoAccount(accountIndex: 0)
         )
 
         #expect(try CardanoAccountDescriptor(string: descriptor.string) == descriptor)
@@ -19,7 +19,7 @@ struct CardanoAddressTests {
         let descriptor = try CardanoAccountDescriptor(
             entropy: entropy,
             network: .preprod,
-            accountIndex: 0
+            path: .cardanoAccount(accountIndex: 0)
         )
 
         #expect(descriptor.receiveAddress.string.hasPrefix("addr_test"))
@@ -30,7 +30,7 @@ struct CardanoAddressTests {
         let descriptor = try CardanoAccountDescriptor(
             entropy: entropy,
             network: .preprod,
-            accountIndex: 0
+            path: .cardanoAccount(accountIndex: 0)
         )
 
         #expect(throws: WalletKitError.self) {

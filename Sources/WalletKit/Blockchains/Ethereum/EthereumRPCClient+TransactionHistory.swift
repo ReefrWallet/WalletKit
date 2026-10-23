@@ -235,7 +235,9 @@ extension EthereumRPCClient {
             }
         }
 
-        return AsyncThrowingStream { continuation in
+        // Fast chains (Arbitrum: ~4 heads/s) outpace rate-limited scans, so only
+        // the newest head is kept. A scan covers the whole range up to its head.
+        return AsyncThrowingStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             let task = Task {
                 let socket = rpc.session.webSocketTask(with: websocketURL)
                 socket.resume()

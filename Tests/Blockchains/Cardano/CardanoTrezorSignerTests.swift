@@ -64,7 +64,7 @@ struct CardanoTrezorSignerTests {
             )
 
             let request = try JSONEncoder().encode(CardanoUnsignedTransaction(unsigned))
-            let signer = try CardanoTrezorSigner(network: .preprod, accountIndex: 0, device: device)
+            let signer = try CardanoTrezorSigner(network: .preprod, path: .cardanoAccount(accountIndex: 0), device: device)
             let signed = try await signer.sign(transaction: request)
 
             #expect(!signed.isEmpty)

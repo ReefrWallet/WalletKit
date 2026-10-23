@@ -406,12 +406,26 @@ extension SolanaRPCClient {
             ? Cursor(addresses: states.mapValues(promoted))
             : Cursor(addresses: states)
 
+        let head: UInt64
+
+        if let newest = merged.map(\.slot).max() {
+            head = newest
+        } else {
+            head = try await currentSlot()
+        }
+
         return BlockchainTransactionPage(
             transactions: transactions,
             nextCursor: try JSONEncoder().encode(nextCursor),
             reachedBoundary: reachedBoundary,
-            head: merged.map(\.slot).max()
+            head: head
         )
+    }
+
+    /// An empty history has no signature slot to report, which would leave
+    /// forward sync waiting for a head forever.
+    private func currentSlot() async throws -> UInt64 {
+        try await rpc.call(method: "getSlot", params: [String]())
     }
 }
 

@@ -112,6 +112,8 @@ impl DeviceWorker {
         let connected_for_thread = connected.clone();
 
         std::thread::spawn(move || {
+            drain_stale_replies(&available);
+
             let mut trezor = match available.connect().map_err(map_trezor_error) {
                 Ok(trezor) => trezor,
                 Err(err) => {
@@ -393,4 +395,42 @@ mod tests {
         features.set_major_version(2);
         assert_eq!(firmware_version_string(&features), None);
     }
+}
+
+/// Discards replies still queued on the device's WebUSB endpoint. A reply
+/// nobody read (a handshake that failed mid-boot, an app quit mid-call)
+/// stays queued across connections, after which every call reads the
+/// previous call's reply. `trezor-client` reads with no timeout, so this
+/// drains with its own short-timeout reads first.
+fn drain_stale_replies(available: &AvailableDevice) {
+    // `trezor-client` keeps the bus/address private; its `Display` shows
+    // them as "... (transport: WebUSB (bus:address)) ...".
+    let description = available.to_string();
+    let Some((bus, address)) = description
+        .split_once("WebUSB (")
+        .and_then(|(_, rest)| rest.split_once(')'))
+        .and_then(|(location, _)| location.split_once(':'))
+        .and_then(|(bus, address)| Some((bus.parse::<u8>().ok()?, address.parse::<u8>().ok()?)))
+    else {
+        return;
+    };
+
+    let Ok(devices) = rusb::devices() else {
+        return;
+    };
+    let Some(device) = devices.iter().find(|device| device.bus_number() == bus && device.address() == address) else {
+        return;
+    };
+    let Ok(handle) = device.open() else {
+        return;
+    };
+
+    let (interface, endpoint) = if available.debug { (1, 2) } else { (0, 1) };
+    if handle.claim_interface(interface).is_err() {
+        return;
+    }
+
+    let mut chunk = [0u8; 64];
+    while handle.read_interrupt(0x80 | endpoint, &mut chunk, std::time::Duration::from_millis(100)).is_ok() {}
+    let _ = handle.release_interface(interface);
 }

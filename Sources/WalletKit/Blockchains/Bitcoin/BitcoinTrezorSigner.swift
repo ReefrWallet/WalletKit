@@ -18,8 +18,9 @@ public final class BitcoinTrezorSigner: Signer {
     private let device: HardwareDevice
 
     /// Creates a signer for a Bitcoin account of `scriptType` on
-    /// `network`, reading its account-level xpub off `device` at
-    /// ``DerivationPath/bitcoinAccount(network:scriptType:accountIndex:)``.
+    /// `network`, reading its account-level xpub off `device` at `path`
+    /// (``DerivationPath/bitcoinAccount(network:scriptType:accountIndex:)``;
+    /// account 0 by default).
     ///
     /// - Throws: ``WalletKitError/deviceDisconnected`` if `device` isn't
     ///   connected, or ``WalletKitError/userCancelled``/
@@ -28,17 +29,19 @@ public final class BitcoinTrezorSigner: Signer {
     public init(
         network: BitcoinNetwork,
         scriptType: BitcoinScriptType,
-        accountIndex: UInt32 = 0,
+        path: DerivationPath? = nil,
         device: HardwareDevice
     ) async throws {
         let masterPublicKey = try await device.publicKey(path: DerivationPath(segments: []), curve: .secp256k1)
         let masterFingerprint = try BitcoinDescriptor.fingerprint(of: masterPublicKey)
 
-        let accountDerivationPath = try DerivationPath.bitcoinAccount(
+        let accountDerivationPath = try path ?? DerivationPath.bitcoinAccount(
             network: network,
             scriptType: scriptType,
-            accountIndex: accountIndex
+            accountIndex: 0
         )
+
+        try accountDerivationPath.validate(for: .bitcoin(network), scriptType: scriptType)
 
         let accountPathText = String(accountDerivationPath.string.dropFirst(2)) // drop the leading "m/".
 

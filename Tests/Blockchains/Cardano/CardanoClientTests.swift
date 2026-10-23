@@ -267,7 +267,7 @@ struct CardanoClientTests {
 
 private extension CardanoClientTests {
     func descriptor() throws -> CardanoAccountDescriptor {
-        try CardanoAccountDescriptor(entropy: entropy, network: .preprod, accountIndex: 0)
+        try CardanoAccountDescriptor(entropy: entropy, network: .preprod, path: .cardanoAccount(accountIndex: 0))
     }
 
     func queryItems(of stub: StubURLProtocol.Session) throws -> [URLQueryItem] {
