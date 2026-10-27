@@ -187,7 +187,7 @@ extension CardanoClient {
         let decoded = try remappingWalletKitError { try cardanoDecodeTransaction(transaction: transaction) }
         let usage = try await addressUsage(owner)
 
-        let ownedOutputs = try await accountUTxOs(owner).map { entry in
+        var ownedOutputs = try await accountUTxOs(owner).map { entry in
             CardanoResolvedOutputFfi(
                 address: entry.address,
                 outputIndex: entry.outputIndex,
@@ -195,6 +195,8 @@ extension CardanoClient {
                 txHash: try Data(hexString: entry.txHash)
             )
         }
+
+        ownedOutputs += await outsideOutputs(of: decoded.inputs + decoded.collateral, excluding: ownedOutputs)
 
         var referenceOutputs: [CardanoResolvedOutputFfi] = []
         var scripts: [CardanoResolvedScriptFfi] = []
@@ -269,6 +271,35 @@ private extension CardanoClient {
         let scripts: [NativeScriptJson]?
         let slot: UInt64?
         let type: String
+    }
+
+    /// Inputs outside the account (a DEX's script-locked pool UTxO, another
+    /// party's key), resolved from the chain: a script input needs no key and a
+    /// foreign key counts as a real other signer. Ones that can't be looked up
+    /// are left out, so the resolver reports them unresolved.
+    func outsideOutputs(
+        of inputs: [CardanoDappInputFfi],
+        excluding known: [CardanoResolvedOutputFfi]
+    ) async -> [CardanoResolvedOutputFfi] {
+        let knownKeys = Set(known.map { "\($0.txHash.lowercaseHex)#\($0.outputIndex)" })
+        let outside = inputs
+            .filter { !knownKeys.contains("\($0.txHash.lowercaseHex)#\($0.outputIndex)") }
+        var outputs: [CardanoResolvedOutputFfi] = []
+
+        for input in outside {
+            guard let output = try? await referenceOutput(txHash: input.txHash, index: input.outputIndex) else {
+                continue
+            }
+
+            outputs.append(CardanoResolvedOutputFfi(
+                address: output.address,
+                outputIndex: input.outputIndex,
+                scriptHash: nil,
+                txHash: input.txHash
+            ))
+        }
+
+        return outputs
     }
 
     func referenceOutput(txHash: Data, index: UInt32) async throws -> ChainOutput? {

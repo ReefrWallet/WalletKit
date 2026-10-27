@@ -675,3 +675,61 @@ fn native_script_json_matches_the_cbor_script_hash() {
     assert_eq!(parsed.hash(), expected.hash());
     assert!(cardano_native_script_from_json(r#"{"type":"nope"}"#.to_string()).is_err());
 }
+
+fn output_at(seed: u8, index: u32, address: String) -> CardanoResolvedOutputFfi {
+    CardanoResolvedOutputFfi {
+        address,
+        output_index: index,
+        script_hash: None,
+        tx_hash: vec![seed; 32],
+    }
+}
+
+#[test]
+fn a_resolved_foreign_key_input_is_a_missing_signer_not_unresolved() {
+    let foreign = cardano_base_address(
+        cardano_account_xpub_from_entropy(FOREIGN_ENTROPY.to_vec(), 0).unwrap(),
+        NETWORK,
+        0,
+        0,
+    )
+    .unwrap();
+    let tx = transaction(&body(&[input(1, 0), input(2, 0)]), &TransactionWitnessSet::new());
+
+    let result = signers(&tx, vec![owned(1, 0, 0), output_at(2, 0, foreign)]);
+
+    assert_eq!(result.to_sign, vec![path(0, 0)]);
+    assert_eq!(result.missing, vec![key_hash(&FOREIGN_ENTROPY, 0, 0).to_bytes()]);
+    assert!(result.unresolved.is_empty());
+}
+
+#[test]
+fn a_resolved_script_input_needs_no_key_once_its_script_is_known() {
+    let script_hash = ScriptHash::from_bytes(vec![4; 28]).unwrap();
+    let script_address = Address::from_bech32(&address(0)).unwrap().network_id().map(|network| {
+        cardano_serialization_lib::EnterpriseAddress::new(network, &Credential::from_scripthash(&script_hash))
+            .to_address()
+            .to_bech32(None)
+            .unwrap()
+    });
+    let script_address = script_address.unwrap();
+    let tx = transaction(&body(&[input(1, 0), input(2, 0)]), &TransactionWitnessSet::new());
+
+    let known = cardano_required_signers(
+        tx.clone(),
+        xpub(),
+        vec![owned(1, 0, 0), output_at(2, 0, script_address.clone())],
+        vec![],
+        vec![CardanoResolvedScriptFfi { hash: script_hash.to_bytes(), native_script: None }],
+        vec![],
+    )
+    .unwrap();
+    assert_eq!(known.to_sign, vec![path(0, 0)]);
+    assert!(known.missing.is_empty());
+    assert!(known.unresolved.is_empty());
+
+    // Without the script body it can't be checked, but it is still not a key signer.
+    let unknown = signers(&tx, vec![owned(1, 0, 0), output_at(2, 0, script_address)]);
+    assert!(unknown.missing.is_empty());
+    assert_eq!(unknown.unresolved.len(), 1);
+}

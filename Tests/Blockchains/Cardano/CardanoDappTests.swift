@@ -231,6 +231,31 @@ struct CardanoDappTests {
         #expect(signers.missingCount == 0)
     }
 
+    @Test func inputsOutsideTheAccountAreLookedUpSoAForeignKeyIsASignerAndAScriptIsNot() async throws {
+        let owner = try descriptor()
+        let (_, unsigned) = try await signedTransfer()
+        let transaction = witnessless(unsigned)
+        let foreign = try CardanoAccountDescriptor(
+            entropy: Data(repeating: 9, count: 16),
+            network: .preprod,
+            path: path
+        ).receiveAddress.string
+        let spent = String(repeating: "07", count: 32)
+
+        // The account no longer holds the UTxO; the chain says another key owns it.
+        let stub = StubURLProtocol.makeSession(responsesByPath: [
+            "/api/v0/accounts/\(owner.stakeAddress)/utxos": json("[]"),
+            "/api/v0/accounts/\(owner.stakeAddress)/addresses": json("[]"),
+            "/api/v0/txs/\(spent)/utxos": json(#"{"outputs":[{"address":"\#(foreign)","output_index":0}]}"#)
+        ])
+
+        let signers = try await client(stub).resolveSigners(transaction: transaction, owner: owner)
+
+        #expect(signers.toSign.isEmpty)
+        #expect(signers.missingCount == 1)
+        #expect(signers.unresolved.isEmpty)
+    }
+
     @Test func inputsOutsideTheAccountAreUnresolved() async throws {
         let owner = try descriptor()
         let (_, unsigned) = try await signedTransfer()
