@@ -94,7 +94,7 @@ extension CardanoClient {
     }
 }
 
-private extension CardanoClient {
+extension CardanoClient {
     struct AddressEntry: Decodable {
         let address: String
     }
@@ -193,7 +193,7 @@ private extension CardanoClient {
         return total
     }
 
-    internal func ownedAddresses(_ owner: CardanoAccountDescriptor) async throws -> [String] {
+    func ownedAddresses(_ owner: CardanoAccountDescriptor) async throws -> [String] {
         let count = 100
         var addresses: [String] = []
         var page = 1

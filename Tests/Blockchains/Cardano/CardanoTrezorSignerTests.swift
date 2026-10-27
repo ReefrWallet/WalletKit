@@ -111,7 +111,7 @@ struct CardanoTrezorSignerTests {
 
             let witnesses = try await signer.signDappTransaction(
                 transaction,
-                paths: [CardanoSigningPathFfi(index: 0, role: 0)]
+                paths: [CardanoSigningPath(index: 0, role: 0)]
             )
 
             // A witness set holding only the device's vkey witness.
@@ -136,7 +136,7 @@ struct CardanoTrezorSignerTests {
             let signed = try await signer.signData(
                 Data("hello reefr".utf8),
                 address: address,
-                path: CardanoSigningPathFfi(index: 0, role: 0)
+                path: CardanoSigningPath(index: 0, role: 0)
             )
 
             #expect(signed.signature.first == 0x84) // COSE_Sign1

@@ -211,8 +211,8 @@ struct CardanoDappTests {
 
         let signers = try await client(stub).resolveSigners(transaction: transaction, owner: owner)
 
-        #expect(signers.toSign == [CardanoSigningPathFfi(index: 0, role: 0)])
-        #expect(signers.missing.isEmpty)
+        #expect(signers.toSign == [CardanoSigningPath(index: 0, role: 0)])
+        #expect(signers.missingCount == 0)
         #expect(signers.unresolved.isEmpty)
     }
 
@@ -227,9 +227,8 @@ struct CardanoDappTests {
         let signers = try await client(stub).resolveSigners(transaction: transaction, owner: owner)
 
         #expect(signers.toSign.isEmpty)
-        #expect(signers.satisfied.count == 1)
         #expect(signers.validExistingCount == 1)
-        #expect(signers.missing.isEmpty)
+        #expect(signers.missingCount == 0)
     }
 
     @Test func inputsOutsideTheAccountAreUnresolved() async throws {
@@ -257,7 +256,7 @@ struct CardanoDappTests {
 
         let witnesses = try await signer.signDappTransaction(
             transaction,
-            paths: [CardanoSigningPathFfi(index: 0, role: 0)]
+            paths: [CardanoSigningPath(index: 0, role: 0)]
         )
 
         // {0: [[vkey, signature]]}: a one-entry map holding only the vkey witnesses.
@@ -274,7 +273,7 @@ struct CardanoDappTests {
         let keyPath = try #require(try cardanoSigningPath(for: address, owner: owner, usage: usage))
         let signed = try await signer.signData(Data("hello".utf8), address: address, path: keyPath)
 
-        #expect(keyPath == CardanoSigningPathFfi(index: 2, role: 0))
+        #expect(keyPath == CardanoSigningPath(index: 2, role: 0))
         #expect(signed.signature.first == 0x84) // COSE_Sign1 array
         #expect(signed.key.first == 0xA4) // COSE_Key map
     }

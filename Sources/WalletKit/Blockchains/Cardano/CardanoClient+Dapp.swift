@@ -102,9 +102,51 @@ extension CardanoClient {
         return CardanoAddressUsage(used: used.sorted { ($0.role, $0.index) < ($1.role, $1.index) })
     }
 
-    /// The account's UTxOs in CIP-30 form: datum and reference script
-    /// included, in a stable (tx hash, index) order.
-    public func dappUtxos(_ owner: CardanoAccountDescriptor) async throws -> [CardanoDappUtxoFfi] {
+    /// CIP-30 `getUtxos`: the CBOR hex of the account's UTxOs, in a stable
+    /// (tx hash, index) order. With `amountHex` (a CBOR `Value`) only UTxOs
+    /// covering it are returned, or `nil` if the target is unreachable.
+    public func dappUtxoHexes(_ owner: CardanoAccountDescriptor, amountHex: String? = nil) async throws -> [String]? {
+        let utxos = try await dappUtxos(owner)
+
+        let chosen: [CardanoDappUtxoFfi]
+        if let amountHex {
+            let target = try remappingWalletKitError { try cardanoValueFromHex(hex: amountHex) }
+            let plain = utxos.map {
+                CardanoUtxoFfi(
+                    address: $0.address,
+                    assets: $0.assets,
+                    lovelace: $0.lovelace,
+                    outputIndex: $0.outputIndex,
+                    txHash: $0.txHash
+                )
+            }
+
+            let selected = try remappingWalletKitError { try cardanoSelectUtxos(target: target, utxos: plain) }
+            guard let indexes = selected else {
+                return nil
+            }
+
+            chosen = indexes.map { utxos[Int($0)] }
+        } else {
+            chosen = utxos
+        }
+
+        return try chosen.map { utxo in try remappingWalletKitError { try cardanoUtxoToHex(utxo: utxo) } }
+    }
+
+    /// CIP-30 `getBalance`: the account's total value as CBOR hex.
+    public func dappBalanceHex(_ owner: CardanoAccountDescriptor) async throws -> String {
+        let balances = try await getAllBalances(owner)
+        let assets = balances.compactMap { unit, quantity -> CardanoAssetFfi? in
+            unit == "lovelace" ? nil : CardanoAssetId(unit: unit)?.ffi(quantity: quantity.description)
+        }
+
+        let value = CardanoValueFfi(assets: assets, lovelace: (balances["lovelace"] ?? 0).description)
+
+        return try remappingWalletKitError { try cardanoValueToHex(value: value) }
+    }
+
+    func dappUtxos(_ owner: CardanoAccountDescriptor) async throws -> [CardanoDappUtxoFfi] {
         var result: [CardanoDappUtxoFfi] = []
 
         for entry in try await accountUTxOs(owner) {
@@ -141,7 +183,7 @@ extension CardanoClient {
     /// What `transaction` needs from `owner`, per the CIP-30 ownership model.
     /// Reference inputs and their scripts are resolved from the chain; any
     /// that can't be is left out, which the resolver reports as unresolved.
-    public func resolveSigners(transaction: Data, owner: CardanoAccountDescriptor) async throws -> CardanoSignersFfi {
+    public func resolveSigners(transaction: Data, owner: CardanoAccountDescriptor) async throws -> CardanoSigners {
         let decoded = try remappingWalletKitError { try cardanoDecodeTransaction(transaction: transaction) }
         let usage = try await addressUsage(owner)
 
@@ -174,7 +216,7 @@ extension CardanoClient {
             }
         }
 
-        return try remappingWalletKitError {
+        let signers = try remappingWalletKitError {
             try cardanoRequiredSigners(
                 transaction: transaction,
                 accountXpub: owner.xpub,
@@ -184,6 +226,8 @@ extension CardanoClient {
                 usedIndices: usage.indices
             )
         }
+
+        return CardanoSigners(signers)
     }
 }
 
@@ -248,11 +292,13 @@ private extension CardanoClient {
             reference = try remappingWalletKitError {
                 try cardanoScriptRefNative(script: cardanoNativeScriptFromJson(json: json))
             }
+
         case "plutusV1", "plutusV2", "plutusV3":
             let script = try await plutusCbor(hash: hash)
             reference = try remappingWalletKitError {
                 try cardanoScriptRefPlutus(version: info.version, script: script)
             }
+
         default:
             throw WalletKitError.internalError(message: "Unsupported Cardano script type \(info.type).")
         }
@@ -273,6 +319,7 @@ private extension CardanoClient {
             let json = try await nativeScriptJson(hash: hash)
             native = try remappingWalletKitError { try cardanoNativeScriptFromJson(json: json) }
         }
+
         let script = CardanoResolvedScriptFfi(hash: try Data(hexString: hash), nativeScript: native)
 
         await CardanoScriptCache.shared.store(script: script, for: hash)
@@ -283,7 +330,7 @@ private extension CardanoClient {
         let script: ScriptJson = try await get("scripts/\(hash)/json")
         let data = try JSONEncoder().encode(script.json)
 
-        return String(decoding: data, as: UTF8.self)
+        return String(bytes: data, encoding: .utf8) ?? "{}"
     }
 
     func plutusCbor(hash: String) async throws -> Data {

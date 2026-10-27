@@ -92,7 +92,7 @@ public enum CardanoNetwork: Codable, Equatable, Hashable, Sendable {
         }
     }
 
-    var addressNetworkId: UInt8 {
+    public var addressNetworkId: UInt8 {
         self == .mainnet ? 1 : 0
     }
 
