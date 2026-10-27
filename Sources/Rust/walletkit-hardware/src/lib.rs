@@ -15,7 +15,11 @@ mod path;
 
 pub use delegate::{HardwareButtonRequest, HardwareDeviceDelegate, HardwareInputRequest};
 pub use device::{
-    CardanoAsset, CardanoTxFields, CardanoTxInput, CardanoTxOutput, CardanoWitness,
+    CardanoAsset, CardanoCertificate, CardanoCertificateKind, CardanoCredential, CardanoDRep, CardanoDappOutput,
+    CardanoDappTxRequest, CardanoDappTxSignature, CardanoDatum, CardanoMessageAddress, CardanoMessageAddressType,
+    CardanoMessageError, CardanoMessageRequest, CardanoMessageSignature, CardanoMintGroup, CardanoMintToken,
+    CardanoRequiredSigner, CardanoSigningMode, CardanoTxFields, CardanoTxInput, CardanoTxOutput, CardanoTxRejection,
+    CardanoWithdrawal, CardanoWitness,
     EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields, EthereumTypedDataFields,
     HardwareBitcoinNetwork, HardwareCurve, HardwareDevice, SolanaTokenAccountInfo, SolanaTxFields, TronContract,
     TronResource, TronTxFields,

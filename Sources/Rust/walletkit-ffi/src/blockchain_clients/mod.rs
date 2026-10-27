@@ -21,6 +21,7 @@ mod aptos_address;
 mod aptos_signer;
 pub mod bitcoin;
 pub mod cardano;
+pub mod cardano_dapp;
 mod ethereum_abi;
 mod ethereum_address;
 mod ethereum_message;

@@ -6,6 +6,7 @@ use std::sync::{
 use tokio::sync::oneshot;
 use trezor_client::{protos, AvailableDevice};
 use walletkit_hardware::{
+    CardanoDappTxRequest, CardanoDappTxSignature, CardanoMessageRequest, CardanoMessageSignature,
     CardanoTxFields, CardanoWitness, EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     EthereumTypedDataFields, HardwareBitcoinNetwork, HardwareButtonRequest, HardwareDeviceDelegate, HardwareError,
     HardwarePathSegment, SolanaTxFields, TronTxFields,
@@ -63,6 +64,8 @@ enum Command {
     },
     CardanoXpub { path: Vec<HardwarePathSegment>, reply: oneshot::Sender<Result<String, HardwareError>> },
     CardanoSignTx { fields: CardanoTxFields, reply: oneshot::Sender<Result<Vec<CardanoWitness>, HardwareError>> },
+    CardanoSignDappTx { request: CardanoDappTxRequest, reply: oneshot::Sender<Result<CardanoDappTxSignature, HardwareError>> },
+    CardanoSignMessage { request: CardanoMessageRequest, reply: oneshot::Sender<Result<CardanoMessageSignature, HardwareError>> },
     BitcoinXpub {
         path: Vec<HardwarePathSegment>,
         reply: oneshot::Sender<Result<String, HardwareError>>,
@@ -205,6 +208,14 @@ impl DeviceWorker {
                         let result = super::device::cardano_sign_tx(&mut trezor, fields, &delegate, &runtime);
                         let _ = reply.send(result);
                     }
+                    Command::CardanoSignDappTx { request, reply } => {
+                        let result = super::device::cardano_sign_dapp_tx(&mut trezor, request, &delegate, &runtime);
+                        let _ = reply.send(result);
+                    }
+                    Command::CardanoSignMessage { request, reply } => {
+                        let result = super::device::cardano_sign_message(&mut trezor, request, &delegate, &runtime);
+                        let _ = reply.send(result);
+                    }
                     Command::BitcoinXpub { path, reply } => {
                         let result = super::device::bitcoin_xpub(&mut trezor, &path, &delegate, &runtime);
                         let _ = reply.send(result);
@@ -339,6 +350,18 @@ impl DeviceWorker {
     pub(super) async fn cardano_sign_tx(&self, fields: CardanoTxFields) -> Result<Vec<CardanoWitness>, HardwareError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx.send(Command::CardanoSignTx { fields, reply: reply_tx }).map_err(|_| HardwareError::Disconnected)?;
+        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+    }
+
+    pub(super) async fn cardano_sign_dapp_tx(&self, request: CardanoDappTxRequest) -> Result<CardanoDappTxSignature, HardwareError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx.send(Command::CardanoSignDappTx { request, reply: reply_tx }).map_err(|_| HardwareError::Disconnected)?;
+        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+    }
+
+    pub(super) async fn cardano_sign_message(&self, request: CardanoMessageRequest) -> Result<CardanoMessageSignature, HardwareError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.command_tx.send(Command::CardanoSignMessage { request, reply: reply_tx }).map_err(|_| HardwareError::Disconnected)?;
         reply_rx.await.map_err(|_| HardwareError::Disconnected)?
     }
 

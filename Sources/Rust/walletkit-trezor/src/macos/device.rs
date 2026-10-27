@@ -4,7 +4,9 @@ use async_trait::async_trait;
 use protobuf::MessageField;
 use trezor_client::{protos, protos::MessageType, Trezor, TrezorMessage};
 use walletkit_hardware::{
-    CardanoTxFields, CardanoWitness, EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
+    CardanoCertificate, CardanoCertificateKind, CardanoCredential, CardanoDRep, CardanoDappOutput, CardanoDappTxRequest,
+    CardanoDappTxSignature, CardanoDatum, CardanoMessageAddressType, CardanoMessageRequest, CardanoMessageSignature,
+    CardanoRequiredSigner, CardanoSigningMode, CardanoTxFields, CardanoWitness, EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     EthereumTypedDataFields, HardwareBitcoinNetwork, HardwareButtonRequest, HardwareCurve,
     HardwareDevice as HardwareDeviceTrait, HardwareDeviceDelegate, HardwareDeviceInfo, HardwareError, HardwareInputRequest,
     HardwarePathSegment, SolanaTxFields, TronTxFields,
@@ -136,6 +138,16 @@ impl HardwareDeviceTrait for TrezorDevice {
 
     async fn cardano_sign_tx(&self, fields: CardanoTxFields) -> Result<Vec<CardanoWitness>, HardwareError> {
         self.worker.cardano_sign_tx(fields).await
+    }
+
+    async fn cardano_sign_dapp_tx(&self, request: CardanoDappTxRequest) -> Result<CardanoDappTxSignature, HardwareError> {
+        request.validate()?;
+        self.worker.cardano_sign_dapp_tx(request).await
+    }
+
+    async fn cardano_sign_message(&self, request: CardanoMessageRequest) -> Result<CardanoMessageSignature, HardwareError> {
+        request.validate()?;
+        self.worker.cardano_sign_message(request).await
     }
 
     async fn bitcoin_xpub(&self, path: Vec<HardwarePathSegment>) -> Result<String, HardwareError> {
@@ -275,6 +287,398 @@ pub(super) fn cardano_sign_tx(
     }
     drive_interaction(trezor.call(protos::CardanoTxHostAck::new(), Box::new(|_, response: protos::CardanoSignTxFinished| Ok(response))), delegate, runtime, &HardwareButtonRequest::ConfirmTransaction)?;
     Ok(witnesses)
+}
+
+/// One body item the device asks for, in the order the firmware consumes
+/// them (`signer.py::_processs_tx_init`).
+#[derive(Debug, Clone, PartialEq)]
+pub(super) enum CardanoTxItem {
+    AssetGroup(protos::CardanoAssetGroup),
+    AuxiliaryData(protos::CardanoTxAuxiliaryData),
+    CollateralInput(protos::CardanoTxCollateralInput),
+    Certificate(protos::CardanoTxCertificate),
+    InlineDatumChunk(protos::CardanoTxInlineDatumChunk),
+    Input(protos::CardanoTxInput),
+    Mint(protos::CardanoTxMint),
+    Output(protos::CardanoTxOutput),
+    ReferenceInput(protos::CardanoTxReferenceInput),
+    ReferenceScriptChunk(protos::CardanoTxReferenceScriptChunk),
+    RequiredSigner(protos::CardanoTxRequiredSigner),
+    Token(protos::CardanoToken),
+    Withdrawal(protos::CardanoTxWithdrawal),
+}
+
+/// Largest datum/script chunk the firmware accepts.
+const CARDANO_CHUNK_SIZE: usize = 1024;
+
+fn required(value: Option<Vec<u8>>, what: &str) -> Result<Vec<u8>, HardwareError> {
+    value.ok_or_else(|| HardwareError::SigningFailed { reason: format!("Trezor returned an empty {what}") })
+}
+
+fn address_n(path: &[HardwarePathSegment]) -> Vec<u32> {
+    path.iter().map(HardwarePathSegment::to_address_n).collect()
+}
+
+fn to_signing_mode(mode: CardanoSigningMode) -> protos::CardanoTxSigningMode {
+    match mode {
+        CardanoSigningMode::Multisig => protos::CardanoTxSigningMode::MULTISIG_TRANSACTION,
+        CardanoSigningMode::Ordinary => protos::CardanoTxSigningMode::ORDINARY_TRANSACTION,
+        CardanoSigningMode::Plutus => protos::CardanoTxSigningMode::PLUTUS_TRANSACTION,
+    }
+}
+
+fn push_output(items: &mut Vec<CardanoTxItem>, output: &CardanoDappOutput) -> protos::CardanoTxOutput {
+    let mut asset_groups: Vec<(&[u8], Vec<&walletkit_hardware::CardanoAsset>)> = Vec::new();
+    for asset in &output.assets {
+        match asset_groups.iter_mut().find(|(policy_id, _)| *policy_id == asset.policy_id.as_slice()) {
+            Some((_, tokens)) => tokens.push(asset),
+            None => asset_groups.push((&asset.policy_id, vec![asset])),
+        }
+    }
+    let mut message = protos::CardanoTxOutput::new();
+    message.set_address(output.address.clone());
+    message.set_amount(output.lovelace);
+    message.set_asset_groups_count(asset_groups.len() as u32);
+    let inline_datum = match &output.datum {
+        Some(CardanoDatum::Hash(hash)) => {
+            message.set_datum_hash(hash.clone());
+            None
+        }
+        Some(CardanoDatum::Inline(data)) => Some(data),
+        None => None,
+    };
+    message.set_format(if output.post_alonzo {
+        protos::CardanoTxOutputSerializationFormat::MAP_BABBAGE
+    } else {
+        protos::CardanoTxOutputSerializationFormat::ARRAY_LEGACY
+    });
+    message.set_inline_datum_size(inline_datum.map_or(0, |data| data.len() as u32));
+    message.set_reference_script_size(output.reference_script.as_ref().map_or(0, |script| script.len() as u32));
+    items.push(CardanoTxItem::Output(message.clone()));
+    for (policy_id, tokens) in asset_groups {
+        let mut group = protos::CardanoAssetGroup::new();
+        group.set_policy_id(policy_id.to_vec());
+        group.set_tokens_count(tokens.len() as u32);
+        items.push(CardanoTxItem::AssetGroup(group));
+        for asset in tokens {
+            let mut token = protos::CardanoToken::new();
+            token.set_asset_name_bytes(asset.name.clone());
+            token.set_amount(asset.quantity);
+            items.push(CardanoTxItem::Token(token));
+        }
+    }
+    for chunk in inline_datum.into_iter().flat_map(|data| data.chunks(CARDANO_CHUNK_SIZE)) {
+        let mut message = protos::CardanoTxInlineDatumChunk::new();
+        message.set_data(chunk.to_vec());
+        items.push(CardanoTxItem::InlineDatumChunk(message));
+    }
+    for chunk in output.reference_script.iter().flat_map(|script| script.chunks(CARDANO_CHUNK_SIZE)) {
+        let mut message = protos::CardanoTxReferenceScriptChunk::new();
+        message.set_data(chunk.to_vec());
+        items.push(CardanoTxItem::ReferenceScriptChunk(message));
+    }
+    message
+}
+
+fn set_credential(credential: &CardanoCredential, path: &mut Vec<u32>, key_hash: &mut Option<Vec<u8>>, script_hash: &mut Option<Vec<u8>>) {
+    match credential {
+        CardanoCredential::KeyHash(hash) => *key_hash = Some(hash.clone()),
+        CardanoCredential::Path(segments) => *path = address_n(segments),
+        CardanoCredential::ScriptHash(hash) => *script_hash = Some(hash.clone()),
+    }
+}
+
+fn to_certificate(certificate: &CardanoCertificate) -> Result<protos::CardanoTxCertificate, HardwareError> {
+    use protos::CardanoCertificateType as Kind;
+    let mut message = protos::CardanoTxCertificate::new();
+    message.set_type(match &certificate.kind {
+        CardanoCertificateKind::StakeDelegation => Kind::STAKE_DELEGATION,
+        CardanoCertificateKind::StakeDeregistration => Kind::STAKE_DEREGISTRATION,
+        CardanoCertificateKind::StakeDeregistrationConway => Kind::STAKE_DEREGISTRATION_CONWAY,
+        CardanoCertificateKind::StakeRegistration => Kind::STAKE_REGISTRATION,
+        CardanoCertificateKind::StakeRegistrationConway => Kind::STAKE_REGISTRATION_CONWAY,
+        CardanoCertificateKind::VoteDelegation => Kind::VOTE_DELEGATION,
+        CardanoCertificateKind::Unsupported { name } => {
+            return Err(HardwareError::UnsupportedDevice { reason: format!("unsupported {name} certificate") })
+        }
+    });
+    let (mut path, mut key_hash, mut script_hash) = (Vec::new(), None, None);
+    set_credential(&certificate.credential, &mut path, &mut key_hash, &mut script_hash);
+    message.path = path;
+    message.key_hash = key_hash;
+    message.script_hash = script_hash;
+    message.pool = certificate.pool.clone();
+    message.deposit = certificate.deposit;
+    if let Some(drep) = &certificate.drep {
+        let mut message_drep = protos::CardanoDRep::new();
+        match drep {
+            CardanoDRep::Abstain => message_drep.set_type(protos::CardanoDRepType::ABSTAIN),
+            CardanoDRep::KeyHash(hash) => {
+                message_drep.set_type(protos::CardanoDRepType::KEY_HASH);
+                message_drep.set_key_hash(hash.clone());
+            }
+            CardanoDRep::NoConfidence => message_drep.set_type(protos::CardanoDRepType::NO_CONFIDENCE),
+            CardanoDRep::ScriptHash(hash) => {
+                message_drep.set_type(protos::CardanoDRepType::SCRIPT_HASH);
+                message_drep.set_script_hash(hash.clone());
+            }
+        }
+        message.drep = MessageField::some(message_drep);
+    }
+    Ok(message)
+}
+
+/// Maps a dApp request to the init message and the ordered item stream.
+/// Pure: nothing is sent, so it also validates the request.
+pub(super) fn plan_dapp_tx(request: &CardanoDappTxRequest) -> Result<(protos::CardanoSignTxInit, Vec<CardanoTxItem>), HardwareError> {
+    let mode = request.validate()?;
+    let mut items = Vec::new();
+
+    for input in &request.inputs {
+        let mut message = protos::CardanoTxInput::new();
+        message.set_prev_hash(input.tx_hash.clone());
+        message.set_prev_index(input.output_index);
+        items.push(CardanoTxItem::Input(message));
+    }
+    for output in &request.outputs {
+        push_output(&mut items, output);
+    }
+    for certificate in &request.certificates {
+        items.push(CardanoTxItem::Certificate(to_certificate(certificate)?));
+    }
+    for withdrawal in &request.withdrawals {
+        let mut message = protos::CardanoTxWithdrawal::new();
+        message.set_amount(withdrawal.amount);
+        let (mut path, mut key_hash, mut script_hash) = (Vec::new(), None, None);
+        set_credential(&withdrawal.credential, &mut path, &mut key_hash, &mut script_hash);
+        message.path = path;
+        message.key_hash = key_hash;
+        message.script_hash = script_hash;
+        items.push(CardanoTxItem::Withdrawal(message));
+    }
+    if let Some(hash) = &request.auxiliary_data_hash {
+        let mut message = protos::CardanoTxAuxiliaryData::new();
+        message.set_hash(hash.clone());
+        items.push(CardanoTxItem::AuxiliaryData(message));
+    }
+    if !request.mint.is_empty() {
+        let mut mint = protos::CardanoTxMint::new();
+        mint.set_asset_groups_count(request.mint.len() as u32);
+        items.push(CardanoTxItem::Mint(mint));
+        for group in &request.mint {
+            let mut message = protos::CardanoAssetGroup::new();
+            message.set_policy_id(group.policy_id.clone());
+            message.set_tokens_count(group.tokens.len() as u32);
+            items.push(CardanoTxItem::AssetGroup(message));
+            for token in &group.tokens {
+                let mut message = protos::CardanoToken::new();
+                message.set_asset_name_bytes(token.name.clone());
+                message.set_mint_amount(token.amount);
+                items.push(CardanoTxItem::Token(message));
+            }
+        }
+    }
+    for input in &request.collateral_inputs {
+        let mut message = protos::CardanoTxCollateralInput::new();
+        message.set_prev_hash(input.tx_hash.clone());
+        message.set_prev_index(input.output_index);
+        items.push(CardanoTxItem::CollateralInput(message));
+    }
+    for signer in &request.required_signers {
+        let mut message = protos::CardanoTxRequiredSigner::new();
+        match signer {
+            CardanoRequiredSigner::KeyHash(hash) => message.set_key_hash(hash.clone()),
+            CardanoRequiredSigner::Path(path) => message.key_path = address_n(path),
+        }
+        items.push(CardanoTxItem::RequiredSigner(message));
+    }
+    if let Some(output) = &request.collateral_return {
+        push_output(&mut items, output);
+    }
+    for input in &request.reference_inputs {
+        let mut message = protos::CardanoTxReferenceInput::new();
+        message.set_prev_hash(input.tx_hash.clone());
+        message.set_prev_index(input.output_index);
+        items.push(CardanoTxItem::ReferenceInput(message));
+    }
+
+    let mut init = protos::CardanoSignTxInit::new();
+    init.set_signing_mode(to_signing_mode(mode));
+    init.set_protocol_magic(request.protocol_magic);
+    init.set_network_id(u32::from(request.network_id));
+    init.set_inputs_count(request.inputs.len() as u32);
+    init.set_outputs_count(request.outputs.len() as u32);
+    init.set_fee(request.fee);
+    if let Some(ttl) = request.ttl {
+        init.set_ttl(ttl);
+    }
+    init.set_certificates_count(request.certificates.len() as u32);
+    init.set_withdrawals_count(request.withdrawals.len() as u32);
+    init.set_has_auxiliary_data(request.auxiliary_data_hash.is_some());
+    if let Some(start) = request.validity_start {
+        init.set_validity_interval_start(start);
+    }
+    init.set_witness_requests_count(request.witness_paths.len() as u32);
+    init.set_minting_asset_groups_count(request.mint.len() as u32);
+    init.set_derivation_type(protos::CardanoDerivationType::ICARUS);
+    init.set_include_network_id(request.include_network_id);
+    if let Some(hash) = &request.script_data_hash {
+        init.set_script_data_hash(hash.clone());
+    }
+    init.set_collateral_inputs_count(request.collateral_inputs.len() as u32);
+    init.set_required_signers_count(request.required_signers.len() as u32);
+    init.set_has_collateral_return(request.collateral_return.is_some());
+    if let Some(total) = request.total_collateral {
+        init.set_total_collateral(total);
+    }
+    init.set_reference_inputs_count(request.reference_inputs.len() as u32);
+    init.set_tag_cbor_sets(request.tag_cbor_sets);
+    Ok((init, items))
+}
+
+fn send_item<S: TrezorMessage>(
+    trezor: &mut Trezor,
+    message: S,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<(), HardwareError> {
+    drive_interaction(trezor.call(message, Box::new(|_, response: protos::CardanoTxItemAck| Ok(response))), delegate, runtime, &HardwareButtonRequest::ConfirmTransaction)?;
+    Ok(())
+}
+
+pub(super) fn cardano_sign_dapp_tx(
+    trezor: &mut Trezor,
+    request: CardanoDappTxRequest,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<CardanoDappTxSignature, HardwareError> {
+    let (init, items) = plan_dapp_tx(&request)?;
+    let button = HardwareButtonRequest::ConfirmTransaction;
+    send_item(trezor, init, delegate, runtime)?;
+    for item in items {
+        match item {
+            CardanoTxItem::AssetGroup(message) => send_item(trezor, message, delegate, runtime)?,
+            CardanoTxItem::AuxiliaryData(message) => {
+                // The device answers with its own supplement; acknowledge it.
+                drive_interaction(trezor.call(message, Box::new(|_, response: protos::CardanoTxAuxiliaryDataSupplement| Ok(response))), delegate, runtime, &button)?;
+                send_item(trezor, protos::CardanoTxHostAck::new(), delegate, runtime)?;
+            }
+            CardanoTxItem::CollateralInput(message) => send_item(trezor, message, delegate, runtime)?,
+            CardanoTxItem::Certificate(message) => send_item(trezor, message, delegate, runtime)?,
+            CardanoTxItem::InlineDatumChunk(message) => send_item(trezor, message, delegate, runtime)?,
+            CardanoTxItem::Input(message) => send_item(trezor, message, delegate, runtime)?,
+            CardanoTxItem::Mint(message) => send_item(trezor, message, delegate, runtime)?,
+            CardanoTxItem::Output(message) => send_item(trezor, message, delegate, runtime)?,
+            CardanoTxItem::ReferenceInput(message) => send_item(trezor, message, delegate, runtime)?,
+            CardanoTxItem::ReferenceScriptChunk(message) => send_item(trezor, message, delegate, runtime)?,
+            CardanoTxItem::RequiredSigner(message) => send_item(trezor, message, delegate, runtime)?,
+            CardanoTxItem::Token(message) => send_item(trezor, message, delegate, runtime)?,
+            CardanoTxItem::Withdrawal(message) => send_item(trezor, message, delegate, runtime)?,
+        }
+    }
+    let mut witnesses = Vec::with_capacity(request.witness_paths.len());
+    for path in &request.witness_paths {
+        let mut message = protos::CardanoTxWitnessRequest::new();
+        message.path = address_n(path);
+        let response = drive_interaction(trezor.call(message, Box::new(|_, response: protos::CardanoTxWitnessResponse| Ok(response))), delegate, runtime, &button)?;
+        witnesses.push(CardanoWitness {
+            public_key: required(response.pub_key, "Cardano witness public key")?,
+            signature: required(response.signature, "Cardano witness signature")?,
+        });
+    }
+    let body_hash = drive_interaction(trezor.call(protos::CardanoTxHostAck::new(), Box::new(|_, response: protos::CardanoTxBodyHash| Ok(response))), delegate, runtime, &button)?;
+    drive_interaction(trezor.call(protos::CardanoTxHostAck::new(), Box::new(|_, response: protos::CardanoSignTxFinished| Ok(response))), delegate, runtime, &button)?;
+    Ok(CardanoDappTxSignature { body_hash: required(body_hash.tx_hash, "Cardano body hash")?, witnesses })
+}
+
+fn to_message_address(address: &walletkit_hardware::CardanoMessageAddress) -> protos::CardanoAddressParametersType {
+    let mut parameters = protos::CardanoAddressParametersType::new();
+    parameters.set_address_type(match address.address_type {
+        CardanoMessageAddressType::Base => protos::CardanoAddressType::BASE,
+        CardanoMessageAddressType::BaseKeyScript => protos::CardanoAddressType::BASE_KEY_SCRIPT,
+        CardanoMessageAddressType::Enterprise => protos::CardanoAddressType::ENTERPRISE,
+        CardanoMessageAddressType::Reward => protos::CardanoAddressType::REWARD,
+    });
+    parameters.address_n = address_n(&address.path);
+    parameters.address_n_staking = address_n(&address.staking_path);
+    parameters.staking_key_hash = address.staking_key_hash.clone();
+    parameters
+}
+
+/// The init message of a CIP-8 signature; the payload is streamed later.
+pub(super) fn plan_message(request: &CardanoMessageRequest) -> Result<protos::CardanoSignMessageInit, HardwareError> {
+    request.validate()?;
+    let mut init = protos::CardanoSignMessageInit::new();
+    init.signing_path = address_n(&request.signing_path);
+    init.set_payload_size(request.payload.len() as u32);
+    init.set_prefer_hex_display(request.prefer_hex_display);
+    init.set_derivation_type(protos::CardanoDerivationType::ICARUS);
+    if let Some(address) = &request.address {
+        init.set_protocol_magic(address.protocol_magic);
+        init.set_network_id(u32::from(address.network_id));
+        init.address_parameters = MessageField::some(to_message_address(address));
+    }
+    Ok(init)
+}
+
+/// Drives `CardanoSignMessageInit` with raw messages: the device answers
+/// either with a payload request or, for an empty payload, with the
+/// signature directly, which a typed `call` can't express.
+pub(super) fn cardano_sign_message(
+    trezor: &mut Trezor,
+    request: CardanoMessageRequest,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<CardanoMessageSignature, HardwareError> {
+    let init = plan_message(&request)?;
+    let button = HardwareButtonRequest::Other { description: "Confirm Cardano message".to_string() };
+    let mut message = trezor.call_raw(init).map_err(map_trezor_error)?;
+    let mut pin_attempt = 0;
+    loop {
+        message = match message.message_type() {
+            MessageType::MessageType_CardanoMessageSignature => {
+                let signature: protos::CardanoMessageSignature = message.into_message().map_err(|error| map_trezor_error(error.into()))?;
+                return Ok(CardanoMessageSignature {
+                    address: required(signature.address, "Cardano message address")?,
+                    pub_key: required(signature.pub_key, "Cardano message public key")?,
+                    signature: required(signature.signature, "Cardano message signature")?,
+                });
+            }
+            MessageType::MessageType_CardanoMessageDataRequest => {
+                let data_request: protos::CardanoMessageDataRequest = message.into_message().map_err(|error| map_trezor_error(error.into()))?;
+                let Some(chunk) = request.chunk(data_request.length(), data_request.offset()) else {
+                    return Err(HardwareError::SigningFailed { reason: "Trezor requested data beyond the Cardano message payload".to_string() });
+                };
+                let mut response = protos::CardanoMessageDataResponse::new();
+                response.set_data(chunk.to_vec());
+                trezor.call_raw(response).map_err(map_trezor_error)?
+            }
+            MessageType::MessageType_ButtonRequest => {
+                runtime.block_on(delegate.waiting_for_confirmation(button.clone()));
+                trezor.call_raw(protos::ButtonAck::new()).map_err(map_trezor_error)?
+            }
+            MessageType::MessageType_PinMatrixRequest => {
+                pin_attempt += 1;
+                let pin = runtime.block_on(delegate.needs_input(HardwareInputRequest::Pin { attempt: pin_attempt }));
+                let Some(pin) = pin else { return Err(HardwareError::UserCancelled) };
+                let mut ack = protos::PinMatrixAck::new();
+                ack.set_pin(pin);
+                trezor.call_raw(ack).map_err(map_trezor_error)?
+            }
+            MessageType::MessageType_PassphraseRequest => {
+                let passphrase = runtime.block_on(delegate.needs_input(HardwareInputRequest::Passphrase));
+                let Some(passphrase) = passphrase else { return Err(HardwareError::UserCancelled) };
+                let mut ack = protos::PassphraseAck::new();
+                ack.set_passphrase(passphrase);
+                trezor.call_raw(ack).map_err(map_trezor_error)?
+            }
+            MessageType::MessageType_Failure => {
+                let failure: protos::Failure = message.into_message().map_err(|error| map_trezor_error(error.into()))?;
+                return Err(super::error::map_failure(&failure));
+            }
+            other => return Err(map_trezor_error(trezor_client::Error::UnexpectedMessageType(other))),
+        };
+    }
 }
 
 /// Runs on the device's worker thread. Hand-rolls the `EthereumSignTx`
@@ -1160,6 +1564,210 @@ fn to_field(to: &Option<Vec<u8>>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // -----------------------------------------------------------------------
+    // Cardano dApp transaction/message mapping (pure, no device needed)
+    // -----------------------------------------------------------------------
+
+    fn segment(index: u32, hardened: bool) -> HardwarePathSegment {
+        HardwarePathSegment { index, hardened }
+    }
+
+    fn cardano_path(role: u32) -> Vec<HardwarePathSegment> {
+        vec![segment(1852, true), segment(1815, true), segment(0, true), segment(role, false), segment(0, false)]
+    }
+
+    fn dapp_output() -> CardanoDappOutput {
+        CardanoDappOutput { address: "addr1qx".to_string(), assets: vec![], datum: None, lovelace: 2_000_000, post_alonzo: false, reference_script: None }
+    }
+
+    fn dapp_request() -> CardanoDappTxRequest {
+        CardanoDappTxRequest {
+            auxiliary_data_hash: None,
+            certificates: vec![],
+            collateral_inputs: vec![],
+            collateral_return: None,
+            fee: 170_000,
+            include_network_id: false,
+            inputs: vec![walletkit_hardware::CardanoTxInput { output_index: 3, tx_hash: vec![1; 32] }],
+            mint: vec![],
+            network_id: 1,
+            outputs: vec![dapp_output()],
+            protocol_magic: 764_824_073,
+            reference_inputs: vec![],
+            required_signers: vec![],
+            script_data_hash: None,
+            tag_cbor_sets: true,
+            total_collateral: None,
+            ttl: Some(500),
+            unsupported_content: vec![],
+            validity_start: None,
+            withdrawals: vec![],
+            witness_paths: vec![cardano_path(0)],
+        }
+    }
+
+    #[test]
+    fn plan_maps_init_fields() {
+        let mut request = dapp_request();
+        request.validity_start = Some(10);
+        request.include_network_id = true;
+        request.auxiliary_data_hash = Some(vec![7; 32]);
+        let (init, items) = plan_dapp_tx(&request).unwrap();
+        assert_eq!(init.signing_mode(), protos::CardanoTxSigningMode::ORDINARY_TRANSACTION);
+        assert_eq!((init.inputs_count(), init.outputs_count(), init.fee(), init.ttl()), (1, 1, 170_000, 500));
+        assert_eq!(init.validity_interval_start(), 10);
+        assert!(init.include_network_id() && init.has_auxiliary_data() && init.tag_cbor_sets());
+        assert_eq!(init.witness_requests_count(), 1);
+        assert_eq!(init.derivation_type(), protos::CardanoDerivationType::ICARUS);
+        assert!(matches!(items.last(), Some(CardanoTxItem::AuxiliaryData(_))));
+    }
+
+    #[test]
+    fn plan_orders_items_as_the_firmware_consumes_them() {
+        let mut request = dapp_request();
+        request.script_data_hash = Some(vec![3; 32]);
+        request.certificates = vec![CardanoCertificate {
+            credential: CardanoCredential::Path(cardano_path(2)),
+            deposit: None,
+            drep: None,
+            kind: CardanoCertificateKind::StakeDelegation,
+            pool: Some(vec![9; 28]),
+        }];
+        request.withdrawals = vec![walletkit_hardware::CardanoWithdrawal { amount: 4, credential: CardanoCredential::ScriptHash(vec![8; 28]) }];
+        request.mint = vec![walletkit_hardware::CardanoMintGroup {
+            policy_id: vec![2; 28],
+            tokens: vec![walletkit_hardware::CardanoMintToken { amount: -5, name: b"t".to_vec() }],
+        }];
+        request.collateral_inputs = vec![walletkit_hardware::CardanoTxInput { output_index: 0, tx_hash: vec![4; 32] }];
+        request.required_signers = vec![CardanoRequiredSigner::KeyHash(vec![6; 28])];
+        request.collateral_return = Some(dapp_output());
+        request.total_collateral = Some(3_000_000);
+        request.reference_inputs = vec![walletkit_hardware::CardanoTxInput { output_index: 1, tx_hash: vec![5; 32] }];
+
+        let (init, items) = plan_dapp_tx(&request).unwrap();
+        assert_eq!(init.signing_mode(), protos::CardanoTxSigningMode::PLUTUS_TRANSACTION);
+        assert_eq!(init.script_data_hash(), &[3; 32][..]);
+        assert_eq!(init.total_collateral(), 3_000_000);
+        assert!(init.has_collateral_return());
+        let order: Vec<&str> = items
+            .iter()
+            .map(|item| match item {
+                CardanoTxItem::AssetGroup(_) => "group",
+                CardanoTxItem::AuxiliaryData(_) => "aux",
+                CardanoTxItem::CollateralInput(_) => "collateral",
+                CardanoTxItem::Certificate(_) => "certificate",
+                CardanoTxItem::InlineDatumChunk(_) => "datum",
+                CardanoTxItem::Input(_) => "input",
+                CardanoTxItem::Mint(_) => "mint",
+                CardanoTxItem::Output(_) => "output",
+                CardanoTxItem::ReferenceInput(_) => "reference",
+                CardanoTxItem::ReferenceScriptChunk(_) => "script",
+                CardanoTxItem::RequiredSigner(_) => "signer",
+                CardanoTxItem::Token(_) => "token",
+                CardanoTxItem::Withdrawal(_) => "withdrawal",
+            })
+            .collect();
+        assert_eq!(
+            order,
+            ["input", "output", "certificate", "withdrawal", "mint", "group", "token", "collateral", "signer", "output", "reference"]
+        );
+        let CardanoTxItem::Certificate(certificate) = &items[2] else { panic!() };
+        assert_eq!(certificate.path, vec![0x8000_073c, 0x8000_0717, 0x8000_0000, 2, 0]);
+        let CardanoTxItem::Mint(mint) = &items[4] else { panic!() };
+        assert_eq!(mint.asset_groups_count(), 1);
+        let CardanoTxItem::Token(token) = &items[6] else { panic!() };
+        assert_eq!(token.mint_amount(), -5);
+    }
+
+    #[test]
+    fn plan_groups_output_assets_and_chunks_datums() {
+        let asset = |policy: u8, name: &[u8], quantity| walletkit_hardware::CardanoAsset { name: name.to_vec(), policy_id: vec![policy; 28], quantity };
+        let mut request = dapp_request();
+        request.outputs = vec![CardanoDappOutput {
+            assets: vec![asset(1, b"a", 1), asset(2, b"b", 2), asset(1, b"c", 3)],
+            datum: Some(CardanoDatum::Inline(vec![0xaa; 2500])),
+            post_alonzo: true,
+            reference_script: Some(vec![0xbb; 1025]),
+            ..dapp_output()
+        }];
+        let (_, items) = plan_dapp_tx(&request).unwrap();
+        let CardanoTxItem::Output(output) = &items[1] else { panic!() };
+        assert_eq!(output.asset_groups_count(), 2);
+        assert_eq!(output.format(), protos::CardanoTxOutputSerializationFormat::MAP_BABBAGE);
+        assert_eq!((output.inline_datum_size(), output.reference_script_size()), (2500, 1025));
+        let datum_chunks: Vec<usize> = items.iter().filter_map(|item| match item { CardanoTxItem::InlineDatumChunk(chunk) => Some(chunk.data().len()), _ => None }).collect();
+        let script_chunks: Vec<usize> = items.iter().filter_map(|item| match item { CardanoTxItem::ReferenceScriptChunk(chunk) => Some(chunk.data().len()), _ => None }).collect();
+        assert_eq!(datum_chunks, [1024, 1024, 452]);
+        assert_eq!(script_chunks, [1024, 1]);
+        let CardanoTxItem::AssetGroup(first) = &items[2] else { panic!() };
+        assert_eq!((first.policy_id(), first.tokens_count()), (&[1; 28][..], 2));
+    }
+
+    #[test]
+    fn plan_maps_datum_hash_and_vote_delegation() {
+        let mut request = dapp_request();
+        request.outputs[0].datum = Some(CardanoDatum::Hash(vec![5; 32]));
+        request.certificates = vec![CardanoCertificate {
+            credential: CardanoCredential::Path(cardano_path(2)),
+            deposit: None,
+            drep: Some(CardanoDRep::KeyHash(vec![4; 28])),
+            kind: CardanoCertificateKind::VoteDelegation,
+            pool: None,
+        }];
+        let (_, items) = plan_dapp_tx(&request).unwrap();
+        let CardanoTxItem::Output(output) = &items[1] else { panic!() };
+        assert_eq!(output.datum_hash(), &[5; 32][..]);
+        assert_eq!(output.inline_datum_size(), 0);
+        let CardanoTxItem::Certificate(certificate) = &items[2] else { panic!() };
+        assert_eq!(certificate.type_(), protos::CardanoCertificateType::VOTE_DELEGATION);
+        assert_eq!(certificate.drep.type_(), protos::CardanoDRepType::KEY_HASH);
+    }
+
+    #[test]
+    fn plan_rejects_unsupported_content_before_any_message() {
+        let mut request = dapp_request();
+        request.unsupported_content = vec!["proposal procedures".to_string()];
+        assert!(matches!(plan_dapp_tx(&request), Err(HardwareError::UnsupportedDevice { .. })));
+    }
+
+    #[test]
+    fn message_plan_streams_raw_payload_size() {
+        let request = CardanoMessageRequest {
+            address: Some(walletkit_hardware::CardanoMessageAddress {
+                address_type: CardanoMessageAddressType::Base,
+                network_id: 1,
+                path: cardano_path(0),
+                protocol_magic: 764_824_073,
+                staking_key_hash: None,
+                staking_path: cardano_path(2),
+            }),
+            payload: b"hello".to_vec(),
+            prefer_hex_display: true,
+            signing_path: cardano_path(0),
+        };
+        let init = plan_message(&request).unwrap();
+        assert_eq!(init.payload_size(), 5);
+        assert!(init.prefer_hex_display());
+        assert_eq!(init.derivation_type(), protos::CardanoDerivationType::ICARUS);
+        assert_eq!(init.signing_path, address_n(&cardano_path(0)));
+        assert_eq!(init.address_parameters.address_type(), protos::CardanoAddressType::BASE);
+        assert_eq!((init.network_id(), init.protocol_magic()), (1, 764_824_073));
+    }
+
+    #[test]
+    fn message_plan_without_address_omits_parameters() {
+        let request = CardanoMessageRequest { address: None, payload: vec![], prefer_hex_display: false, signing_path: cardano_path(2) };
+        let init = plan_message(&request).unwrap();
+        assert_eq!(init.payload_size(), 0);
+        assert!(init.address_parameters.is_none() && !init.has_network_id());
+    }
+
+    #[test]
+    fn message_plan_rejects_hash_like_payload_instead_of_hashing() {
+        let request = CardanoMessageRequest { address: None, payload: vec![0xff; 28], prefer_hex_display: false, signing_path: cardano_path(0) };
+        assert!(matches!(plan_message(&request), Err(HardwareError::SigningFailed { .. })));
+    }
 
     #[test]
     fn to_bitcoin_network_maps_every_case() {

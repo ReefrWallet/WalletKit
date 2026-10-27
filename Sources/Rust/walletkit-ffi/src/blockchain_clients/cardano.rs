@@ -84,19 +84,19 @@ pub struct CardanoWitnessFfi {
     pub signature: Vec<u8>,
 }
 
-fn invalid_address(reason: impl ToString) -> WalletKitErrorFfi {
+pub(crate) fn invalid_address(reason: impl ToString) -> WalletKitErrorFfi {
     WalletKitErrorFfi::InvalidAddress {
         reason: reason.to_string(),
     }
 }
 
-fn signing_failed(reason: impl ToString) -> WalletKitErrorFfi {
+pub(crate) fn signing_failed(reason: impl ToString) -> WalletKitErrorFfi {
     WalletKitErrorFfi::SigningFailed {
         reason: reason.to_string(),
     }
 }
 
-fn account_public_key(entropy: &[u8], account_index: u32) -> Bip32PublicKey {
+pub(crate) fn account_public_key(entropy: &[u8], account_index: u32) -> Bip32PublicKey {
     Bip32PrivateKey::from_bip39_entropy(entropy, &[])
         .derive(CIP1852_PURPOSE | HARDENED)
         .derive(CARDANO_COIN_TYPE | HARDENED)
@@ -342,7 +342,7 @@ pub fn cardano_build_transfer(
     })
 }
 
-fn value_assets(value: &Value) -> Vec<CardanoAssetFfi> {
+pub(crate) fn value_assets(value: &Value) -> Vec<CardanoAssetFfi> {
     let Some(multiasset) = value.multiasset() else {
         return vec![];
     };
@@ -373,7 +373,7 @@ fn multiasset_value(assets: Vec<CardanoAssetFfi>) -> Result<MultiAsset, WalletKi
     multiasset(assets)
 }
 
-fn multiasset(assets: Vec<CardanoAssetFfi>) -> Result<MultiAsset, WalletKitErrorFfi> {
+pub(crate) fn multiasset(assets: Vec<CardanoAssetFfi>) -> Result<MultiAsset, WalletKitErrorFfi> {
     let mut result = MultiAsset::new();
     for asset in assets {
         let policy = ScriptHash::from_bytes(asset.policy_id).map_err(signing_failed)?;
