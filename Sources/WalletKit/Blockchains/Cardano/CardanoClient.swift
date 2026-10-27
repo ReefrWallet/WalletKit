@@ -61,6 +61,33 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
         }
     }
 
+    /// Submits a complete, signed dapp transaction (CIP-30 `submitTx`) and
+    /// returns its ID, the hash of its original body bytes.
+    public func submit(rawTransaction: Data) async throws -> String {
+        guard !rawTransaction.isEmpty else {
+            throw WalletKitError.signingFailed(reason: "Cardano transaction CBOR is empty.")
+        }
+
+        guard let projectId, !projectId.isEmpty else {
+            throw WalletKitError.internalError(message: "Set a Blockfrost project ID before using Cardano.")
+        }
+
+        let identifier = try remappingWalletKitError { try cardanoTransactionHash(transaction: rawTransaction) }
+            .map { String(format: "%02x", $0) }
+            .joined()
+
+        do {
+            _ = try await requestData(
+                .submit(endpoint: endpoint, projectId: projectId, cbor: rawTransaction),
+                path: "tx/submit"
+            )
+        } catch let WalletKitError.internalError(message) where Self.looksLikeAlreadySubmitted(message) {
+            // The first attempt of a retried request already landed.
+        }
+
+        return identifier
+    }
+
     private static func looksLikeAlreadySubmitted(_ message: String) -> Bool {
         ["already exists", "already submitted", "already in the mempool", "already known"].contains {
             message.localizedCaseInsensitiveContains($0)
@@ -212,7 +239,7 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
     }
 }
 
-private struct CardanoAssetId {
+struct CardanoAssetId {
     let name: Data
     let policyId: Data
 
@@ -237,7 +264,7 @@ private struct CardanoAssetId {
     }
 }
 
-private extension CardanoClient {
+extension CardanoClient {
     struct ProtocolParameters: Decodable {
         let coinsPerUtxoSize: UInt64
         let keyDeposit: UInt64
@@ -307,13 +334,19 @@ private extension CardanoClient {
     struct UTxO: Decodable {
         let address: String
         let amount: [Amount]
+        let dataHash: String?
+        let inlineDatum: String?
         let outputIndex: UInt32
+        let referenceScriptHash: String?
         let txHash: String
 
         enum CodingKeys: String, CodingKey {
             case address
             case amount
+            case dataHash = "data_hash"
+            case inlineDatum = "inline_datum"
             case outputIndex = "output_index"
+            case referenceScriptHash = "reference_script_hash"
             case txHash = "tx_hash"
         }
     }

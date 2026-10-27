@@ -193,7 +193,7 @@ private extension CardanoClient {
         return total
     }
 
-    func ownedAddresses(_ owner: CardanoAccountDescriptor) async throws -> [String] {
+    internal func ownedAddresses(_ owner: CardanoAccountDescriptor) async throws -> [String] {
         let count = 100
         var addresses: [String] = []
         var page = 1

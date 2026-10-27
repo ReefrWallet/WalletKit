@@ -6,6 +6,7 @@
 //! mid-operation for PIN/passphrase/button prompts. See
 //! `Walletkit/Docs/Overview.md`'s "Hardware wallet support".
 
+mod cardano_dapp;
 mod delegate;
 mod device;
 mod manager;

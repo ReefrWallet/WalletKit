@@ -230,6 +230,70 @@ impl HardwareDeviceFfi {
         }).collect())
     }
 
+    /// Signs a dapp (CIP-30) Cardano transaction given its original bytes and
+    /// returns a witness set holding only the device's vkey witnesses.
+    /// `signing_paths` are the account keys that witness it. The device
+    /// re-serializes the body, so its reported hash is compared with the
+    /// original; a mismatch fails before any witness is returned.
+    pub async fn cardano_sign_dapp_tx(
+        &self,
+        transaction: Vec<u8>,
+        account_path: DerivationPathFfi,
+        account_xpub: String,
+        network_id: u8,
+        protocol_magic: u32,
+        signing_paths: Vec<crate::blockchain_clients::CardanoSigningPathFfi>,
+    ) -> Result<Vec<u8>, WalletKitErrorFfi> {
+        let account = super::cardano_dapp::Account::new(&account_path, &account_xpub, network_id, protocol_magic)?;
+        let (request, body_hash) = super::cardano_dapp::transaction_request(&transaction, &account, &signing_paths)?;
+        let signature = self.inner.cardano_sign_dapp_tx(request).await?;
+        if signature.body_hash != body_hash {
+            return Err(WalletKitErrorFfi::SigningFailed {
+                reason: "Trezor reproduced a different Cardano transaction body than the dapp's".to_string(),
+            });
+        }
+
+        super::cardano_dapp::witness_set(signature.witnesses)
+    }
+
+    /// Signs a CIP-8 message (`signData`) over the raw, un-hashed payload and
+    /// returns the `COSE_Sign1`/`COSE_Key` pair. The device's signature is
+    /// verified against the exact CIP-8 structure and address before use.
+    pub async fn cardano_sign_message(
+        &self,
+        address: Vec<u8>,
+        payload: Vec<u8>,
+        account_path: DerivationPathFfi,
+        account_xpub: String,
+        network_id: u8,
+        protocol_magic: u32,
+        signing_path: crate::blockchain_clients::CardanoSigningPathFfi,
+    ) -> Result<crate::blockchain_clients::cardano_dapp::CardanoCip8Ffi, WalletKitErrorFfi> {
+        let account = super::cardano_dapp::Account::new(&account_path, &account_xpub, network_id, protocol_magic)?;
+        let request = super::cardano_dapp::message_request(&address, payload.clone(), &account, &signing_path)?;
+        let signed = self.inner.cardano_sign_message(request).await?;
+        if signed.address != address {
+            return Err(WalletKitErrorFfi::SigningFailed {
+                reason: "Trezor signed for a different Cardano address than requested".to_string(),
+            });
+        }
+        let structure = crate::blockchain_clients::cardano_dapp::signature_structure(&address, &payload);
+        let verified = match (
+            cardano_serialization_lib::PublicKey::from_bytes(&signed.pub_key),
+            cardano_serialization_lib::Ed25519Signature::from_bytes(signed.signature.clone()),
+        ) {
+            (Ok(key), Ok(signature)) => key.verify(&structure, &signature),
+            _ => false,
+        };
+        if !verified {
+            return Err(WalletKitErrorFfi::SigningFailed {
+                reason: "Trezor's Cardano message signature does not match the CIP-8 structure".to_string(),
+            });
+        }
+
+        crate::blockchain_clients::cardano_dapp::cardano_cip8_assemble(signed.signature, signed.pub_key, address, payload)
+    }
+
     /// Reads the account-level extended public key (xpub, with its chain
     /// code) at `path` from the device, Base58Check-encoded with mainnet
     /// (`xpub`) version bytes regardless of which Bitcoin network `path`

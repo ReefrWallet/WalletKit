@@ -6,16 +6,36 @@ import WalletKitRust
 /// expiry fields and verifies its reconstructed body hash before witnesses are
 /// returned to WalletKit.
 public final class CardanoTrezorSigner {
-    private let accountPath: DerivationPath
-    private let device: HardwareDevice
-    private let network: CardanoNetwork
+    let accountPath: DerivationPath
+    let device: HardwareDevice
+    let network: CardanoNetwork
+    private let accountXpub: String?
 
     /// - Parameter path: The account path, `m/1852'/1815'/N'`.
     public init(network: CardanoNetwork, path: DerivationPath, device: HardwareDevice) throws {
         try path.validate(for: .cardano(network))
         accountPath = path
+        accountXpub = nil
         self.device = device
         self.network = network
+    }
+
+    /// For dapp signing, which needs the account's public key to tell the
+    /// device which credentials and signers are the account's own.
+    public init(descriptor: CardanoAccountDescriptor, path: DerivationPath, device: HardwareDevice) throws {
+        try path.validate(for: .cardano(descriptor.network))
+        accountPath = path
+        accountXpub = descriptor.xpub
+        self.device = device
+        network = descriptor.network
+    }
+
+    func requireXpub() throws -> String {
+        guard let accountXpub else {
+            throw WalletKitError.internalError(message: "Cardano dapp signing needs the account descriptor.")
+        }
+
+        return accountXpub
     }
 
     public func sign(transaction: Data) async throws -> Data {
@@ -72,7 +92,7 @@ public final class CardanoTrezorSigner {
     }
 }
 
-private extension CardanoNetwork {
+extension CardanoNetwork {
     var protocolMagic: UInt32 {
         switch self {
         case .mainnet: 764_824_073
