@@ -117,7 +117,7 @@ endif
 BINDGEN_SOURCE_LIB := $(TARGET_DIR)/aarch64-apple-darwin/release/$(LIB_NAME)
 
 .DEFAULT_GOAL := spm
-.PHONY: all aptos-testing bitcoin-testing clean docs docs-index docs-preview rust-targets solana-testing sui-grpc test walletkit-ffi
+.PHONY: all aptos-testing bitcoin-testing clean distclean docs docs-index docs-preview rust-targets solana-testing sui-grpc test walletkit-ffi
 
 all: $(XCFRAMEWORK) test docs docs-index
 
@@ -311,6 +311,10 @@ swift-tests: $(XCFRAMEWORK) $(SWIFT_TEST_NODE_DEPS)
 	@cd
 
 clean:
-	@rm -rf $(BUILD_DIR) $(DOCS_DIR) $(FRAMEWORKS_DIR) $(GENERATED_SOURCES_DIR) $(GENERATED_GRPC_SOURCES_DIR)
+	@rm -rf $(BINDINGS_DIR) $(HEADERS_DIR) $(BUILD_DIR)/macos $(BUILD_DIR)/ios-simulator $(DOCS_BUILD_DIR)
 	@cd $(CRATE_DIR) && $(CARGO) clean
+
+# Everything `clean` keeps too: XCFramework, generated sources, docs, tooling.
+distclean: clean
+	@rm -rf $(BUILD_DIR) $(DOCS_DIR) $(FRAMEWORKS_DIR) $(GENERATED_SOURCES_DIR) $(GENERATED_GRPC_SOURCES_DIR)
 	@rm -rf Derived *.xcodeproj *.xcworkspace
