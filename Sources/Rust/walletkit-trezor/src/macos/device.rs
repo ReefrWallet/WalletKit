@@ -1330,6 +1330,35 @@ pub(super) fn tron_sign_tx(
                 &HardwareButtonRequest::ConfirmTransaction,
             )?
         }
+        walletkit_hardware::TronContract::WithdrawBalance { owner_address } => {
+            let mut contract = protos::TronWithdrawBalance::new();
+            contract.set_owner_address(owner_address);
+            drive_interaction(
+                trezor.call(contract, Box::new(|_, message: protos::TronSignature| Ok(message))),
+                delegate,
+                runtime,
+                &HardwareButtonRequest::ConfirmTransaction,
+            )?
+        }
+        walletkit_hardware::TronContract::VoteWitness { owner_address, votes } => {
+            let mut contract = protos::TronVoteWitnessContract::new();
+            contract.set_owner_address(owner_address);
+            contract.votes = votes
+                .into_iter()
+                .map(|vote| {
+                    let mut entry = protos::tron_vote_witness_contract::TronVote::new();
+                    entry.set_address(vote.address);
+                    entry.set_count(vote.count);
+                    entry
+                })
+                .collect();
+            drive_interaction(
+                trezor.call(contract, Box::new(|_, message: protos::TronSignature| Ok(message))),
+                delegate,
+                runtime,
+                &HardwareButtonRequest::ConfirmTransaction,
+            )?
+        }
     };
 
     if !signature.has_signature() {

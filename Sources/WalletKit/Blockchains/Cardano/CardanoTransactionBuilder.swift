@@ -22,7 +22,9 @@ public struct CardanoUnsignedTransaction: Codable, Sendable {
         ttl = raw.ttl
     }
 
-    /// - Parameter path: The signing account's path, `m/1852'/1815'/N'`.
+    /// - Parameters:
+    ///   - entropy: The wallet's BIP-39 entropy, from which the keys derive.
+    ///   - path: The signing account's path, `m/1852'/1815'/N'`.
     public func signed(entropy: Data, path: DerivationPath) throws -> Data {
         try path.validate(for: .cardano(.mainnet)) // the path shape is network-independent
         return try remappingWalletKitError {

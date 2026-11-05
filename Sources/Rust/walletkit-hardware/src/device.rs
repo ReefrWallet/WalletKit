@@ -102,6 +102,17 @@ pub enum TronContract {
     UnfreezeBalanceV2 { owner_address: Vec<u8>, balance: u64, resource: TronResource },
     /// Stake 2.0 withdrawal of expired unstakes (`WithdrawExpireUnfreezeContract`).
     WithdrawExpireUnfreeze { owner_address: Vec<u8> },
+    /// Votes for super representatives (`VoteWitnessContract`); Trezor allows up to 9.
+    VoteWitness { owner_address: Vec<u8>, votes: Vec<TronVote> },
+    /// Claims voting rewards (`WithdrawBalanceContract`).
+    WithdrawBalance { owner_address: Vec<u8> },
+}
+
+/// One representative's share of a `VoteWitness`; the address includes Tron's `0x41` byte.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TronVote {
+    pub address: Vec<u8>,
+    pub count: u64,
 }
 
 /// The `ResourceCode`s Trezor can stake for (it has no `TRON_POWER`).

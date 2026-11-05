@@ -75,7 +75,10 @@ public struct CardanoPKeySigner: CardanoDappSigner, Sendable {
     private let accountIndex: UInt32
     private let entropy: Data
 
-    /// - Parameter path: The account path, `m/1852'/1815'/N'`.
+    /// - Parameters:
+    ///   - entropy: The wallet's BIP-39 entropy, from which the keys derive.
+    ///   - network: The Cardano network the account is on.
+    ///   - path: The account path, `m/1852'/1815'/N'`.
     public init(entropy: Data, network: CardanoNetwork, path: DerivationPath) throws {
         try path.validate(for: .cardano(network))
         self.entropy = entropy

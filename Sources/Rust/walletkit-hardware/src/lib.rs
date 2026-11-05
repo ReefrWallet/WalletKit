@@ -22,7 +22,7 @@ pub use device::{
     CardanoWithdrawal, CardanoWitness,
     EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields, EthereumTypedDataFields,
     HardwareBitcoinNetwork, HardwareCurve, HardwareDevice, SolanaTokenAccountInfo, SolanaTxFields, TronContract,
-    TronResource, TronTxFields,
+    TronResource, TronTxFields, TronVote,
 };
 pub use error::HardwareError;
 pub use info::{HardwareDeviceInfo, HardwareTransportKind, HardwareVendor};

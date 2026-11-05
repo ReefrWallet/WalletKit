@@ -51,8 +51,8 @@ extension CardanoClient {
 
     /// Used addresses of `owner`: every address Blockfrost lists for the
     /// stake key (spent-out ones included), matched against the account's
-    /// derived addresses. Scans both roles up to ``discoveryGap`` past the
-    /// last used index, and keeps going — up to ``discoveryCap`` — while a
+    /// derived addresses. Scans both roles up to `discoveryGap` past the
+    /// last used index, and keeps going — up to `discoveryCap` — while a
     /// known address is unmatched. If any remain, the ownership view would
     /// be incomplete, so this throws instead of omitting them.
     public func addressUsage(_ owner: CardanoAccountDescriptor) async throws -> CardanoAddressUsage {

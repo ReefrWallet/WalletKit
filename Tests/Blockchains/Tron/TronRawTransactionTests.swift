@@ -49,8 +49,28 @@ struct TronRawTransactionTests {
         + "2F70726F746F636F6C2E5769746864726177457870697265556E667265657A65436F6E747261637412170A15417E5F45"
         + "52091A69125D5DFCB7B8C2659029395BDF70E0B5FAE68033"
 
+    /// `VoteWitnessContract`: 250 votes for `usdt`'s address and 120 for `representative`.
+    static let voteHex =
+        "0a02e94222086394747da9fee42140c08afee680335a870108041282010a30747970652e676f6f676c65617069732e63"
+        + "6f6d2f70726f746f636f6c2e566f74655769746e657373436f6e7472616374124e0a15417e5f4552091a69125d5dfcb7"
+        + "b8c2659029395bdf121a0a1541a614f803b6fd780986a42c78ec9c7f77e6ded13c10fa0112190a15418440ffd578f7a5"
+        + "abf3537b5f46a6980d382db581107870e0b5fae68033"
+
+    /// `WithdrawBalanceContract` (reward claim).
+    static let withdrawBalanceHex =
+        "0a02e94222086394747da9fee42140c08afee680335a53080d124f0a34747970652e676f6f676c65617069732e636f6d"
+        + "2f70726f746f636f6c2e576974686472617742616c616e6365436f6e747261637412170a15417e5f4552091a69125d5d"
+        + "fcb7b8c2659029395bdf70e0b5fae68033"
+
+    /// `CancelAllUnfreezeV2Contract`.
+    static let cancelAllUnfreezeHex =
+        "0a02e94222086394747da9fee42140c08afee680335a57083b12530a38747970652e676f6f676c65617069732e636f6d"
+        + "2f70726f746f636f6c2e43616e63656c416c6c556e667265657a655632436f6e747261637412170a15417e5f4552091a"
+        + "69125d5dfcb7b8c2659029395bdf70e0b5fae68033"
+
     static let owner = "TMVQGm1qAQYVdetCeGRRkTWYYrLXuHK2HC"
     static let usdt = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+    static let representativeHex = "418440ffd578f7a5abf3537b5f46a6980d382db581"
 
     @Test func decodesATransfer() throws {
         let transaction = try TronRawTransaction(rawBytes: Data(hexString: Self.transferHex))
@@ -105,6 +125,67 @@ struct TronRawTransactionTests {
         #expect(withdraw.contract.owner == owner)
     }
 
+    @Test func decodesVotesAndRewardClaims() throws {
+        let owner = try TronAddress(string: Self.owner)
+
+        let vote = try TronRawTransaction(rawBytes: Data(hexString: Self.voteHex))
+        #expect(vote.contract == .voteWitness(owner: owner, votes: [
+            .init(address: try TronAddress(string: Self.usdt), count: 250),
+            .init(address: try TronAddress(rawBytes: Data(hexString: Self.representativeHex)), count: 120)
+        ]))
+
+        let claim = try TronRawTransaction(rawBytes: Data(hexString: Self.withdrawBalanceHex))
+        #expect(claim.contract == .withdrawBalance(owner: owner))
+
+        let cancel = try TronRawTransaction(rawBytes: Data(hexString: Self.cancelAllUnfreezeHex))
+        #expect(cancel.contract == .cancelAllUnfreezeV2(owner: owner))
+        #expect(cancel.contract.owner == owner)
+    }
+
+    @Test func voteEnvelopeCarriesEveryVote() throws {
+        let transaction = try TronRawTransaction(rawBytes: Data(hexString: Self.voteHex))
+        let envelope = try JSONSerialization.jsonObject(with: transaction.signingEnvelope()) as? [String: Any]
+        let contract = ((envelope?["raw_data"] as? [String: Any])?["contract"] as? [[String: Any]])?.first
+        let value = (contract?["parameter"] as? [String: Any])?["value"] as? [String: Any]
+        let votes = value?["votes"] as? [[String: Any]]
+
+        #expect(contract?["type"] as? String == "VoteWitnessContract")
+        #expect(votes?.count == 2)
+        #expect(votes?.first?["vote_count"] as? UInt64 == 250)
+        #expect(votes?.last?["vote_address"] as? String == Self.representativeHex)
+    }
+
+    @Test func rejectsAVoteWithTheDeprecatedSupportField() throws {
+        // `support` (field 3) after the votes, inside the contract value; the lengths are fixed up.
+        let value = try Data(hexString: "0a15417e5f4552091a69125d5dfcb7b8c2659029395bdf1800")
+        #expect(throws: BlockchainClientError.self) {
+            _ = try TronRawTransaction(rawBytes: Self.rawBytes(type: 4, typeName: "VoteWitnessContract", value: value))
+        }
+    }
+
+    @Test func rejectsAVoteWithADuplicateOwner() throws {
+        let owner = try Data(hexString: "0a15417e5f4552091a69125d5dfcb7b8c2659029395bdf")
+        #expect(throws: BlockchainClientError.self) {
+            _ = try TronRawTransaction(rawBytes: Self.rawBytes(type: 4, typeName: "VoteWitnessContract", value: owner + owner))
+        }
+    }
+
+    /// A `Transaction.raw` carrying one contract of `type` with `value` as its payload.
+    private static func rawBytes(type: UInt8, typeName: String, value: Data) -> Data {
+        func field(_ number: UInt8, _ payload: Data) -> Data {
+            Data([number << 3 | 2, UInt8(payload.count)]) + payload
+        }
+
+        let url = field(1, Data("type.googleapis.com/protocol.\(typeName)".utf8)) + field(2, value)
+        let contract = Data([0x08, type]) + field(2, url)
+
+        // ref_block_bytes, ref_block_hash, expiration, contract, timestamp.
+        return field(1, Data([0xe9, 0x42]))
+            + field(4, Data([0x63, 0x94, 0x74, 0x7d, 0xa9, 0xfe, 0xe4, 0x21]))
+            + Data([0x40, 0xc0, 0x8a, 0xfe, 0xe6, 0x80, 0x33])
+            + field(11, contract)
+    }
+
     @Test func stakeEnvelopeCarriesTheDecodedFields() throws {
         let transaction = try TronRawTransaction(rawBytes: Data(hexString: Self.freezeEnergyHex))
         let envelope = try JSONSerialization.jsonObject(with: transaction.signingEnvelope()) as? [String: Any]
@@ -133,11 +214,18 @@ struct TronRawTransactionTests {
     /// The Trezor path rebuilds `raw_data` from the envelope; it must
     /// reproduce the original bytes exactly.
     @Test(arguments: [
-        transferHex, triggerHex, freezeEnergyHex, freezeBandwidthHex, unfreezeEnergyHex, withdrawExpireUnfreezeHex
+        transferHex, triggerHex, freezeEnergyHex, freezeBandwidthHex, unfreezeEnergyHex, withdrawExpireUnfreezeHex,
+        voteHex, withdrawBalanceHex
     ])
     func signingEnvelopeRebuildsTheSameRawData(hex: String) throws {
         let transaction = try TronRawTransaction(rawBytes: Data(hexString: hex))
         #expect(transaction.isTrezorReproducible)
+    }
+
+    /// Trezor's firmware has no cancel-all contract.
+    @Test func cancelAllUnfreezeIsNotTrezorReproducible() throws {
+        let transaction = try TronRawTransaction(rawBytes: Data(hexString: Self.cancelAllUnfreezeHex))
+        #expect(!transaction.isTrezorReproducible)
     }
 
     @Test func envelopeCarriesTheDecodedFields() throws {

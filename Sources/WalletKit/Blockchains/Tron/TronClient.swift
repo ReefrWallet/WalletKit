@@ -17,8 +17,8 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
     private let apiKey: String?
     private let endpoint: URL
     private let session: URLSession
-    private let tronScanAPIKey: String?
-    private let tronScanEndpoint: URL?
+    let tronScanAPIKey: String?
+    let tronScanEndpoint: URL?
 
     /// - Parameters:
     ///   - endpoint: TronGrid API endpoint.
@@ -218,7 +218,7 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
     }
 
     /// java-tron's `code` plus its hex-encoded ASCII `message`.
-    private static func rejectionReason(_ response: [String: Any]) -> String {
+    static func rejectionReason(_ response: [String: Any]) -> String {
         let code = response["code"] as? String
         let message = (response["message"] as? String)
             .flatMap { try? Data(hexString: $0) }
@@ -476,7 +476,7 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         )
     }
 
-    private func get(_ url: URL, apiKey: String?) async throws -> [String: Any] {
+    func get(_ url: URL, apiKey: String?) async throws -> [String: Any] {
         try await requestJSONObject(
             .get(url: url, apiKey: apiKey),
             context: "\(url.host ?? "Tron indexer") account-history request"

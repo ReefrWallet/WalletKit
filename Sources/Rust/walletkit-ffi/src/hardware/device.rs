@@ -435,8 +435,10 @@ fn to_tron_tx_fields(transaction: &str) -> Result<hw::TronTxFields, WalletKitErr
             resource: tron_resource(payload)?,
         },
         Some("WithdrawExpireUnfreezeContract") => hw::TronContract::WithdrawExpireUnfreeze { owner_address },
+        Some("WithdrawBalanceContract") => hw::TronContract::WithdrawBalance { owner_address },
+        Some("VoteWitnessContract") => hw::TronContract::VoteWitness { owner_address, votes: tron_votes(payload)? },
         _ => return Err(WalletKitErrorFfi::UnsupportedDevice {
-            reason: "Trezor Tron signing supports only transfers, smart-contract calls and Stake 2.0 stake/unstake/withdraw".to_string(),
+            reason: "Trezor Tron signing supports only transfers, smart-contract calls, Stake 2.0 stake/unstake/withdraw, votes and reward claims".to_string(),
         }),
     };
     Ok(hw::TronTxFields {
@@ -448,6 +450,34 @@ fn to_tron_tx_fields(transaction: &str) -> Result<hw::TronTxFields, WalletKitErr
         data: raw.get("data").and_then(serde_json::Value::as_str).map(hex::decode).transpose().map_err(|_| WalletKitErrorFfi::SigningFailed { reason: "invalid Tron memo hex".to_string() })?,
         contract,
     })
+}
+
+/// `votes` of a `VoteWitnessContract`: representative address (hex) and count.
+/// Trezor's firmware takes at most 9.
+fn tron_votes(payload: &serde_json::Value) -> Result<Vec<hw::TronVote>, WalletKitErrorFfi> {
+    let invalid = |name: &str| WalletKitErrorFfi::SigningFailed { reason: format!("Tron vote has an invalid {name}") };
+    let votes = payload
+        .get("votes")
+        .and_then(serde_json::Value::as_array)
+        .map(|votes| {
+            votes
+                .iter()
+                .map(|vote| {
+                    let address = vote.get("vote_address").and_then(serde_json::Value::as_str).ok_or_else(|| invalid("vote_address"))?;
+                    Ok(hw::TronVote {
+                        address: hex::decode(address).map_err(|_| invalid("vote_address"))?,
+                        count: tron_optional_amount(vote, "vote_count")?,
+                    })
+                })
+                .collect::<Result<Vec<_>, WalletKitErrorFfi>>()
+        })
+        .transpose()?
+        .unwrap_or_default();
+
+    if votes.len() > 9 {
+        return Err(WalletKitErrorFfi::UnsupportedDevice { reason: "Trezor can vote for at most 9 representatives".to_string() });
+    }
+    Ok(votes)
 }
 
 /// A SUN amount that TronGrid omits when zero (proto3 default).
@@ -544,6 +574,24 @@ pub fn tron_raw_data(transaction: String) -> Result<Vec<u8>, WalletKitErrorFfi> 
             let mut withdraw = Vec::new();
             wire_bytes(&mut withdraw, 1, &owner_address);
             (56, "type.googleapis.com/protocol.WithdrawExpireUnfreezeContract", withdraw)
+        }
+        hw::TronContract::WithdrawBalance { owner_address } => {
+            let mut claim = Vec::new();
+            wire_bytes(&mut claim, 1, &owner_address);
+            (13, "type.googleapis.com/protocol.WithdrawBalanceContract", claim)
+        }
+        hw::TronContract::VoteWitness { owner_address, votes } => {
+            let mut vote_witness = Vec::new();
+            wire_bytes(&mut vote_witness, 1, &owner_address);
+            for vote in votes {
+                let mut entry = Vec::new();
+                wire_bytes(&mut entry, 1, &vote.address);
+                if vote.count > 0 {
+                    wire_varint(&mut entry, 2, vote.count);
+                }
+                wire_bytes(&mut vote_witness, 2, &entry);
+            }
+            (4, "type.googleapis.com/protocol.VoteWitnessContract", vote_witness)
         }
     };
     let mut any = Vec::new();
@@ -811,6 +859,45 @@ mod tests {
         for (transaction, expected) in cases {
             assert_eq!(hex::encode(tron_raw_data(transaction).unwrap()), expected);
         }
+    }
+
+    /// TronWeb 6.5.1 `raw_data_hex` for a two-representative vote and a reward claim.
+    #[test]
+    fn tron_raw_data_reproduces_votes_and_reward_claims() {
+        let owner = r#""owner_address": "417e5f4552091a69125d5dfcb7b8c2659029395bdf""#;
+        let votes = format!(
+            r#"{{ {owner}, "votes": [
+                {{ "vote_address": "41a614f803b6fd780986a42c78ec9c7f77e6ded13c", "vote_count": 250 }},
+                {{ "vote_address": "418440ffd578f7a5abf3537b5f46a6980d382db581", "vote_count": 120 }}
+            ] }}"#
+        );
+        let cases = [
+            (
+                stake_transaction("VoteWitnessContract", &votes),
+                "0a02e94222086394747da9fee42140c08afee680335a870108041282010a30747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e566f74655769746e657373436f6e7472616374124e0a15417e5f4552091a69125d5dfcb7b8c2659029395bdf121a0a1541a614f803b6fd780986a42c78ec9c7f77e6ded13c10fa0112190a15418440ffd578f7a5abf3537b5f46a6980d382db581107870e0b5fae68033",
+            ),
+            (
+                stake_transaction("WithdrawBalanceContract", &format!("{{ {owner} }}")),
+                "0a02e94222086394747da9fee42140c08afee680335a53080d124f0a34747970652e676f6f676c65617069732e636f6d2f70726f746f636f6c2e576974686472617742616c616e6365436f6e747261637412170a15417e5f4552091a69125d5dfcb7b8c2659029395bdf70e0b5fae68033",
+            ),
+        ];
+        for (transaction, expected) in cases {
+            assert_eq!(hex::encode(tron_raw_data(transaction).unwrap()), expected);
+        }
+    }
+
+    #[test]
+    fn to_tron_tx_fields_rejects_more_than_nine_votes() {
+        let vote = r#"{ "vote_address": "41", "vote_count": 1 }"#;
+        let votes = vec![vote; 10].join(",");
+        let transaction = stake_transaction("VoteWitnessContract", &format!(r#"{{ "owner_address": "41", "votes": [{votes}] }}"#));
+        assert!(matches!(to_tron_tx_fields(&transaction), Err(WalletKitErrorFfi::UnsupportedDevice { .. })));
+    }
+
+    #[test]
+    fn to_tron_tx_fields_rejects_cancel_all_unfreeze() {
+        let transaction = stake_transaction("CancelAllUnfreezeV2Contract", r#"{ "owner_address": "41" }"#);
+        assert!(matches!(to_tron_tx_fields(&transaction), Err(WalletKitErrorFfi::UnsupportedDevice { .. })));
     }
 
     #[test]

@@ -15,7 +15,8 @@ import WalletKitRust
 ///
 /// Accepts exactly one `TransferContract`, `TriggerSmartContract` or
 /// Stake 2.0 (`FreezeBalanceV2Contract`, `UnfreezeBalanceV2Contract`,
-/// `WithdrawExpireUnfreezeContract`) with the default permission. Rejects
+/// `WithdrawExpireUnfreezeContract`, `CancelAllUnfreezeV2Contract`),
+/// `VoteWitnessContract` or `WithdrawBalanceContract` with the default permission. Rejects
 /// every other contract type, multi-sig permission ids, `auths`/`scripts`,
 /// TRC-10 call values, unknown or repeated fields, wire-type mismatches,
 /// negative `int64`s and trailing bytes, so what is previewed is exactly
@@ -37,6 +38,17 @@ public struct TronRawTransaction: Equatable, Sendable {
         }
     }
 
+    /// One representative's share of a vote.
+    public struct Vote: Equatable, Sendable {
+        public let address: TronAddress
+        public let count: UInt64
+
+        public init(address: TronAddress, count: UInt64) {
+            self.address = address
+            self.count = count
+        }
+    }
+
     public enum Contract: Equatable, Sendable {
         case transfer(owner: TronAddress, to: TronAddress, amount: UInt64)
         case triggerSmartContract(owner: TronAddress, contract: TronAddress, callValue: UInt64, data: Data)
@@ -46,6 +58,12 @@ public struct TronRawTransaction: Equatable, Sendable {
         case unfreezeBalanceV2(owner: TronAddress, amount: UInt64, resource: Resource)
         /// Stake 2.0: withdraws unstaked TRX whose waiting period has ended.
         case withdrawExpireUnfreeze(owner: TronAddress)
+        /// Stake 2.0: cancels every pending unstake, returning it to the stake.
+        case cancelAllUnfreezeV2(owner: TronAddress)
+        /// Replaces the owner's votes with `votes` (representative, count).
+        case voteWitness(owner: TronAddress, votes: [Vote])
+        /// Claims the owner's voting rewards.
+        case withdrawBalance(owner: TronAddress)
 
         public var owner: TronAddress {
             switch self {
@@ -53,7 +71,10 @@ public struct TronRawTransaction: Equatable, Sendable {
                  let .triggerSmartContract(owner, _, _, _),
                  let .freezeBalanceV2(owner, _, _),
                  let .unfreezeBalanceV2(owner, _, _),
-                 let .withdrawExpireUnfreeze(owner):
+                 let .withdrawExpireUnfreeze(owner),
+                 let .cancelAllUnfreezeV2(owner),
+                 let .voteWitness(owner, _),
+                 let .withdrawBalance(owner):
                 owner
             }
         }
@@ -101,6 +122,19 @@ public struct TronRawTransaction: Equatable, Sendable {
         contract = try Self.decodeContract(try fields.requiredBytes(11))
         timestamp = try fields.optionalInt64(14)
         feeLimit = try fields.optionalInt64(18)
+    }
+
+    /// Decodes the `raw_data_hex` of a TronGrid-shaped `{txID, raw_data, raw_data_hex}` JSON,
+    /// e.g. what ``TronClient/buildStakingTransaction(_:)`` returns.
+    public init(envelope: Data) throws {
+        guard
+            let json = try JSONSerialization.jsonObject(with: envelope) as? [String: Any],
+            let hex = json["raw_data_hex"] as? String
+        else {
+            throw Self.invalid("missing raw_data_hex")
+        }
+
+        try self.init(rawBytes: Data(hexString: hex))
     }
 
     /// The TronGrid-shaped `{txID, raw_data, raw_data_hex}` JSON both
@@ -191,6 +225,19 @@ public struct TronRawTransaction: Equatable, Sendable {
 
         case let .withdrawExpireUnfreeze(owner):
             return Self.stakeJSON("WithdrawExpireUnfreezeContract", owner: owner)
+        case let .cancelAllUnfreezeV2(owner):
+            return Self.stakeJSON("CancelAllUnfreezeV2Contract", owner: owner)
+        case let .withdrawBalance(owner):
+            return Self.stakeJSON("WithdrawBalanceContract", owner: owner)
+        case let .voteWitness(owner, votes):
+            var value: [String: Any] = ["owner_address": owner.rawBytes.bareHex]
+
+            if !votes.isEmpty {
+                value["votes"] = votes.map { ["vote_address": $0.address.rawBytes.bareHex, "vote_count": $0.count] }
+            }
+
+            let type = "VoteWitnessContract"
+            return ["parameter": ["type_url": Self.typeURL(type), "value": value], "type": type]
         }
     }
 
@@ -230,6 +277,9 @@ private extension TronRawTransaction {
     static let freezeV2TypeURL = typeURL("FreezeBalanceV2Contract")
     static let unfreezeV2TypeURL = typeURL("UnfreezeBalanceV2Contract")
     static let withdrawExpireUnfreezeTypeURL = typeURL("WithdrawExpireUnfreezeContract")
+    static let cancelAllUnfreezeV2TypeURL = typeURL("CancelAllUnfreezeV2Contract")
+    static let voteWitnessTypeURL = typeURL("VoteWitnessContract")
+    static let withdrawBalanceTypeURL = typeURL("WithdrawBalanceContract")
 
     static func typeURL(_ type: String) -> String {
         "type.googleapis.com/protocol.\(type)"
@@ -250,6 +300,12 @@ private extension TronRawTransaction {
         switch (type, typeURL) {
         case (1, transferTypeURL):
             return try decodeTransfer(value)
+        case (4, voteWitnessTypeURL):
+            return try decodeVote(value)
+        case (13, withdrawBalanceTypeURL):
+            return .withdrawBalance(owner: try ownerOnly(value))
+        case (59, cancelAllUnfreezeV2TypeURL):
+            return .cancelAllUnfreezeV2(owner: try ownerOnly(value))
         case (31, triggerTypeURL):
             return try decodeTrigger(value)
         case (54, freezeV2TypeURL):
@@ -259,8 +315,7 @@ private extension TronRawTransaction {
             let stake = try decodeStake(value)
             return .unfreezeBalanceV2(owner: stake.owner, amount: stake.amount, resource: stake.resource)
         case (56, withdrawExpireUnfreezeTypeURL):
-            let fields = try ProtoFields(value, allowed: [1: .bytes])
-            return .withdrawExpireUnfreeze(owner: try address(fields.requiredBytes(1)))
+            return .withdrawExpireUnfreeze(owner: try ownerOnly(value))
         default:
             throw invalid("unsupported contract type \(type)")
         }
@@ -280,6 +335,24 @@ private extension TronRawTransaction {
             owner: try address(fields.requiredBytes(1)),
             resource: resource
         )
+    }
+
+    /// A contract whose only field is the owner (1).
+    static func ownerOnly(_ bytes: Data) throws -> TronAddress {
+        try address(ProtoFields(bytes, allowed: [1: .bytes]).requiredBytes(1))
+    }
+
+    /// `VoteWitnessContract`: owner (1) and repeated `Vote` (2) of
+    /// representative address (1) and count (2). The deprecated `support`
+    /// field (3) is rejected.
+    static func decodeVote(_ bytes: Data) throws -> Contract {
+        let fields = try ProtoFields(bytes, allowed: [1: .bytes, 2: .bytes], repeatable: [2])
+        let votes = try fields.repeatedBytes(2).map { entry in
+            let vote = try ProtoFields(entry, allowed: [1: .bytes, 2: .varint])
+            return Vote(address: try address(vote.requiredBytes(1)), count: try vote.optionalInt64(2) ?? 0)
+        }
+
+        return .voteWitness(owner: try address(fields.requiredBytes(1)), votes: votes)
     }
 
     static func decodeTransfer(_ bytes: Data) throws -> Contract {
@@ -325,7 +398,8 @@ private extension TronRawTransaction {
 // MARK: - Protobuf reader
 
 /// One message's fields, read strictly: every field must be in `allowed`
-/// with its declared wire type and appear at most once.
+/// with its declared wire type and appear at most once, except the
+/// length-delimited fields in `repeatable`.
 private struct ProtoFields {
     enum WireType: UInt64 {
         case varint = 0
@@ -333,9 +407,10 @@ private struct ProtoFields {
     }
 
     private var bytes: [UInt64: Data] = [:]
+    private var repeated: [UInt64: [Data]] = [:]
     private var varints: [UInt64: UInt64] = [:]
 
-    init(_ data: Data, allowed: [UInt64: WireType]) throws {
+    init(_ data: Data, allowed: [UInt64: WireType], repeatable: Set<UInt64> = []) throws {
         var reader = ProtoReader(data: data)
 
         while !reader.isAtEnd {
@@ -345,8 +420,7 @@ private struct ProtoFields {
             guard
                 let wireType = WireType(rawValue: key & 0x7),
                 allowed[number] == wireType,
-                bytes[number] == nil,
-                varints[number] == nil
+                repeatable.contains(number) && wireType == .bytes || (bytes[number] == nil && varints[number] == nil)
             else {
                 throw TronRawTransaction.invalidField(number)
             }
@@ -355,9 +429,19 @@ private struct ProtoFields {
             case .varint:
                 varints[number] = try reader.varint()
             case .bytes:
-                bytes[number] = try reader.lengthDelimited()
+                let value = try reader.lengthDelimited()
+
+                if repeatable.contains(number) {
+                    repeated[number, default: []].append(value)
+                } else {
+                    bytes[number] = value
+                }
             }
         }
+    }
+
+    func repeatedBytes(_ number: UInt64) -> [Data] {
+        repeated[number] ?? []
     }
 
     func optionalBytes(_ number: UInt64) -> Data? {
@@ -461,4 +545,4 @@ extension Data {
     var bareHex: String {
         map { String(format: "%02x", $0) }.joined()
     }
-}
+} // swiftlint:disable:this file_length

@@ -42,7 +42,7 @@ public struct DerivationPath: Codable, Comparable, Equatable, Hashable, Sendable
     ///   resulting path is invalid, or ``WalletKitError/internalError(message:)``
     ///   when the blockchain requires specialized derivation (Bitcoin:
     ///   ``bitcoinAccount(network:scriptType:accountIndex:)``; Cardano:
-    ///   ``CardanoAccountDescriptor/init(entropy:network:accountIndex:)``).
+    ///   ``CardanoAccountDescriptor/init(entropy:network:path:)``).
     public init(_ blockchain: Blockchain, accountIndex: UInt64, curve: Curve? = nil) throws {
         switch blockchain {
         case .aptos:

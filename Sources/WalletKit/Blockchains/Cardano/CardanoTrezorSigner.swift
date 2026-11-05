@@ -11,7 +11,10 @@ public final class CardanoTrezorSigner {
     let network: CardanoNetwork
     private let accountXpub: String?
 
-    /// - Parameter path: The account path, `m/1852'/1815'/N'`.
+    /// - Parameters:
+    ///   - network: The Cardano network the account is on.
+    ///   - path: The account path, `m/1852'/1815'/N'`.
+    ///   - device: The Trezor the account's keys live on.
     public init(network: CardanoNetwork, path: DerivationPath, device: HardwareDevice) throws {
         try path.validate(for: .cardano(network))
         accountPath = path

@@ -317,4 +317,3 @@ clean:
 # Everything `clean` keeps too: XCFramework, generated sources, docs, tooling.
 distclean: clean
 	@rm -rf $(BUILD_DIR) $(DOCS_DIR) $(FRAMEWORKS_DIR) $(GENERATED_SOURCES_DIR) $(GENERATED_GRPC_SOURCES_DIR)
-	@rm -rf Derived *.xcodeproj *.xcworkspace
