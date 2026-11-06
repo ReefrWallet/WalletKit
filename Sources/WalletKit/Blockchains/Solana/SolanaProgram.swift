@@ -32,6 +32,24 @@ public enum SolanaProgram {
     /// name/symbol/URI.
     public static let tokenMetadata = SolanaAddress.known( "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s")
 
+    /// Native staking: creates, delegates, splits, deactivates and withdraws stake accounts.
+    public static let stake = SolanaAddress.known("Stake11111111111111111111111111111111111111")
+
+    /// The Stake program's legacy config account, still required by `DelegateStake`.
+    public static let stakeConfig = SolanaAddress.known("StakeConfig11111111111111111111111111111111")
+
+    /// The cluster's slot, epoch and time.
+    public static let sysvarClock = SolanaAddress.known("SysvarC1ock11111111111111111111111111111111")
+
+    /// The rent parameters `Initialize` checks.
+    public static let sysvarRent = SolanaAddress.known("SysvarRent111111111111111111111111111111111")
+
+    /// The cluster's effective, activating and deactivating stake per epoch.
+    public static let sysvarStakeHistory = SolanaAddress.known("SysvarStakeHistory1111111111111111111111111")
+
+    /// Agave's `reduce_stake_warmup_cooldown` feature gate: 25% to 9% per epoch.
+    static let reduceStakeWarmupCooldown = SolanaAddress.known("GwtDQBghCTBgmX2cpEGNPxTEBUTQRaDMGTr5qychdGMj")
+
     /// Derives `owner`'s associated token account (ATA) for `mint` under
     /// `tokenProgram` — the PDA of `[owner, tokenProgram, mint]` under
     /// ``associatedToken``.

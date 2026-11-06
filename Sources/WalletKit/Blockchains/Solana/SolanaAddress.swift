@@ -6,6 +6,7 @@
 //  Copyright © 2026 Reefr Wallet. All rights reserved.
 //
 
+import CryptoKit
 import Foundation
 import WalletKitRust
 
@@ -61,6 +62,24 @@ public struct SolanaAddress: BlockchainAddress {
         }
 
         raw = try remappingWalletKitError { try SolanaAddressFfi(rawBytes: publicKey.rawBytes) }
+    }
+
+    /// The address `CreateAccountWithSeed` creates: `sha256(base || seed || owner)`. Off-curve is
+    /// not required, unlike a program-derived address.
+    ///
+    /// - Throws: ``WalletKitError/invalidAddress(reason:)`` if `seed` is longer than 32 bytes.
+    public static func createWithSeed(
+        base: SolanaAddress,
+        seed: String,
+        owner: SolanaAddress
+    ) throws -> SolanaAddress {
+        let seedBytes = Data(seed.utf8)
+
+        guard seedBytes.count <= 32 else {
+            throw WalletKitError.invalidAddress(reason: "A Solana address seed can be at most 32 bytes.")
+        }
+
+        return try SolanaAddress(rawBytes: Data(SHA256.hash(data: base.rawBytes + seedBytes + owner.rawBytes)))
     }
 
     static func known(_ string: String) -> SolanaAddress {

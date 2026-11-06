@@ -77,8 +77,8 @@ private func freeTCPPorts(_ count: Int) throws -> [UInt16] {
 /// No `mise` registry entry exists for any of the Agave binaries this wraps (checked: `mise
 /// registry` has no `solana` backend), so — like `BitcoinNode` — this isn't provisioned lazily:
 /// `make solana-testing` downloads the official release tarball into
-/// `WalletKit/.build/solana-testing/bin/` once; ``start()`` only resolves that already-provisioned
-/// path.
+/// `WalletKit/.build/solana-testing/bin/` once;
+/// ``start(slotsPerEpoch:)`` only resolves that already-provisioned path.
 public final class SolanaNode {
     /// The local validator's JSON-RPC endpoint.
     public let rpcURL: URL
@@ -100,11 +100,12 @@ public final class SolanaNode {
     /// solana-testing` already provisioned, waiting until its RPC port
     /// reports healthy.
     ///
+    /// - Parameter slotsPerEpoch: Shortens epochs, for tests that wait on them (at least 32).
     /// - Throws: ``SolanaLaunchError`` if `make solana-testing` hasn't
     ///   been run yet, the process fails to launch, or it never reports
     ///   healthy within 30 seconds (a fresh validator's first slot can
     ///   take a few seconds longer to produce than an already-warm one).
-    public static func start() async throws -> SolanaNode {
+    public static func start(slotsPerEpoch: UInt64? = nil) async throws -> SolanaNode {
         let ports = try freeTCPPorts(2)
         let (rpcPort, faucetPort) = (ports[0], ports[1])
 
@@ -125,7 +126,8 @@ public final class SolanaNode {
             "--faucet-port", "\(faucetPort)",
             "--quiet",
             "--reset"
-        ]
+        ] + (slotsPerEpoch.map { ["--slots-per-epoch", "\($0)"] } ?? [])
+
         process.standardOutput = logHandle
         process.standardError = logHandle
 

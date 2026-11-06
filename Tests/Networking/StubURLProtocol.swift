@@ -34,6 +34,7 @@ final class StubURLProtocol: URLProtocol {
         let response: StubResponse
         let responsesByPath: [String: StubResponse]?
         var responseSequence: [StubResponse]?
+        var responder: (@Sendable (Data?) -> StubResponse)?
         var sequenceIndex = 0
         var request: URLRequest?
         var requests: [URLRequest] = []
@@ -91,6 +92,19 @@ final class StubURLProtocol: URLProtocol {
         return Session(urlSession: URLSession(configuration: configuration), id: id)
     }
 
+    /// A session that computes each response from the request body — for
+    /// clients that issue several JSON-RPC methods concurrently, where order
+    /// can't be scripted.
+    static func makeSession(responder: @escaping @Sendable (Data?) -> StubResponse) -> Session {
+        let id = UUID()
+        lock.withLock {
+            statesById[id] = State(response: .failure(.unknown), responsesByPath: nil, responder: responder)
+        }
+
+        let configuration = makeConfiguration(id: id)
+        return Session(urlSession: URLSession(configuration: configuration), id: id)
+    }
+
     private static func makeConfiguration(id: UUID) -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
@@ -116,13 +130,15 @@ final class StubURLProtocol: URLProtocol {
         }
 
         let response: StubResponse
-        if let sequence = state.responseSequence, !sequence.isEmpty {
+        if let responder = state.responder {
+            response = responder(Self.bodyData(of: request))
+        } else if let sequence = state.responseSequence, !sequence.isEmpty {
             response = sequence[min(state.sequenceIndex, sequence.count - 1)]
         } else {
             response = state.responsesByPath?[request.url?.path ?? ""] ?? state.response
         }
 
-        let body = Self.bodyData(of: request)
+        let body = state.responder == nil ? Self.bodyData(of: request) : nil
         let capturedRequest = request
         Self.lock.withLock {
             Self.statesById[id]?.request = capturedRequest

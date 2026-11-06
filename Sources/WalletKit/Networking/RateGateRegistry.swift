@@ -13,6 +13,7 @@ public enum ProviderKind: Hashable, Sendable {
     case esplora
     case etherscan
     case jsonRPC
+    case stakewiz
     case tronGrid
 }
 
@@ -99,6 +100,7 @@ public struct RateLimitPolicy: Sendable {
         .esplora: .reactiveOnly,
         .etherscan: .reactiveOnly,
         .jsonRPC: .reactiveOnly,
+        .stakewiz: .reactiveOnly,
         .tronGrid: .reactiveOnly
     ]
 }

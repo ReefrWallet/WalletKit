@@ -238,8 +238,10 @@ extension SolanaRPCClient {
             }
         }
 
-        let instruction = response.transaction.message.instructions?
-            .first { $0.programId != SolanaProgram.computeBudget.string }
+        // A stake starts with its System `CreateAccountWithSeed`, so any stake instruction names it.
+        let instructions = response.transaction.message.instructions
+        let instruction = instructions?.last { $0.programId == SolanaProgram.stake.string }
+            ?? instructions?.first { $0.programId != SolanaProgram.computeBudget.string }
 
         return BlockchainTransaction(
             identifier: signature,

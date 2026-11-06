@@ -17,6 +17,7 @@ import Foundation
 /// ``broadcast(transaction:signature:)`` consume.
 public struct SolanaRPCClient: Sendable {
     let rpc: JSONRPCClient
+    let validatorIndexEndpoint: URL?
 
     /// Creates a client for the node at `endpoint`.
     ///
@@ -24,9 +25,15 @@ public struct SolanaRPCClient: Sendable {
     ///   - endpoint: The node's JSON-RPC HTTPS endpoint.
     ///   - session: The `URLSession` to issue requests on. Defaults to
     ///     `.shared`.
-    public init(endpoint: URL, session: URLSession = .shared) {
+    ///   - validatorIndexEndpoint: An indexer for validator names and rates;
+    ///     `nil` keeps to the node's own list.
+    public init(endpoint: URL, session: URLSession = .shared, validatorIndexEndpoint: URL? = nil) {
         rpc = JSONRPCClient(endpoint: endpoint, session: session)
+        self.validatorIndexEndpoint = validatorIndexEndpoint
     }
+
+    /// The public validator index, for mainnet clients.
+    public static var defaultValidatorIndex: URL { SolanaStakewiz.endpoint }
 }
 
 // MARK: - Response envelopes

@@ -45,7 +45,37 @@ public struct SolanaInstruction: Equatable, Sendable {
 
 /// Instruction builders for Solana's native System program.
 public enum SystemProgram {
+    private static let createAccountWithSeedDiscriminant: UInt32 = 3
     private static let transferDiscriminant: UInt32 = 2
+
+    /// Builds a `CreateAccountWithSeed` instruction. `funder` pays `lamports`, signs and is also
+    /// the seed's base, which is why no separate base account is listed. `created` must equal
+    /// ``SolanaAddress/createWithSeed(base:seed:owner:)`` of `funder`, `seed` and `owner`.
+    public static func createAccountWithSeed(
+        funder: SolanaAddress,
+        created: SolanaAddress,
+        seed: String,
+        lamports: UInt64,
+        space: UInt64,
+        owner: SolanaAddress
+    ) -> SolanaInstruction {
+        var data = Data()
+        data.append(withUnsafeBytes(of: createAccountWithSeedDiscriminant.littleEndian) { Data($0) })
+        data.append(funder.rawBytes)
+        data.append(withUnsafeBytes(of: UInt64(seed.utf8.count).littleEndian) { Data($0) })
+        data.append(Data(seed.utf8))
+        data.append(withUnsafeBytes(of: lamports.littleEndian) { Data($0) })
+        data.append(withUnsafeBytes(of: space.littleEndian) { Data($0) })
+        data.append(owner.rawBytes)
+        return SolanaInstruction(
+            programId: SolanaProgram.system,
+            accounts: [
+                SolanaAccountMeta(address: funder, isSigner: true, isWritable: true),
+                SolanaAccountMeta(address: created, isSigner: false, isWritable: true)
+            ],
+            data: data
+        )
+    }
 
     /// Builds a `Transfer` instruction moving `lamports` of native SOL
     /// from `from` to `to`. `from` must sign the transaction.
@@ -61,6 +91,119 @@ public enum SystemProgram {
             ],
             data: data
         )
+    }
+}
+
+// MARK: - Stake Program
+
+/// Instruction builders for the native Stake program. Trezor shows its stake, unstake and claim
+/// screens only for these exact account lists.
+public enum StakeProgram {
+    /// A stake account's size.
+    public static let accountSize: UInt64 = 200
+
+    private static let deactivateDiscriminant: UInt32 = 5
+    private static let delegateDiscriminant: UInt32 = 2
+    private static let initializeDiscriminant: UInt32 = 0
+    private static let splitDiscriminant: UInt32 = 3
+    private static let withdrawDiscriminant: UInt32 = 4
+
+    /// Builds a `Deactivate` instruction, starting `stake`'s cooldown.
+    public static func deactivate(stake: SolanaAddress, staker: SolanaAddress) -> SolanaInstruction {
+        SolanaInstruction(
+            programId: SolanaProgram.stake,
+            accounts: [
+                SolanaAccountMeta(address: stake, isSigner: false, isWritable: true),
+                SolanaAccountMeta(address: SolanaProgram.sysvarClock, isSigner: false, isWritable: false),
+                SolanaAccountMeta(address: staker, isSigner: true, isWritable: false)
+            ],
+            data: discriminant(deactivateDiscriminant)
+        )
+    }
+
+    /// Builds a `DelegateStake` instruction, delegating `stake` to the vote account `voter`.
+    public static func delegate(
+        stake: SolanaAddress,
+        voter: SolanaAddress,
+        staker: SolanaAddress
+    ) -> SolanaInstruction {
+        SolanaInstruction(
+            programId: SolanaProgram.stake,
+            accounts: [
+                SolanaAccountMeta(address: stake, isSigner: false, isWritable: true),
+                SolanaAccountMeta(address: voter, isSigner: false, isWritable: false),
+                SolanaAccountMeta(address: SolanaProgram.sysvarClock, isSigner: false, isWritable: false),
+                SolanaAccountMeta(address: SolanaProgram.sysvarStakeHistory, isSigner: false, isWritable: false),
+                SolanaAccountMeta(address: SolanaProgram.stakeConfig, isSigner: false, isWritable: false),
+                SolanaAccountMeta(address: staker, isSigner: true, isWritable: false)
+            ],
+            data: discriminant(delegateDiscriminant)
+        )
+    }
+
+    /// Builds an `Initialize` instruction (not `InitializeChecked`, which Trezor's stake screen
+    /// doesn't recognize) with both authorities set to `authority`, and no lockup.
+    public static func initialize(stake: SolanaAddress, authority: SolanaAddress) -> SolanaInstruction {
+        var data = discriminant(initializeDiscriminant)
+        data.append(authority.rawBytes)
+        data.append(authority.rawBytes)
+        data.append(Data(count: 16)) // Lockup: unix timestamp and epoch.
+        data.append(SolanaProgram.system.rawBytes) // Lockup: custodian.
+        return SolanaInstruction(
+            programId: SolanaProgram.stake,
+            accounts: [
+                SolanaAccountMeta(address: stake, isSigner: false, isWritable: true),
+                SolanaAccountMeta(address: SolanaProgram.sysvarRent, isSigner: false, isWritable: false)
+            ],
+            data: data
+        )
+    }
+
+    /// Builds a `Split` instruction moving `lamports` of `source` into `destination`, which must
+    /// already be allocated to the Stake program and rent-exempt.
+    public static func split(
+        source: SolanaAddress,
+        destination: SolanaAddress,
+        staker: SolanaAddress,
+        lamports: UInt64
+    ) -> SolanaInstruction {
+        var data = discriminant(splitDiscriminant)
+        data.append(withUnsafeBytes(of: lamports.littleEndian) { Data($0) })
+        return SolanaInstruction(
+            programId: SolanaProgram.stake,
+            accounts: [
+                SolanaAccountMeta(address: source, isSigner: false, isWritable: true),
+                SolanaAccountMeta(address: destination, isSigner: false, isWritable: true),
+                SolanaAccountMeta(address: staker, isSigner: true, isWritable: false)
+            ],
+            data: data
+        )
+    }
+
+    /// Builds a `Withdraw` instruction moving `lamports` from `stake` to `recipient`.
+    public static func withdraw(
+        stake: SolanaAddress,
+        recipient: SolanaAddress,
+        withdrawer: SolanaAddress,
+        lamports: UInt64
+    ) -> SolanaInstruction {
+        var data = discriminant(withdrawDiscriminant)
+        data.append(withUnsafeBytes(of: lamports.littleEndian) { Data($0) })
+        return SolanaInstruction(
+            programId: SolanaProgram.stake,
+            accounts: [
+                SolanaAccountMeta(address: stake, isSigner: false, isWritable: true),
+                SolanaAccountMeta(address: recipient, isSigner: false, isWritable: true),
+                SolanaAccountMeta(address: SolanaProgram.sysvarClock, isSigner: false, isWritable: false),
+                SolanaAccountMeta(address: SolanaProgram.sysvarStakeHistory, isSigner: false, isWritable: false),
+                SolanaAccountMeta(address: withdrawer, isSigner: true, isWritable: false)
+            ],
+            data: data
+        )
+    }
+
+    private static func discriminant(_ value: UInt32) -> Data {
+        withUnsafeBytes(of: value.littleEndian) { Data($0) }
     }
 }
 
