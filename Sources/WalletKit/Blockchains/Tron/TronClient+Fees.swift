@@ -17,8 +17,55 @@ public struct TronFeeEstimate: Equatable, Sendable {
     public let energy: UInt64
     /// Signed transaction size in bytes, as bandwidth is charged.
     public let bandwidth: UInt64
+    /// TRX (in SUN) burned for the bandwidth the account's resources don't cover.
+    public let bandwidthBurnSun: UInt64
+    /// TRX (in SUN) burned for the energy the account's resources don't cover.
+    public let energyBurnSun: UInt64
+    /// Energy the account has left today (staked), which pays for `energy` first.
+    public let availableEnergy: UInt64
+    /// Bandwidth the account has left today in the pool that can pay: the staked or the free
+    /// allowance, whichever is larger. The pools don't add up; one must cover the whole transaction.
+    public let availableBandwidth: UInt64
+    /// The account's daily allowances as read for this estimate, when it read them.
+    public let resources: TronResourceUsage?
+
+    public init(
+        energy: UInt64,
+        bandwidth: UInt64,
+        bandwidthBurnSun: UInt64 = 0,
+        energyBurnSun: UInt64 = 0,
+        availableEnergy: UInt64 = 0,
+        availableBandwidth: UInt64 = 0,
+        resources: TronResourceUsage? = nil
+    ) {
+        self.energy = energy
+        self.bandwidth = bandwidth
+        self.bandwidthBurnSun = bandwidthBurnSun
+        self.energyBurnSun = energyBurnSun
+        self.availableEnergy = availableEnergy
+        self.availableBandwidth = availableBandwidth
+        self.resources = resources
+    }
+
     /// TRX (in SUN) expected to be burned after the account's resources.
-    public let burnedSun: UInt64
+    public var burnedSun: UInt64 {
+        bandwidthBurnSun + energyBurnSun
+    }
+
+    /// Whether the account's own resources pay for the whole transaction.
+    public var isCoveredByResources: Bool {
+        burnedSun == 0
+    }
+
+    /// Whether the account has enough energy left for the call.
+    public var isEnergyCovered: Bool {
+        energy <= availableEnergy
+    }
+
+    /// Whether the account has enough bandwidth left for the transaction.
+    public var isBandwidthCovered: Bool {
+        bandwidth <= availableBandwidth
+    }
 }
 
 public extension TronClient {
@@ -30,8 +77,8 @@ public extension TronClient {
         let owner = transaction.contract.owner
 
         async let energy = estimatedEnergy(for: transaction.contract)
-        async let resources = jsonObject("wallet/getaccountresource", ["address": owner.rawBytes.bareHex])
-        async let parameters = jsonObject("wallet/getchainparameters", nil)
+        async let resources = post("wallet/getaccountresource", body: ["address": owner.rawBytes.bareHex])
+        async let parameters = post("wallet/getchainparameters", body: [:])
 
         let (energyUsed, resourcesJSON, parametersJSON) = try await (energy, resources, parameters)
         let prices = Self.chainParameters(parametersJSON)
@@ -41,13 +88,25 @@ public extension TronClient {
         let bandwidth = UInt64(transaction.rawBytes.count) + 65 + 6 + 64
 
         let availableEnergy = Self.difference(resourcesJSON, "EnergyLimit", "EnergyUsed")
-        let availableBandwidth = Self.difference(resourcesJSON, "freeNetLimit", "freeNetUsed")
-            + Self.difference(resourcesJSON, "NetLimit", "NetUsed")
+        // Staked and free bandwidth are separate pools: one of them must cover the whole
+        // transaction, otherwise the node burns TRX for all of it.
+        let availableBandwidth = max(
+            Self.difference(resourcesJSON, "freeNetLimit", "freeNetUsed"),
+            Self.difference(resourcesJSON, "NetLimit", "NetUsed")
+        )
 
         let energyBurn = energyUsed > availableEnergy ? (energyUsed - availableEnergy) * prices.energyFee : 0
         let bandwidthBurn = bandwidth > availableBandwidth ? bandwidth * prices.transactionFee : 0
 
-        return TronFeeEstimate(energy: energyUsed, bandwidth: bandwidth, burnedSun: energyBurn + bandwidthBurn)
+        return TronFeeEstimate(
+            energy: energyUsed,
+            bandwidth: bandwidth,
+            bandwidthBurnSun: bandwidthBurn,
+            energyBurnSun: energyBurn,
+            availableEnergy: availableEnergy,
+            availableBandwidth: availableBandwidth,
+            resources: Self.resourceUsage(resourcesJSON)
+        )
     }
 }
 
@@ -57,7 +116,7 @@ private extension TronClient {
             return 0
         }
 
-        let response = try await jsonObject("wallet/triggerconstantcontract", [
+        let response = try await post("wallet/triggerconstantcontract", body: [
             "call_value": callValue,
             "contract_address": address.rawBytes.bareHex,
             "data": data.bareHex,
@@ -70,11 +129,6 @@ private extension TronClient {
 
         // Already includes any dynamic-energy `energy_penalty`.
         return used
-    }
-
-    func jsonObject(_ path: String, _ body: [String: Any]?) async throws -> [String: Any] {
-        let data = try await relay(path: path, body: JSONSerialization.data(withJSONObject: body ?? [:]))
-        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
 
     /// Energy and bandwidth prices in SUN, defaulting to the current
@@ -92,9 +146,5 @@ private extension TronClient {
         let limit = uint64(json[limit]) ?? 0
         let used = uint64(json[used]) ?? 0
         return limit > used ? limit - used : 0
-    }
-
-    static func uint64(_ value: Any?) -> UInt64? {
-        (value as? NSNumber).map(\.uint64Value)
     }
 }

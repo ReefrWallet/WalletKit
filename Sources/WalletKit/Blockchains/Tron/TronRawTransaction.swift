@@ -24,7 +24,7 @@ import WalletKitRust
 public struct TronRawTransaction: Equatable, Sendable {
     /// The resource a Stake 2.0 freeze/unfreeze applies to
     /// (`protocol.ResourceCode`).
-    public enum Resource: UInt64, Equatable, Sendable {
+    public enum Resource: UInt64, Codable, Equatable, Sendable {
         case bandwidth = 0
         case energy = 1
         case tronPower = 2
@@ -39,7 +39,7 @@ public struct TronRawTransaction: Equatable, Sendable {
     }
 
     /// One representative's share of a vote.
-    public struct Vote: Equatable, Sendable {
+    public struct Vote: Codable, Equatable, Sendable {
         public let address: TronAddress
         public let count: UInt64
 

@@ -18,7 +18,8 @@ struct TronClientStakingTests {
 
     private static let resources = #"""
     {"freeNetLimit":600,"freeNetUsed":100,"NetLimit":210,"NetUsed":0,"EnergyLimit":2316,"EnergyUsed":926,
-     "TotalNetLimit":43200000000,"TotalNetWeight":9000000000,"TotalEnergyLimit":180000000000,"TotalEnergyWeight":10000000000}
+     "TotalNetLimit":43200000000,"TotalNetWeight":9000000000,
+     "TotalEnergyLimit":180000000000,"TotalEnergyWeight":10000000000}
     """#
 
     @Test func stakingStateReadsStakeUnstakesVotesAndAllowances() async throws {
@@ -46,6 +47,51 @@ struct TronClientStakingTests {
         // Free and staked bandwidth, less what's used.
         #expect(state.bandwidth == .init(limit: 810, remaining: 710))
         #expect(state.energy == .init(limit: 2_316, remaining: 1_390))
+    }
+
+    @Test func stakingStateSurvivesAJSONRoundTrip() throws {
+        let state = try TronClient.stakingState(
+            account: JSONSerialization.jsonObject(with: Data(Self.account.utf8)) as? [String: Any] ?? [:],
+            resources: JSONSerialization.jsonObject(with: Data(Self.resources.utf8)) as? [String: Any] ?? [:],
+            rewards: 685_004,
+            withdrawable: 30_000_000
+        )
+
+        let decoded = try JSONDecoder().decode(TronStakingState.self, from: JSONEncoder().encode(state))
+
+        #expect(decoded == state)
+        #expect(decoded.votes.first?.address.string == "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t")
+        #expect(decoded.unfrozen.first?.expiration == state.unfrozen.first?.expiration)
+    }
+
+    @Test func resourceUsageSumsFreeAndStakedBandwidth() throws {
+        let usage = try TronClient.resourceUsage(
+            JSONSerialization.jsonObject(with: Data(Self.resources.utf8)) as? [String: Any] ?? [:]
+        )
+
+        #expect(usage.bandwidth == .init(limit: 810, remaining: 710))
+        #expect(usage.energy == .init(limit: 2_316, remaining: 1_390))
+    }
+
+    @Test func replacingResourcesKeepsTheRest() throws {
+        let state = try TronClient.stakingState(
+            account: JSONSerialization.jsonObject(with: Data(Self.account.utf8)) as? [String: Any] ?? [:],
+            resources: [:],
+            rewards: 1,
+            withdrawable: 2
+        )
+
+        let replaced = state.replacingResources(.init(
+            bandwidth: .init(limit: 5, remaining: 4),
+            energy: .init(limit: 3, remaining: 2)
+        ))
+
+        #expect(replaced.bandwidth == .init(limit: 5, remaining: 4))
+        #expect(replaced.energy == .init(limit: 3, remaining: 2))
+        #expect(replaced.frozen == state.frozen)
+        #expect(replaced.votes == state.votes)
+        #expect(replaced.rewards == 1)
+        #expect(replaced.withdrawable == 2)
     }
 
     /// Delegated-out stake leaves `frozenV2` but its voting rights stay with the owner.
@@ -174,7 +220,8 @@ struct TronClientStakingTests {
     }
 
     @Test func reportsTheNodesReasonWhenItBuildsNothing() async throws {
-        let stub = StubURLProtocol.makeSession(response: .success(body: Data(#"{"Error":"balance is not sufficient"}"#.utf8)))
+        let body = Data(#"{"Error":"balance is not sufficient"}"#.utf8)
+        let stub = StubURLProtocol.makeSession(response: .success(body: body))
         let client = TronClient(endpoint: endpoint, session: stub.urlSession)
 
         await #expect(throws: WalletKitError.self) {
@@ -195,8 +242,10 @@ struct TronClientStakingTests {
         let stub = StubURLProtocol.makeSession(responsesByPath: [
             "/api/vote/witness": .success(body: Data(#"""
             {"data":[
-              {"address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t","name":"Small","realTimeVotes":10,"annualizedRate":"3.25"},
-              {"address":"\#(owner.string)","name":"P2P.ORG","url":"https://p2p.org","realTimeVotes":900,"annualizedRate":"3.27"}
+              {"address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t","name":"Small",
+               "realTimeVotes":10,"annualizedRate":"3.25"},
+              {"address":"\#(owner.string)","name":"P2P.ORG","url":"https://p2p.org",
+               "realTimeVotes":900,"annualizedRate":"3.27"}
             ]}
             """#.utf8))
         ])

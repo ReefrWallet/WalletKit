@@ -160,8 +160,16 @@ struct AptosClientTests {
         let decoded = try JSONDecoder().decode([AptosActivity].self, from: Data(activities.utf8))
         let fungibleAsset = "0x" + String(repeating: "0", count: 62) + "cc"
         let status = AptosTransactionStatus(
-            entryFunction: "0x1::aptos_account::transfer_coins", gasUnitPrice: 100, gasUsed: 5_000, hash: "0x58f7", isPending: false, sender: "0xbd8c", success: false,
-            timestamp: 1_791_836_552_383_680, version: 2, vmStatus: "Move abort"
+            entryFunction: "0x1::aptos_account::transfer_coins",
+            gasUnitPrice: 100,
+            gasUsed: 5_000,
+            hash: "0x58f7",
+            isPending: false,
+            sender: "0xbd8c",
+            success: false,
+            timestamp: 1_791_836_552_383_680,
+            version: 2,
+            vmStatus: "Move abort"
         )
 
         let transaction = AptosClient.normalise(
@@ -221,7 +229,7 @@ struct AptosClientTests {
                 token: "0xbb"
             ).identifier == "0x1::primary_fungible_store::transfer"
         )
-        
+
         #expect(throws: BlockchainTransactionBuilderError.self) {
             try AptosTransactionBuilder.payload(recipient: recipient, amount: 1, token: "nope")
         }

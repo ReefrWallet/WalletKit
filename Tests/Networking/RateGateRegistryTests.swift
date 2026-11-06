@@ -61,6 +61,16 @@ struct RateGateRegistryTests {
         #expect(policy.gate == nil)
     }
 
+    @Test func publicTronGridOriginsArePacedAndCustomNodesAreNot() {
+        let registry = RateGateRegistry()
+
+        for origin in ["https://api.trongrid.io", "https://nile.trongrid.io"] {
+            #expect(registry.makeRetryPolicy(for: origin, provider: .tronGrid).gate != nil)
+        }
+
+        #expect(registry.makeRetryPolicy(for: "https://node.example.com", provider: .tronGrid).gate == nil)
+    }
+
     @Test func penalizingAProviderWithNoConfiguredGateIsANoOp() async {
         let registry = makeRegistry()
 

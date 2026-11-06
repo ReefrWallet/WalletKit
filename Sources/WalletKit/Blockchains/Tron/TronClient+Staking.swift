@@ -9,9 +9,9 @@
 import Foundation
 
 /// An account's Stake 2.0 position, as read from a Tron node.
-public struct TronStakingState: Equatable, Sendable {
+public struct TronStakingState: Codable, Equatable, Sendable {
     /// TRX (in SUN) staked for one resource.
-    public struct Frozen: Equatable, Sendable {
+    public struct Frozen: Codable, Equatable, Sendable {
         public let amount: UInt64
         public let resource: TronRawTransaction.Resource
 
@@ -22,7 +22,7 @@ public struct TronStakingState: Equatable, Sendable {
     }
 
     /// An unstake waiting out its 14 days (or past them, until withdrawn).
-    public struct Unfrozen: Equatable, Sendable {
+    public struct Unfrozen: Codable, Equatable, Sendable {
         public let amount: UInt64
         public let expiration: Date
         public let resource: TronRawTransaction.Resource
@@ -35,7 +35,7 @@ public struct TronStakingState: Equatable, Sendable {
     }
 
     /// One resource's remaining and total allowance for the day.
-    public struct Usage: Equatable, Sendable {
+    public struct Usage: Codable, Equatable, Sendable {
         public let limit: UInt64
         public let remaining: UInt64
 
@@ -46,7 +46,7 @@ public struct TronStakingState: Equatable, Sendable {
     }
 
     /// Network-wide totals that convert staked TRX into resource units.
-    public struct NetworkWeights: Equatable, Sendable {
+    public struct NetworkWeights: Codable, Equatable, Sendable {
         public let energyLimit: UInt64
         public let energyWeight: UInt64
         public let netLimit: UInt64
@@ -100,6 +100,22 @@ public struct TronStakingState: Equatable, Sendable {
         self.withdrawable = withdrawable
     }
 
+    /// This position with other Bandwidth and Energy allowances.
+    public func replacingResources(_ resources: TronResourceUsage) -> TronStakingState {
+        TronStakingState(
+            bandwidth: resources.bandwidth,
+            energy: resources.energy,
+            frozen: frozen,
+            rewards: rewards,
+            unfrozen: unfrozen,
+            votes: votes,
+            weights: weights,
+            withdrawable: withdrawable,
+            delegated: delegated,
+            votingPower: votingPower
+        )
+    }
+
     /// Votes cast, which can't exceed ``votePower``.
     public var assignedVotes: UInt64 {
         votes.reduce(0) { $0.addingReportingOverflow($1.count).overflow ? .max : $0 + $1.count }
@@ -139,6 +155,17 @@ public struct TronStakingState: Equatable, Sendable {
     }
 
     static let sunPerTRX: UInt64 = 1_000_000
+}
+
+/// An account's daily Bandwidth (free and staked) and Energy allowances.
+public struct TronResourceUsage: Codable, Equatable, Sendable {
+    public let bandwidth: TronStakingState.Usage
+    public let energy: TronStakingState.Usage
+
+    public init(bandwidth: TronStakingState.Usage, energy: TronStakingState.Usage) {
+        self.bandwidth = bandwidth
+        self.energy = energy
+    }
 }
 
 /// A representative (super representative or candidate) votes can go to.
@@ -191,7 +218,7 @@ public extension TronClient {
             return indexed
         }
 
-        let response = try await stakingObject("wallet/listwitnesses", [:])
+        let response = try await post("wallet/listwitnesses", body: [:])
 
         return (response["witnesses"] as? [[String: Any]] ?? [])
             .compactMap { witness -> TronRepresentative? in
@@ -205,7 +232,7 @@ public extension TronClient {
                 return TronRepresentative(
                     address: address,
                     url: (witness["url"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-                    voteCount: Self.number(witness["voteCount"]) ?? 0
+                    voteCount: Self.uint64(witness["voteCount"]) ?? 0
                 )
             }
             .sorted { $0.voteCount > $1.voteCount }
@@ -215,10 +242,10 @@ public extension TronClient {
     func stakingState(for owner: TronAddress, now: Date = Date()) async throws -> TronStakingState {
         let identity: [String: Any] = ["address": owner.string, "visible": true]
 
-        async let account = stakingObject("wallet/getaccount", identity)
-        async let resources = stakingObject("wallet/getaccountresource", identity)
-        async let reward = stakingObject("wallet/getReward", identity)
-        async let withdrawable = stakingObject("wallet/getcanwithdrawunfreezeamount", [
+        async let account = post("wallet/getaccount", body: identity)
+        async let resources = post("wallet/getaccountresource", body: identity)
+        async let reward = post("wallet/getReward", body: identity)
+        async let withdrawable = post("wallet/getcanwithdrawunfreezeamount", body: [
             "owner_address": owner.string,
             "timestamp": UInt64(now.timeIntervalSince1970 * 1_000),
             "visible": true
@@ -227,8 +254,8 @@ public extension TronClient {
         return try await Self.stakingState(
             account: account,
             resources: resources,
-            rewards: Self.number(reward["reward"]) ?? 0,
-            withdrawable: Self.number(withdrawable["amount"]) ?? 0
+            rewards: Self.uint64(reward["reward"]) ?? 0,
+            withdrawable: Self.uint64(withdrawable["amount"]) ?? 0
         )
     }
 }
@@ -276,7 +303,7 @@ extension TronClient {
         // Bandwidth is the unnamed entry; `TRON_POWER` only mirrors the stake as votes.
         let frozen = (account["frozenV2"] as? [[String: Any]] ?? []).compactMap { entry in
             resource(entry["type"] as? String).map {
-                TronStakingState.Frozen(amount: number(entry["amount"]) ?? 0, resource: $0)
+                TronStakingState.Frozen(amount: uint64(entry["amount"]) ?? 0, resource: $0)
             }
         }.filter { $0.resource != .tronPower }
 
@@ -284,13 +311,13 @@ extension TronClient {
         let unfrozen = unfrozenEntries.compactMap { entry -> TronStakingState.Unfrozen? in
             guard
                 let resource = resource(entry["type"] as? String),
-                let expiration = number(entry["unfreeze_expire_time"])
+                let expiration = uint64(entry["unfreeze_expire_time"])
             else {
                 return nil
             }
 
             return TronStakingState.Unfrozen(
-                amount: number(entry["unfreeze_amount"]) ?? 0,
+                amount: uint64(entry["unfreeze_amount"]) ?? 0,
                 expiration: Date(timeIntervalSince1970: TimeInterval(expiration) / 1_000),
                 resource: resource
             )
@@ -303,30 +330,30 @@ extension TronClient {
 
             return TronRawTransaction.Vote(
                 address: try TronAddress(string: address),
-                count: number(entry["vote_count"]) ?? 0
+                count: uint64(entry["vote_count"]) ?? 0
             )
         }
 
         // Stake delegated to others leaves `frozenV2` but still counts as voting power.
-        let delegated = (number(account["delegated_frozenV2_balance_for_bandwidth"]) ?? 0)
-            + (number((account["account_resource"] as? [String: Any])?["delegated_frozenV2_balance_for_energy"]) ?? 0)
+        let delegated = (uint64(account["delegated_frozenV2_balance_for_bandwidth"]) ?? 0)
+            + (uint64((account["account_resource"] as? [String: Any])?["delegated_frozenV2_balance_for_energy"]) ?? 0)
 
         return TronStakingState(
-            bandwidth: usage(resources, limit: ["freeNetLimit", "NetLimit"], used: ["freeNetUsed", "NetUsed"]),
-            energy: usage(resources, limit: ["EnergyLimit"], used: ["EnergyUsed"]),
+            bandwidth: resourceUsage(resources).bandwidth,
+            energy: resourceUsage(resources).energy,
             frozen: frozen,
             rewards: rewards,
             unfrozen: unfrozen,
             votes: votes,
             weights: TronStakingState.NetworkWeights(
-                energyLimit: number(resources["TotalEnergyLimit"]) ?? 0,
-                energyWeight: number(resources["TotalEnergyWeight"]) ?? 0,
-                netLimit: number(resources["TotalNetLimit"]) ?? 0,
-                netWeight: number(resources["TotalNetWeight"]) ?? 0
+                energyLimit: uint64(resources["TotalEnergyLimit"]) ?? 0,
+                energyWeight: uint64(resources["TotalEnergyWeight"]) ?? 0,
+                netLimit: uint64(resources["TotalNetLimit"]) ?? 0,
+                netWeight: uint64(resources["TotalNetWeight"]) ?? 0
             ),
             withdrawable: withdrawable,
             delegated: delegated,
-            votingPower: number(resources["tronPowerLimit"])
+            votingPower: uint64(resources["tronPowerLimit"])
         )
     }
 
@@ -340,19 +367,23 @@ extension TronClient {
         }
     }
 
+    /// The allowances in a `getaccountresource` response.
+    static func resourceUsage(_ resources: [String: Any]) -> TronResourceUsage {
+        TronResourceUsage(
+            bandwidth: usage(resources, limit: ["freeNetLimit", "NetLimit"], used: ["freeNetUsed", "NetUsed"]),
+            energy: usage(resources, limit: ["EnergyLimit"], used: ["EnergyUsed"])
+        )
+    }
+
     /// Sums the given limit and used fields (free and staked bandwidth).
     static func usage(_ json: [String: Any], limit: [String], used: [String]) -> TronStakingState.Usage {
-        let total = limit.reduce(0) { $0 + (number(json[$1]) ?? 0) }
-        let spent = used.reduce(0) { $0 + (number(json[$1]) ?? 0) }
+        let total = limit.reduce(0) { $0 + (uint64(json[$1]) ?? 0) }
+        let spent = used.reduce(0) { $0 + (uint64(json[$1]) ?? 0) }
 
         return TronStakingState.Usage(limit: total, remaining: total > spent ? total - spent : 0)
     }
 
     static let posix = Locale(identifier: "en_US_POSIX")
-
-    static func number(_ value: Any?) -> UInt64? {
-        (value as? NSNumber).map(\.uint64Value)
-    }
 }
 
 // MARK: - Representatives
@@ -375,14 +406,9 @@ private extension TronClient {
                 apr: (witness["annualizedRate"] as? String).flatMap { Decimal(string: $0, locale: Self.posix) },
                 name: (witness["name"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                 url: (witness["url"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-                voteCount: Self.number(witness["realTimeVotes"]) ?? 0
+                voteCount: Self.uint64(witness["realTimeVotes"]) ?? 0
             )
         }
         .sorted { $0.voteCount > $1.voteCount }
-    }
-
-    func stakingObject(_ path: String, _ body: [String: Any]) async throws -> [String: Any] {
-        let data = try await relay(path: path, body: JSONSerialization.data(withJSONObject: body))
-        return try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
     }
 }

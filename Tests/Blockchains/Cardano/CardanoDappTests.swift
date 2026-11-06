@@ -51,6 +51,7 @@ struct CardanoDappTests {
             token: nil,
             options: []
         )
+
         let unsigned = try JSONDecoder().decode(CardanoUnsignedTransaction.self, from: envelope)
 
         return (try unsigned.signed(entropy: entropy, path: path), unsigned)
@@ -193,6 +194,7 @@ struct CardanoDappTests {
         await #expect(throws: WalletKitError.self) {
             try await client(refused).submit(rawTransaction: Data())
         }
+
         await #expect(throws: WalletKitError.self) {
             try await client(refused).submit(rawTransaction: transaction)
         }

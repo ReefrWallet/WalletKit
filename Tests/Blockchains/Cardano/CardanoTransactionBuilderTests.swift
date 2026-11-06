@@ -173,7 +173,12 @@ struct CardanoTransactionBuilderTests {
     @Test func spendsUtxosAtOtherAccountAddressesWithTheirSigningPaths() async throws {
         let account = try descriptor(network: .preprod)
         let otherEntropy = Data(repeating: 1, count: 16)
-        let foreign = try CardanoAccountDescriptor(entropy: otherEntropy, network: .preprod, path: .cardanoAccount(accountIndex: 0))
+        let foreign = try CardanoAccountDescriptor(
+            entropy: otherEntropy,
+            network: .preprod,
+            path: .cardanoAccount(accountIndex: 0)
+        )
+
         let utxos = """
         [
           {

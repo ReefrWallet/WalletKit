@@ -64,7 +64,12 @@ struct CardanoTrezorSignerTests {
             )
 
             let request = try JSONEncoder().encode(CardanoUnsignedTransaction(unsigned))
-            let signer = try CardanoTrezorSigner(network: .preprod, path: .cardanoAccount(accountIndex: 0), device: device)
+            let signer = try CardanoTrezorSigner(
+                network: .preprod,
+                path: .cardanoAccount(accountIndex: 0),
+                device: device
+            )
+
             let signed = try await signer.sign(transaction: request)
 
             #expect(!signed.isEmpty)
@@ -101,6 +106,7 @@ struct CardanoTrezorSignerTests {
                     txHash: Data(repeating: 8, count: 32)
                 )]
             )
+
             // What a dapp sends: the original body with an empty witness set.
             let transaction = Data([0x84]) + unsigned.transactionBody + Data([0xA0, 0xF5, 0xF6])
             let signer = try CardanoTrezorSigner(

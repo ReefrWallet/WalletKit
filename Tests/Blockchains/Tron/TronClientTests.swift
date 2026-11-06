@@ -69,6 +69,72 @@ struct TronClientTests {
         #expect(fee.bandwidth == UInt64(transaction.rawBytes.count) + 135)
         // (30 000 - 10 000) energy × 100 SUN; bandwidth fits in the free 600.
         #expect(fee.burnedSun == 2_000_000)
+        #expect(fee.availableEnergy == 10_000)
+        #expect(fee.availableBandwidth == 600)
+        #expect(fee.isBandwidthCovered)
+        #expect(!fee.isEnergyCovered)
+        #expect(!fee.isCoveredByResources)
+    }
+
+    /// Staked resources pay for the whole transaction: nothing is burned.
+    @Test func estimateFeeBurnsNothingWhenTheAccountsResourcesCoverIt() async throws {
+        let response = #"""
+        {"energy_used": 30000, "EnergyLimit": 50000, "EnergyUsed": 10000, "freeNetLimit": 600, "freeNetUsed": 100,
+         "NetLimit": 1000, "NetUsed": 0,
+         "chainParameter": [{"key": "getEnergyFee", "value": 100}, {"key": "getTransactionFee", "value": 1000}]}
+        """#
+        let stub = StubURLProtocol.makeSession(response: .success(body: Data(response.utf8)))
+        let client = TronClient(endpoint: endpoint, session: stub.urlSession)
+        let transaction = try TronRawTransaction(rawBytes: Data(hexString: TronRawTransactionTests.triggerHex))
+
+        let fee = try await client.estimateFee(for: transaction)
+
+        #expect(fee.burnedSun == 0)
+        #expect(fee.availableEnergy == 40_000)
+        // The staked pool (1000) is the one that pays; it isn't added to the free one (500).
+        #expect(fee.availableBandwidth == 1_000)
+        #expect(fee.isCoveredByResources)
+    }
+
+    /// Free and staked bandwidth don't add up: each must cover the whole transaction on its own.
+    @Test func estimateFeeDoesNotPoolFreeAndStakedBandwidth() async throws {
+        let transaction = try TronRawTransaction(rawBytes: Data(hexString: TronRawTransactionTests.freezeEnergyHex))
+        let needed = UInt64(transaction.rawBytes.count) + 135
+        let each = needed - 100
+        let response = #"""
+        {"energy_used": 0, "freeNetLimit": \#(each), "freeNetUsed": 0, "NetLimit": \#(each), "NetUsed": 0,
+         "chainParameter": [{"key": "getEnergyFee", "value": 100}, {"key": "getTransactionFee", "value": 1000}]}
+        """#
+        let stub = StubURLProtocol.makeSession(response: .success(body: Data(response.utf8)))
+        let client = TronClient(endpoint: endpoint, session: stub.urlSession)
+
+        let fee = try await client.estimateFee(for: transaction)
+
+        // Together they would cover it, but neither does alone.
+        #expect(each * 2 > needed)
+        #expect(fee.bandwidth == needed)
+        #expect(fee.availableBandwidth == each)
+        #expect(!fee.isBandwidthCovered)
+        #expect(fee.burnedSun == needed * 1_000)
+        // The summed allowance is what the account's resources show, whatever pays this one.
+        #expect(fee.resources?.bandwidth == .init(limit: each * 2, remaining: each * 2))
+        #expect(fee.resources?.energy == .init(limit: 0, remaining: 0))
+    }
+
+    /// Bandwidth is all-or-nothing: a transaction larger than what is left burns its whole size.
+    @Test func estimateFeeBurnsTheWholeTransactionWhenBandwidthRunsShort() async throws {
+        let response = #"""
+        {"energy_used": 0, "freeNetLimit": 600, "freeNetUsed": 599, "NetLimit": 0, "NetUsed": 0,
+         "chainParameter": [{"key": "getEnergyFee", "value": 100}, {"key": "getTransactionFee", "value": 1000}]}
+        """#
+        let stub = StubURLProtocol.makeSession(response: .success(body: Data(response.utf8)))
+        let client = TronClient(endpoint: endpoint, session: stub.urlSession)
+        let transaction = try TronRawTransaction(rawBytes: Data(hexString: TronRawTransactionTests.freezeEnergyHex))
+
+        let fee = try await client.estimateFee(for: transaction)
+
+        #expect(!fee.isBandwidthCovered)
+        #expect(fee.burnedSun == fee.bandwidth * 1_000)
     }
 
     @Test func relayGetsWithQueryItems() async throws {

@@ -166,7 +166,9 @@ struct TronRawTransactionTests {
     @Test func rejectsAVoteWithADuplicateOwner() throws {
         let owner = try Data(hexString: "0a15417e5f4552091a69125d5dfcb7b8c2659029395bdf")
         #expect(throws: BlockchainClientError.self) {
-            _ = try TronRawTransaction(rawBytes: Self.rawBytes(type: 4, typeName: "VoteWitnessContract", value: owner + owner))
+            _ = try TronRawTransaction(
+                rawBytes: Self.rawBytes(type: 4, typeName: "VoteWitnessContract", value: owner + owner)
+            )
         }
     }
 

@@ -46,3 +46,14 @@ public struct TronAddress: BlockchainAddress {
         Data(SHA256.hash(data: Data(SHA256.hash(data: bytes))).prefix(4))
     }
 }
+
+extension TronAddress: Codable {
+    public init(from decoder: any Decoder) throws {
+        try self.init(string: decoder.singleValueContainer().decode(String.self))
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(string)
+    }
+}

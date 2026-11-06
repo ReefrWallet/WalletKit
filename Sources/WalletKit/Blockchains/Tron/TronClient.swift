@@ -5,10 +5,9 @@ import Moya
 
 /// Minimal HTTP client for Tron FullNode-compatible endpoints.
 ///
-/// Rate-limit handling (retrying 429/503 with backoff; no proactive pacing
-/// until TronGrid's real plan/key-tier limit is confirmed — see
-/// ``RateGateRegistry``) comes from the shared registry, looked up by this
-/// client's own endpoint.
+/// Rate-limit handling (proactive pacing of the public TronGrid origins, plus
+/// retrying 429/503 with backoff everywhere — see ``RateGateRegistry``) comes
+/// from the shared registry, looked up by this client's own endpoint.
 public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disable:this type_body_length
     public typealias Address = TronAddress
 
@@ -468,12 +467,19 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         }
     }
 
-    private func post(_ path: String, body: [String: Any]) async throws -> [String: Any] {
+    /// The one POST-and-decode path of every Tron endpoint (balances, fees, staking): rate-limit
+    /// retries, errors with the node's reason, and a 2xx body that isn't a JSON object as `[:]`.
+    func post(_ path: String, body: [String: Any]) async throws -> [String: Any] {
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         return try await requestJSONObject(
             .post(endpoint: endpoint, path: path, apiKey: apiKey, body: bodyData),
             context: "Tron request \(path)"
         )
+    }
+
+    /// A JSON number as it comes from the node; `nil` for anything else.
+    static func uint64(_ value: Any?) -> UInt64? {
+        (value as? NSNumber).map(\.uint64Value)
     }
 
     func get(_ url: URL, apiKey: String?) async throws -> [String: Any] {

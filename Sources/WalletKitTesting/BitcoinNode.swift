@@ -439,7 +439,8 @@ public final class BitcoinNode {
 
         while ContinuousClock.now < deadline {
             guard bitcoindProcess.isRunning else {
-                let log = (try? String(contentsOf: dataDirectory.appendingPathComponent("bitcoind.log"), encoding: .utf8)) ?? "(no log)"
+                let logURL = dataDirectory.appendingPathComponent("bitcoind.log")
+                let log = (try? String(contentsOf: logURL, encoding: .utf8)) ?? "(no log)"
                 throw BitcoinLaunchError(
                     description: "bitcoind exited with status \(bitcoindProcess.terminationStatus). Log tail:\n\(log.suffix(2000))"
                 )

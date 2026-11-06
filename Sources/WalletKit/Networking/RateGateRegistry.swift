@@ -70,6 +70,18 @@ public struct RateLimitPolicy: Sendable {
             provider: .blockscout,
             policy: RateLimitPolicy(maxCallsPerSecond: 2, maxRetryCount: 3)
         ),
+        // TronGrid's published limit is higher, but one account refresh alone makes a dozen calls;
+        // stay well under it, shared by every client of the origin.
+        ExactEntry(
+            origin: "https://api.trongrid.io",
+            provider: .tronGrid,
+            policy: RateLimitPolicy(maxCallsPerSecond: 5, maxRetryCount: 3)
+        ),
+        ExactEntry(
+            origin: "https://nile.trongrid.io",
+            provider: .tronGrid,
+            policy: RateLimitPolicy(maxCallsPerSecond: 5, maxRetryCount: 3)
+        ),
         ExactEntry(
             origin: "https://blockstream.info",
             provider: .esplora,
