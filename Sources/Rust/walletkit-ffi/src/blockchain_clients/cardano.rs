@@ -7,8 +7,9 @@ use blake2::digest::consts::U32;
 use blake2::{Blake2b, Digest};
 use cardano_serialization_lib::{
     make_vkey_witness, Address, BaseAddress, BigNum, Bip32PrivateKey, Bip32PublicKey,
-    AssetName, Assets, CoinSelectionStrategyCIP2, Credential, LinearFee, MultiAsset, RewardAddress, ScriptHash,
-    Transaction, TransactionBody,
+    min_ada_for_output, AssetName, Assets, Certificate, CertificatesBuilder, ChangeConfig, CoinSelectionStrategyCIP2, Credential,
+    DRep, DataCost, Ed25519KeyHash, LinearFee, MultiAsset, RewardAddress, ScriptHash, StakeDelegation,
+    StakeDeregistration, StakeRegistration, Transaction, TransactionBody, VoteDelegation, WithdrawalsBuilder,
     TransactionBuilder, TransactionBuilderConfigBuilder, TransactionHash, TransactionInput,
     Ed25519Signature, PublicKey, TransactionOutput, TransactionUnspentOutput, TransactionUnspentOutputs,
     TransactionWitnessSet, Value, Vkey, Vkeywitness, Vkeywitnesses,
@@ -236,6 +237,28 @@ pub fn cardano_assemble_transaction(
     Ok(Transaction::new(&body, &witness_set, None).to_bytes())
 }
 
+/// Wraps `transaction_body` with an empty witness set, the shape a device
+/// signs through the transaction-level protocol.
+#[uniffi::export]
+pub fn cardano_unsigned_transaction(transaction_body: Vec<u8>) -> Result<Vec<u8>, WalletKitErrorFfi> {
+    let body = TransactionBody::from_bytes(transaction_body).map_err(signing_failed)?;
+    Ok(Transaction::new(&body, &TransactionWitnessSet::new(), None).to_bytes())
+}
+
+/// Attaches a device-returned witness set to the canonical `transaction_body`.
+#[uniffi::export]
+pub fn cardano_assemble_with_witness_set(
+    transaction_body: Vec<u8>,
+    witness_set: Vec<u8>,
+) -> Result<Vec<u8>, WalletKitErrorFfi> {
+    let body = TransactionBody::from_bytes(transaction_body).map_err(signing_failed)?;
+    let witness_set = TransactionWitnessSet::from_bytes(witness_set).map_err(signing_failed)?;
+    if witness_set.vkeys().map_or(true, |vkeys| vkeys.len() == 0) {
+        return Err(signing_failed("Cardano device returned no witnesses"));
+    }
+    Ok(Transaction::new(&body, &witness_set, None).to_bytes())
+}
+
 /// Returns the Blake2b-256 transaction identifier a signer must authorize.
 #[uniffi::export]
 pub fn cardano_transaction_body_hash(transaction_body: Vec<u8>) -> Result<Vec<u8>, WalletKitErrorFfi> {
@@ -340,6 +363,232 @@ pub fn cardano_build_transfer(
             .map(|ttl| ttl.to_str().parse::<u64>().map_err(signing_failed))
             .transpose()?,
     })
+}
+
+/// A DRep a stake key delegates its vote to.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum CardanoDRepFfi {
+    Abstain,
+    /// CIP-129 or CIP-105 bech32 id.
+    Id { bech32: String },
+    NoConfidence,
+}
+
+/// One staking certificate. Certificates are always emitted separately.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum CardanoStakingCertificateFfi {
+    Delegation { pool_id: String },
+    /// Returns `refund` lovelace.
+    Deregistration { refund: String },
+    /// Conway `reg_cert` paying `deposit` lovelace.
+    Registration { deposit: String },
+    VoteDelegation { drep: CardanoDRepFfi },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct CardanoStakingTransactionFfi {
+    pub deposit: String,
+    /// Signed lovelace change to the account: refund + withdrawal - fee - deposit.
+    pub net_lovelace: String,
+    pub refund: String,
+    /// Includes the stake key path (`2/0`); callers add the input payment paths.
+    pub unsigned: CardanoUnsignedTransactionFfi,
+    pub withdrawal: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum CardanoStakingBuildFfi {
+    Built { transaction: CardanoStakingTransactionFfi },
+    /// The signable UTxOs can't fund the transaction; `shortfall` is in lovelace.
+    InsufficientFunds { shortfall: String },
+}
+
+/// Builds a staking transaction from `utxos` (signable UTxOs only): the
+/// ordered `certificates` and an optional full-balance `withdrawal`.
+#[uniffi::export]
+pub fn cardano_build_staking(
+    certificates: Vec<CardanoStakingCertificateFfi>,
+    change_address: String,
+    protocol_parameters: CardanoProtocolParametersFfi,
+    stake_address: String,
+    ttl: u64,
+    utxos: Vec<CardanoUtxoFfi>,
+    withdrawal: Option<String>,
+) -> Result<CardanoStakingBuildFfi, WalletKitErrorFfi> {
+    let withdrawal = withdrawal.map(|value| BigNum::from_str(&value).map_err(signing_failed)).transpose()?;
+    if certificates.is_empty() && withdrawal.is_none() {
+        return Err(signing_failed("Cardano staking transaction has no certificates or withdrawal"));
+    }
+    let change_address = Address::from_bech32(&change_address).map_err(invalid_address)?;
+    let reward_address = RewardAddress::from_address(&Address::from_bech32(&stake_address).map_err(invalid_address)?)
+        .ok_or_else(|| invalid_address("not a reward address"))?;
+    let stake_credential = reward_address.payment_cred();
+    let fee = LinearFee::new(
+        &BigNum::from(protocol_parameters.min_fee_a),
+        &BigNum::from(protocol_parameters.min_fee_b),
+    );
+    let config = TransactionBuilderConfigBuilder::new()
+        .coins_per_utxo_byte(&BigNum::from(protocol_parameters.coins_per_utxo_byte))
+        .fee_algo(&fee)
+        .key_deposit(&BigNum::from(protocol_parameters.key_deposit))
+        .max_tx_size(protocol_parameters.max_tx_size)
+        .max_value_size(protocol_parameters.max_value_size)
+        .pool_deposit(&BigNum::from(protocol_parameters.pool_deposit))
+        // Never turn change that can't make an output into fee: add inputs until it can.
+        .do_not_burn_extra_change(true)
+        .build()
+        .map_err(signing_failed)?;
+
+    let mut certs = CertificatesBuilder::new();
+    for certificate in certificates {
+        let certificate = match certificate {
+            CardanoStakingCertificateFfi::Delegation { pool_id } => {
+                Certificate::new_stake_delegation(&StakeDelegation::new(&stake_credential, &pool_key_hash(&pool_id)?))
+            }
+            CardanoStakingCertificateFfi::Deregistration { refund } => {
+                Certificate::new_stake_deregistration(&StakeDeregistration::new_with_explicit_refund(
+                    &stake_credential,
+                    &BigNum::from_str(&refund).map_err(signing_failed)?,
+                ))
+            }
+            CardanoStakingCertificateFfi::Registration { deposit } => {
+                Certificate::new_stake_registration(&StakeRegistration::new_with_explicit_deposit(
+                    &stake_credential,
+                    &BigNum::from_str(&deposit).map_err(signing_failed)?,
+                ))
+            }
+            CardanoStakingCertificateFfi::VoteDelegation { drep } => {
+                Certificate::new_vote_delegation(&VoteDelegation::new(&stake_credential, &drep_from_ffi(drep)?))
+            }
+        };
+        certs.add(&certificate).map_err(signing_failed)?;
+    }
+
+    let mut available = TransactionUnspentOutputs::new();
+    let mut total = Value::zero();
+    for utxo in utxos {
+        let address = Address::from_bech32(&utxo.address).map_err(invalid_address)?;
+        let tx_hash = TransactionHash::from_bytes(utxo.tx_hash).map_err(signing_failed)?;
+        let input = TransactionInput::new(&tx_hash, utxo.output_index);
+        let lovelace = BigNum::from_str(&utxo.lovelace).map_err(signing_failed)?;
+        let mut value = Value::new(&lovelace);
+        if !utxo.assets.is_empty() {
+            value.set_multiasset(&multiasset(utxo.assets)?);
+        }
+        total = total.checked_add(&value).map_err(signing_failed)?;
+        available.add(&TransactionUnspentOutput::new(&input, &TransactionOutput::new(&address, &value)));
+    }
+
+    let mut builder = TransactionBuilder::new(&config);
+    builder.set_certs_builder(&certs);
+    if let Some(withdrawal) = &withdrawal {
+        let mut withdrawals = WithdrawalsBuilder::new();
+        withdrawals.add(&reward_address, withdrawal).map_err(signing_failed)?;
+        builder.set_withdrawals_builder(&withdrawals);
+    }
+    builder.set_ttl_bignum(&BigNum::from(ttl));
+
+    let funded = builder
+        .add_inputs_from_and_change(
+            &available,
+            CoinSelectionStrategyCIP2::LargestFirstMultiAsset,
+            &ChangeConfig::new(&change_address),
+        )
+        .map(|_| ());
+    if let Err(error) = funded {
+        let implicit = builder.get_implicit_input().ok().map(|value| value.coin());
+        let output = builder.get_total_output().ok().map(|value| value.coin());
+        let min_fee = builder.min_fee().ok();
+        if let (Some(implicit), Some(output), Some(min_fee)) = (implicit, output, min_fee) {
+            let supply = total.coin().checked_add(&implicit).map_err(signing_failed)?;
+            let needed = output.checked_add(&min_fee).map_err(signing_failed)?;
+            if supply.compare(&needed) < 0 {
+                return Ok(CardanoStakingBuildFfi::InsufficientFunds {
+                    shortfall: needed.checked_sub(&supply).map_err(signing_failed)?.to_str(),
+                });
+            }
+            let leftover = supply.checked_sub(&needed).map_err(signing_failed)?;
+            let mut change = Value::new(&leftover);
+            if let Some(assets) = total.multiasset() {
+                change.set_multiasset(&assets);
+            }
+            let minimum = min_ada_for_output(
+                &TransactionOutput::new(&change_address, &change),
+                &DataCost::new_coins_per_byte(&BigNum::from(protocol_parameters.coins_per_utxo_byte)),
+            )
+            .map_err(signing_failed)?;
+            if leftover.compare(&minimum) < 0 {
+                return Ok(CardanoStakingBuildFfi::InsufficientFunds {
+                    shortfall: minimum.checked_sub(&leftover).map_err(signing_failed)?.to_str(),
+                });
+            }
+        }
+        return Err(signing_failed(error));
+    }
+
+    let deposit = builder.get_deposit().map_err(signing_failed)?;
+    let refund = builder.get_implicit_input().map_err(signing_failed)?.coin();
+    let withdrawal = withdrawal.unwrap_or_else(BigNum::zero);
+    let refund = refund.checked_sub(&withdrawal).map_err(signing_failed)?;
+    let body = builder.build().map_err(signing_failed)?;
+    let fee = body.fee();
+    let net = i128::from(u64::from(refund.clone()))
+        + i128::from(u64::from(withdrawal.clone()))
+        - i128::from(u64::from(fee.clone()))
+        - i128::from(u64::from(deposit.clone()));
+    let inputs = (0..body.inputs().len())
+        .map(|index| {
+            let input = body.inputs().get(index);
+            CardanoTransactionInputFfi {
+                output_index: input.index(),
+                tx_hash: input.transaction_id().to_bytes(),
+            }
+        })
+        .collect();
+    let change_bech32 = change_address.to_bech32(None).map_err(signing_failed)?;
+    let outputs = (0..body.outputs().len())
+        .map(|index| {
+            let output = body.outputs().get(index);
+            let address = output.address().to_bech32(None).map_err(signing_failed)?;
+            Ok(CardanoTransactionOutputFfi {
+                assets: value_assets(&output.amount()),
+                is_change: address == change_bech32,
+                lovelace: output.amount().coin().to_str(),
+                address,
+            })
+        })
+        .collect::<Result<Vec<_>, WalletKitErrorFfi>>()?;
+    Ok(CardanoStakingBuildFfi::Built {
+        transaction: CardanoStakingTransactionFfi {
+            deposit: deposit.to_str(),
+            net_lovelace: net.to_string(),
+            refund: refund.to_str(),
+            unsigned: CardanoUnsignedTransactionFfi {
+                fee: fee.to_str(),
+                inputs,
+                network_id: change_address.network_id().map_err(signing_failed)?,
+                outputs,
+                signing_paths: vec![CardanoSigningPathFfi { index: 0, role: 2 }],
+                transaction_body: body.to_bytes(),
+                ttl: Some(ttl),
+            },
+            withdrawal: withdrawal.to_str(),
+        },
+    })
+}
+
+fn pool_key_hash(pool_id: &str) -> Result<Ed25519KeyHash, WalletKitErrorFfi> {
+    Ed25519KeyHash::from_bech32(pool_id)
+        .or_else(|_| Ed25519KeyHash::from_hex(pool_id))
+        .map_err(|_| signing_failed("invalid pool id"))
+}
+
+fn drep_from_ffi(drep: CardanoDRepFfi) -> Result<DRep, WalletKitErrorFfi> {
+    match drep {
+        CardanoDRepFfi::Abstain => Ok(DRep::new_always_abstain()),
+        CardanoDRepFfi::NoConfidence => Ok(DRep::new_always_no_confidence()),
+        CardanoDRepFfi::Id { bech32 } => DRep::from_bech32(&bech32).map_err(|_| signing_failed("invalid DRep id")),
+    }
 }
 
 pub(crate) fn value_assets(value: &Value) -> Vec<CardanoAssetFfi> {
@@ -548,5 +797,271 @@ mod tests {
         assert_eq!(cardano_transaction_body_hash(unsigned.transaction_body).unwrap().len(), 32);
         assert_eq!(assembled.body().to_bytes(), original.body().to_bytes());
         assert_eq!(assembled.witness_set().vkeys().unwrap().len(), 1);
+    }
+
+    fn staking_fixture() -> (String, String, String) {
+        let xpub = cardano_account_xpub_from_entropy(ENTROPY.to_vec(), 0).unwrap();
+        (
+            cardano_base_address(xpub.clone(), 0, 0, 0).unwrap(),
+            cardano_stake_address(xpub.clone(), 0).unwrap(),
+            xpub,
+        )
+    }
+
+    fn pool_id() -> String {
+        Ed25519KeyHash::from_bytes(vec![3; 28]).unwrap().to_bech32("pool").unwrap()
+    }
+
+    fn drep_id(cip129: bool) -> String {
+        DRep::new_key_hash(&Ed25519KeyHash::from_bytes(vec![5; 28]).unwrap()).to_bech32(cip129).unwrap()
+    }
+
+    fn utxo(address: &str, lovelace: &str, tag: u8, assets: Vec<CardanoAssetFfi>) -> CardanoUtxoFfi {
+        CardanoUtxoFfi {
+            address: address.to_string(),
+            assets,
+            lovelace: lovelace.to_string(),
+            output_index: 0,
+            tx_hash: vec![tag; 32],
+        }
+    }
+
+    fn build(
+        certificates: Vec<CardanoStakingCertificateFfi>,
+        utxos: Vec<CardanoUtxoFfi>,
+        withdrawal: Option<&str>,
+    ) -> CardanoStakingBuildFfi {
+        let (payment, stake, _) = staking_fixture();
+        cardano_build_staking(
+            certificates,
+            payment,
+            protocol_parameters(),
+            stake,
+            1_000,
+            utxos,
+            withdrawal.map(str::to_string),
+        )
+        .unwrap()
+    }
+
+    fn built(result: CardanoStakingBuildFfi) -> CardanoStakingTransactionFfi {
+        match result {
+            CardanoStakingBuildFfi::Built { transaction } => transaction,
+            other => panic!("expected a built transaction, got {other:?}"),
+        }
+    }
+
+    fn certificates(transaction: &CardanoStakingTransactionFfi) -> Vec<Certificate> {
+        let body = TransactionBody::from_bytes(transaction.unsigned.transaction_body.clone()).unwrap();
+        let certs = body.certs().unwrap();
+        (0..certs.len()).map(|index| certs.get(index)).collect()
+    }
+
+    #[test]
+    fn registration_and_delegation_pay_the_deposit_as_separate_certificates() {
+        let (payment, ..) = staking_fixture();
+        let transaction = built(build(
+            vec![
+                CardanoStakingCertificateFfi::Registration { deposit: "2000000".into() },
+                CardanoStakingCertificateFfi::Delegation { pool_id: pool_id() },
+            ],
+            vec![utxo(&payment, "10000000", 1, vec![])],
+            None,
+        ));
+        let certs = certificates(&transaction);
+
+        assert_eq!(certs.len(), 2);
+        assert!(certs[0].as_stake_registration().is_some());
+        assert!(certs[1].as_stake_delegation().is_some());
+        assert_eq!(transaction.deposit, "2000000");
+        assert_eq!(transaction.refund, "0");
+        let fee: i128 = transaction.unsigned.fee.parse().unwrap();
+        assert_eq!(transaction.net_lovelace, (-fee - 2_000_000).to_string());
+        let change: u64 = transaction.unsigned.outputs.iter().map(|o| o.lovelace.parse::<u64>().unwrap()).sum();
+        assert_eq!(change + fee as u64 + 2_000_000, 10_000_000);
+        assert!(transaction.unsigned.signing_paths.contains(&CardanoSigningPathFfi { index: 0, role: 2 }));
+    }
+
+    #[test]
+    fn delegation_and_vote_delegation_build_alone() {
+        let (payment, ..) = staking_fixture();
+        let utxos = vec![utxo(&payment, "5000000", 1, vec![])];
+        let pool = built(build(
+            vec![CardanoStakingCertificateFfi::Delegation { pool_id: pool_id() }],
+            utxos.clone(),
+            None,
+        ));
+        let vote = built(build(
+            vec![CardanoStakingCertificateFfi::VoteDelegation { drep: CardanoDRepFfi::Abstain }],
+            utxos,
+            None,
+        ));
+
+        assert!(certificates(&pool)[0].as_stake_delegation().is_some());
+        assert!(certificates(&vote)[0].as_vote_delegation().is_some());
+        assert_eq!(pool.deposit, "0");
+    }
+
+    #[test]
+    fn drep_ids_accept_cip105_cip129_and_the_predefined_dreps() {
+        for drep in [
+            CardanoDRepFfi::Id { bech32: drep_id(false) },
+            CardanoDRepFfi::Id { bech32: drep_id(true) },
+            CardanoDRepFfi::Abstain,
+            CardanoDRepFfi::NoConfidence,
+        ] {
+            assert!(drep_from_ffi(drep).is_ok());
+        }
+        assert!(drep_from_ffi(CardanoDRepFfi::Id { bech32: "drep1invalid".into() }).is_err());
+    }
+
+    #[test]
+    fn withdrawal_funds_the_fee() {
+        let (payment, ..) = staking_fixture();
+        // The input alone covers nothing after min-ADA; the withdrawal pays the fee.
+        let transaction = built(build(
+            vec![CardanoStakingCertificateFfi::VoteDelegation { drep: CardanoDRepFfi::NoConfidence }],
+            vec![utxo(&payment, "1000000", 1, vec![])],
+            Some("3000000"),
+        ));
+
+        assert_eq!(transaction.withdrawal, "3000000");
+        let fee: i128 = transaction.unsigned.fee.parse().unwrap();
+        assert_eq!(transaction.net_lovelace, (3_000_000 - fee).to_string());
+        let body = TransactionBody::from_bytes(transaction.unsigned.transaction_body).unwrap();
+        assert_eq!(body.withdrawals().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn deregistration_refund_funds_the_fee_and_sweeps_rewards() {
+        let (payment, ..) = staking_fixture();
+        let transaction = built(build(
+            vec![CardanoStakingCertificateFfi::Deregistration { refund: "2000000".into() }],
+            vec![utxo(&payment, "1000000", 1, vec![])],
+            Some("1500000"),
+        ));
+        let fee: i128 = transaction.unsigned.fee.parse().unwrap();
+
+        assert_eq!(transaction.refund, "2000000");
+        assert_eq!(transaction.deposit, "0");
+        assert_eq!(transaction.net_lovelace, (2_000_000 + 1_500_000 - fee).to_string());
+        assert!(certificates(&CardanoStakingTransactionFfi { ..transaction })[0].as_stake_deregistration().is_some());
+    }
+
+    #[test]
+    fn unfunded_deposit_reports_the_shortfall() {
+        let (payment, ..) = staking_fixture();
+        let result = build(
+            vec![CardanoStakingCertificateFfi::Registration { deposit: "2000000".into() }],
+            vec![utxo(&payment, "1000000", 1, vec![])],
+            None,
+        );
+
+        let CardanoStakingBuildFfi::InsufficientFunds { shortfall } = result else {
+            panic!("expected a shortfall");
+        };
+        assert!(shortfall.parse::<u64>().unwrap() >= 1_000_000);
+    }
+
+    #[test]
+    fn native_assets_are_preserved_in_change() {
+        let (payment, ..) = staking_fixture();
+        let asset = CardanoAssetFfi { name: b"TEST".to_vec(), policy_id: vec![9; 28], quantity: "10".into() };
+        let transaction = built(build(
+            vec![CardanoStakingCertificateFfi::Registration { deposit: "2000000".into() }],
+            vec![utxo(&payment, "10000000", 1, vec![asset])],
+            None,
+        ));
+
+        assert!(transaction
+            .unsigned
+            .outputs
+            .iter()
+            .any(|output| output.is_change && output.assets.iter().any(|asset| asset.quantity == "10")));
+    }
+
+    #[test]
+    fn staking_requires_a_certificate_or_withdrawal() {
+        let (payment, stake, _) = staking_fixture();
+        let result = cardano_build_staking(
+            vec![],
+            payment.clone(),
+            protocol_parameters(),
+            stake,
+            1_000,
+            vec![utxo(&payment, "5000000", 1, vec![])],
+            None,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn unsigned_transaction_round_trips_through_a_device_witness_set() {
+        let (payment, ..) = staking_fixture();
+        let transaction = built(build(
+            vec![CardanoStakingCertificateFfi::Delegation { pool_id: pool_id() }],
+            vec![utxo(&payment, "5000000", 1, vec![])],
+            None,
+        ));
+        let body = transaction.unsigned.transaction_body.clone();
+        let unsigned = cardano_unsigned_transaction(body.clone()).unwrap();
+        assert_eq!(Transaction::from_bytes(unsigned).unwrap().body().to_bytes(), body);
+
+        let signed = cardano_sign_transaction(
+            ENTROPY.to_vec(),
+            0,
+            transaction.unsigned.signing_paths,
+            body.clone(),
+        )
+        .unwrap();
+        let witness_set = Transaction::from_bytes(signed).unwrap().witness_set().to_bytes();
+        let assembled = cardano_assemble_with_witness_set(body.clone(), witness_set).unwrap();
+
+        assert_eq!(Transaction::from_bytes(assembled).unwrap().body().to_bytes(), body);
+        assert!(cardano_assemble_with_witness_set(body, TransactionWitnessSet::new().to_bytes()).is_err());
+    }
+
+    #[test]
+    fn change_is_returned_instead_of_burned_as_fee() {
+        let (payment, ..) = staking_fixture();
+        // One 1 ADA input can't both pay the fee and leave a valid change output.
+        let transaction = built(build(
+            vec![CardanoStakingCertificateFfi::VoteDelegation { drep: CardanoDRepFfi::Abstain }],
+            vec![utxo(&payment, "1000000", 1, vec![]), utxo(&payment, "1000000", 2, vec![])],
+            None,
+        ));
+        let fee: u64 = transaction.unsigned.fee.parse().unwrap();
+
+        assert_eq!(transaction.unsigned.inputs.len(), 2);
+        assert!(fee < 300_000, "fee {fee}");
+        assert!(transaction.unsigned.outputs.iter().any(|output| output.is_change));
+    }
+
+    #[test]
+    fn a_legacy_registration_still_names_its_stake_credential() {
+        use super::super::cardano_dapp::cardano_decode_transaction;
+        use cardano_serialization_lib::{Certificates, TransactionInputs, TransactionOutputs};
+
+        let (.., xpub) = staking_fixture();
+        let stake_key = Bip32PublicKey::from_bech32(&xpub)
+            .unwrap()
+            .derive(2)
+            .unwrap()
+            .derive(0)
+            .unwrap()
+            .to_raw_key();
+        let credential = Credential::from_keyhash(&stake_key.hash());
+        let mut certificates = Certificates::new();
+        certificates.add(&Certificate::new_stake_registration(&StakeRegistration::new(&credential)));
+        let mut body = TransactionBody::new_tx_body(&TransactionInputs::new(), &TransactionOutputs::new(), &BigNum::zero());
+        body.set_certs(&certificates);
+        let transaction = Transaction::new(&body, &TransactionWitnessSet::new(), None).to_bytes();
+
+        let decoded = cardano_decode_transaction(transaction).unwrap();
+
+        // No witness is required, yet the certificate is the account's.
+        assert_eq!(decoded.certificates[0].credential, None);
+        assert_eq!(decoded.certificates[0].subject, Some(stake_key.hash().to_bytes()));
     }
 }

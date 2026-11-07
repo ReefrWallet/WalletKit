@@ -63,25 +63,8 @@ extension CardanoClient {
         var blockchainTransactions: [BlockchainTransaction] = []
 
         for transaction in transactions {
-            let effect = try? await nativeTransferEffect(
-                txHash: transaction.txHash,
-                owner: owner,
-                ownedAddresses: addresses
-            )
-
-            let details: TransactionDetails? = try? await get("txs/\(transaction.txHash)")
-
             blockchainTransactions.append(
-                BlockchainTransaction(
-                    identifier: transaction.txHash,
-                    blockHeight: transaction.blockHeight,
-                    blockHash: transaction.block,
-                    timestamp: Date(timeIntervalSince1970: TimeInterval(transaction.blockTime)),
-                    status: .confirmed,
-                    effects: effect.map { [$0] } ?? [],
-                    fee: details?.fees,
-                    method: effect.map { $0.from != nil ? "Sent" : $0.to != nil ? "Received" : "Self Transfer" }
-                )
+                await historyTransaction(transaction, owner: owner, addresses: addresses)
             )
         }
 
@@ -95,6 +78,33 @@ extension CardanoClient {
 }
 
 extension CardanoClient {
+    /// One history row: the transfer effect, the fee, and a staking label if its certificates say so.
+    func historyTransaction(
+        _ transaction: AccountTransaction,
+        owner: CardanoAccountDescriptor,
+        addresses: Set<String>
+    ) async -> BlockchainTransaction {
+        let effect = try? await nativeTransferEffect(
+            txHash: transaction.txHash,
+            owner: owner,
+            ownedAddresses: addresses
+        )
+
+        let details: TransactionDetails? = try? await get("txs/\(transaction.txHash)")
+        let transfer = effect.map { $0.from != nil ? "Sent" : $0.to != nil ? "Received" : "Self Transfer" }
+
+        return BlockchainTransaction(
+            identifier: transaction.txHash,
+            blockHeight: transaction.blockHeight,
+            blockHash: transaction.block,
+            timestamp: Date(timeIntervalSince1970: TimeInterval(transaction.blockTime)),
+            status: .confirmed,
+            effects: effect.map { [$0] } ?? [],
+            fee: details?.fees,
+            method: await stakingMethod(txHash: transaction.txHash, owner: owner) ?? transfer
+        )
+    }
+
     struct AddressEntry: Decodable {
         let address: String
     }
@@ -136,6 +146,7 @@ extension CardanoClient {
     /// `blocks/latest`. `height` is null only for the genesis block.
     struct Block: Decodable {
         let height: UInt64?
+        let slot: UInt64?
     }
 
     /// `txs/{hash}`; only the fee is read.

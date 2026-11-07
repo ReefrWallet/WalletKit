@@ -26,6 +26,9 @@ pub struct CardanoDappCertificateFfi {
     pub credential: Option<Vec<u8>>,
     pub credential_is_script: bool,
     pub kind: String,
+    /// The stake credential the certificate acts on, whether or not it needs that key's witness: a
+    /// legacy registration carries one but requires none.
+    pub subject: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
@@ -218,7 +221,15 @@ pub fn cardano_decode_transaction(transaction: Vec<u8>) -> Result<CardanoDappTra
                     CertificateRequirement::Credential(credential) => credential_bytes(&credential),
                     CertificateRequirement::None | CertificateRequirement::Foreign => (None, false),
                 };
+                let subject = match certificate_requirement(&certificate) {
+                    CertificateRequirement::Credential(credential) => Some(credential),
+                    CertificateRequirement::None => {
+                        certificate.as_stake_registration().map(|registration| registration.stake_credential())
+                    }
+                    CertificateRequirement::Foreign => None,
+                };
                 Ok(CardanoDappCertificateFfi {
+                    subject: subject.and_then(|credential| credential_bytes(&credential).0),
                     credential: credential.0,
                     credential_is_script: credential.1,
                     kind: format!("{:?}", certificate.kind()),

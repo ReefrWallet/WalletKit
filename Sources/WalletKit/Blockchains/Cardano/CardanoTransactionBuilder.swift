@@ -9,15 +9,38 @@ public struct CardanoUnsignedTransaction: Codable, Sendable {
     public let networkId: UInt8
     public let outputs: [CardanoTransactionOutputFfi]
     public let signingPaths: [CardanoSigningPathFfi]
+    /// Set on staking transactions; a device signs those at transaction level.
+    public let staking: CardanoStakingSummary?
     public let transactionBody: Data
     public let ttl: UInt64?
 
-    init(_ raw: CardanoUnsignedTransactionFfi) {
+    public init(
+        fee: String,
+        inputs: [CardanoTransactionInputFfi],
+        networkId: UInt8,
+        outputs: [CardanoTransactionOutputFfi],
+        signingPaths: [CardanoSigningPathFfi],
+        staking: CardanoStakingSummary?,
+        transactionBody: Data,
+        ttl: UInt64?
+    ) {
+        self.fee = fee
+        self.inputs = inputs
+        self.networkId = networkId
+        self.outputs = outputs
+        self.signingPaths = signingPaths
+        self.staking = staking
+        self.transactionBody = transactionBody
+        self.ttl = ttl
+    }
+
+    init(_ raw: CardanoUnsignedTransactionFfi, staking: CardanoStakingSummary? = nil) {
         fee = raw.fee
         inputs = raw.inputs
         networkId = raw.networkId
         outputs = raw.outputs
         signingPaths = raw.signingPaths
+        self.staking = staking
         transactionBody = raw.transactionBody
         ttl = raw.ttl
     }

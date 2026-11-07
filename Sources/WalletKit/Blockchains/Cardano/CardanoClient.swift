@@ -17,8 +17,8 @@ import WalletKitRust
 public struct CardanoClient: BlockchainClientProtocol, Sendable {
     public typealias Address = CardanoAccountDescriptor
 
-    private let endpoint: URL
-    private let projectId: String?
+    let endpoint: URL
+    let projectId: String?
     private let session: URLSession
 
     public init(endpoint: URL, projectId: String?, session: URLSession = .shared) {
@@ -42,8 +42,10 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
                 path: "tx/submit"
             )
 
+            // Blockfrost answers with the hash as a JSON string.
             guard let identifier = String(data: data, encoding: .utf8)?
-                .trimmingCharacters(in: .whitespacesAndNewlines), !identifier.isEmpty else {
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: "\""))),
+                !identifier.isEmpty else {
                 throw WalletKitError.internalError(message: "Blockfrost returned no Cardano transaction ID.")
             }
 
@@ -58,6 +60,15 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
             // trusting a possibly-inconsistent second response.
             let unsigned = try JSONDecoder().decode(CardanoUnsignedTransaction.self, from: transaction)
             return try unsigned.transactionBodyHash().map { String(format: "%02x", $0) }.joined()
+        } catch let WalletKitError.internalError(message) where Self.looksLikeSpentInputs(message) {
+            let unsigned = try JSONDecoder().decode(CardanoUnsignedTransaction.self, from: transaction)
+            let hash = try unsigned.transactionBodyHash().map { String(format: "%02x", $0) }.joined()
+
+            return try await settleSpentInputs(
+                hash: hash,
+                inputs: unsigned.inputs.map { ($0.txHash, $0.outputIndex) },
+                message: message
+            )
         }
     }
 
@@ -83,15 +94,93 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
             )
         } catch let WalletKitError.internalError(message) where Self.looksLikeAlreadySubmitted(message) {
             // The first attempt of a retried request already landed.
+        } catch let WalletKitError.internalError(message) where Self.looksLikeSpentInputs(message) {
+            // A dapp resubmitting a confirmed transaction, or spending what another transaction spent.
+            let decoded = try remappingWalletKitError { try cardanoDecodeTransaction(transaction: rawTransaction) }
+
+            _ = try await settleSpentInputs(
+                hash: identifier,
+                inputs: decoded.inputs.map { ($0.txHash, $0.outputIndex) },
+                message: message
+            )
         }
 
         return identifier
+    }
+
+    /// What a spent-inputs rejection means. Conway words it that way whenever every input is spent,
+    /// whoever spent it: a retry of a transaction that landed, or a build from UTxOs a lagging index
+    /// still listed. It is a success if the transaction is on chain, and a rejection only once a
+    /// different transaction is seen consuming an input. Until the index shows either, the first
+    /// attempt may still confirm, so the outcome is unknown, never a rejection.
+    private func settleSpentInputs(
+        hash: String,
+        inputs: [(txHash: Data, outputIndex: UInt32)],
+        message: String
+    ) async throws -> String {
+        if try await isOnChain(hash) {
+            return hash
+        }
+
+        let spent = inputs.map { CardanoSpentInput(outputIndex: $0.outputIndex, producer: $0.txHash) }
+
+        if try await hasConflictingSpend(hash: hash, inputs: spent) {
+            throw WalletKitError.internalError(message: message)
+        }
+
+        throw WalletKitError.internalError(
+            message: "Cardano submission unresolved: its inputs are spent but the transaction isn't indexed yet."
+        )
+    }
+
+    /// Whether the index shows a transaction other than `hash` consuming one of `inputs`: `hash` can no
+    /// longer land. Nothing shown yet says nothing.
+    func hasConflictingSpend(hash: String, inputs: [CardanoSpentInput]) async throws -> Bool {
+        for input in inputs {
+            let outputs: ConsumedOutputs = try await get("txs/\(input.txHash)/utxos")
+            let consumer = outputs.outputs.first { $0.outputIndex == input.outputIndex }?.consumedByTx
+
+            if let consumer, consumer != hash {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    struct ConsumedOutputs: Decodable {
+        struct Output: Decodable {
+            let consumedByTx: String?
+            let outputIndex: UInt32
+
+            enum CodingKeys: String, CodingKey {
+                case consumedByTx = "consumed_by_tx"
+                case outputIndex = "output_index"
+            }
+        }
+
+        let outputs: [Output]
+    }
+
+    /// Whether `hash` is on chain. A failed lookup is thrown, never read as "no": the caller can't
+    /// tell a landed transaction from a rejected one without it.
+    private func isOnChain(_ hash: String) async throws -> Bool {
+        do {
+            let _: TransactionExists = try await get("txs/\(hash)")
+            return true
+        } catch HTTPError.notFound {
+            return false
+        }
     }
 
     private static func looksLikeAlreadySubmitted(_ message: String) -> Bool {
         ["already exists", "already submitted", "already in the mempool", "already known"].contains {
             message.localizedCaseInsensitiveContains($0)
         }
+    }
+
+    private static func looksLikeSpentInputs(_ message: String) -> Bool {
+        message.localizedCaseInsensitiveContains("probably already been included")
     }
 
     /// Builds an ADA or native-asset transfer from UTxOs at any of the account's
@@ -139,7 +228,7 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
 
     /// The account's UTxOs it can sign for, keyed to their payment paths.
     /// UTxOs at addresses outside the derivation search are skipped.
-    private func spendableUTxOs(
+    func spendableUTxOs(
         _ owner: CardanoAccountDescriptor
     ) async throws -> (utxos: [CardanoUtxoFfi], pathsByInput: [String: CardanoSigningPathFfi]) {
         let entries = try await accountUTxOs(owner)
@@ -475,4 +564,4 @@ private enum BlockfrostAPI: TargetType {
     var validationType: ValidationType { .successCodes }
 
     var sampleData: Data { Data() }
-}
+} // swiftlint:disable:this file_length

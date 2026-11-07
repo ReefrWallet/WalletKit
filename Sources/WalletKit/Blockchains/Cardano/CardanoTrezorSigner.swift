@@ -47,6 +47,11 @@ public final class CardanoTrezorSigner {
         }
 
         let unsigned = try JSONDecoder().decode(CardanoUnsignedTransaction.self, from: transaction)
+
+        if unsigned.staking != nil {
+            return try await signStaking(unsigned)
+        }
+
         let inputs = unsigned.inputs.map { CardanoInputFfi(outputIndex: $0.outputIndex, txHash: $0.txHash) }
 
         let outputs = try unsigned.outputs.map { output in
@@ -84,6 +89,31 @@ public final class CardanoTrezorSigner {
         }
 
         return try unsigned.assembled(witnesses: witnesses)
+    }
+
+    /// Staking transactions carry certificates and withdrawals, which the device
+    /// signs through the dapp path: it maps them and checks the body hash itself.
+    /// Certificates are always separate, so the device never sees combined ones.
+    func signStaking(_ unsigned: CardanoUnsignedTransaction) async throws -> Data {
+        let xpub = try requireXpub()
+        let transaction = try remappingWalletKitError {
+            try cardanoUnsignedTransaction(transactionBody: unsigned.transactionBody)
+        }
+
+        let witnessSet = try await remappingWalletKitError {
+            try await device.raw.cardanoSignDappTx(
+                transaction: transaction,
+                accountPath: accountPath.raw,
+                accountXpub: xpub,
+                networkId: network.addressNetworkId,
+                protocolMagic: network.protocolMagic,
+                signingPaths: unsigned.signingPaths
+            )
+        }
+
+        return try remappingWalletKitError {
+            try cardanoAssembleWithWitnessSet(transactionBody: unsigned.transactionBody, witnessSet: witnessSet)
+        }
     }
 
     private func lovelace(_ value: String) throws -> UInt64 {

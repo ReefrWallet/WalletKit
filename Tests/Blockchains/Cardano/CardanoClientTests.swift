@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import WalletKitRust
 @testable import WalletKit
 
 struct CardanoClientTests {
@@ -136,6 +137,116 @@ struct CardanoClientTests {
 
         let result = try await client.broadcast(transaction: envelope, signature: Data([0xde, 0xad]))
         #expect(result == expectedHash)
+    }
+
+    /// Blockfrost answers a submit with the hash as a JSON string, quotes included.
+    @Test func broadcastReturnsTheHashWithoutItsJSONQuotes() async throws {
+        let stub = StubURLProtocol.makeSession(response: .success(body: Data("\"abc123\"\n".utf8)))
+        let client = CardanoClient(endpoint: endpoint, projectId: "project-id", session: stub.urlSession)
+
+        #expect(try await client.broadcast(transaction: Data(), signature: Data([1])) == "abc123")
+    }
+
+    private static let spentInputs = "All inputs are spent. Transaction has probably already been included"
+
+    private struct SpentInputs {
+        let client: CardanoClient
+        let envelope: Data
+        let hash: String
+    }
+
+    /// A transaction spending output 0 of a fixed producer, with Blockfrost's answers to the lookups
+    /// a spent-inputs rejection triggers. `consumedBy` is the producer output's `consumed_by_tx`.
+    private func spentInputsFixture(
+        landed: Bool,
+        consumedBy: String? = nil,
+        lookup: StubURLProtocol.StubResponse? = nil
+    ) throws -> SpentInputs {
+        let producer = Data(repeating: 7, count: 32)
+        let unsigned = CardanoUnsignedTransaction(
+            fee: "170000",
+            inputs: [CardanoTransactionInputFfi(outputIndex: 0, txHash: producer)],
+            networkId: 0,
+            outputs: [],
+            signingPaths: [],
+            staking: nil,
+            transactionBody: Data([0xA3, 0x00, 0x80, 0x01, 0x80, 0x02, 0x00]),
+            ttl: 1
+        )
+
+        let hash = try unsigned.transactionBodyHash().map { String(format: "%02x", $0) }.joined()
+        let consumer = consumedBy.map { "\"\($0)\"" } ?? "null"
+        let stub = StubURLProtocol.makeSession(responsesByPath: [
+            "/api/v0/tx/submit": .success(statusCode: 400, body: Data(Self.spentInputs.utf8)),
+            "/api/v0/txs/\(hash)": lookup ?? (landed
+                ? .success(body: Data(#"{"hash":"\#(hash)"}"#.utf8))
+                : .success(statusCode: 404, body: Data("{}".utf8))),
+            "/api/v0/txs/\(String(repeating: "07", count: 32))/utxos":
+                .success(body: Data(#"{"outputs":[{"output_index":0,"consumed_by_tx":\#(consumer)}]}"#.utf8))
+        ])
+
+        return SpentInputs(
+            client: CardanoClient(endpoint: endpoint, projectId: "project-id", session: stub.urlSession),
+            envelope: try JSONEncoder().encode(unsigned),
+            hash: hash
+        )
+    }
+
+    /// A retry of a transaction that already landed finds its inputs spent.
+    @Test func spentInputsAreSuccessOnlyWhenTheTransactionIsOnChain() async throws {
+        let fixture = try spentInputsFixture(landed: true)
+
+        #expect(try await fixture.client.broadcast(transaction: fixture.envelope, signature: Data([1])) == fixture.hash)
+    }
+
+    /// A failed lookup says nothing: it is thrown so the submission stays tracked, not read as a rejection.
+    @Test func aFailedLookupIsNotReadAsARejection() async throws {
+        let fixture = try spentInputsFixture(landed: false, lookup: .success(statusCode: 500, body: Data("{}".utf8)))
+
+        do {
+            _ = try await fixture.client.broadcast(transaction: fixture.envelope, signature: Data([1]))
+            Issue.record("expected a throw")
+        } catch let WalletKitError.internalError(message) {
+            #expect(!message.contains("probably already been included"))
+        }
+    }
+
+    /// An input another transaction consumed makes it a rejection: the caller rebuilds.
+    @Test func spentInputsAreARejectionOnceAnotherTransactionIsSeenConsumingThem() async throws {
+        let fixture = try spentInputsFixture(landed: false, consumedBy: String(repeating: "ab", count: 32))
+
+        do {
+            _ = try await fixture.client.broadcast(transaction: fixture.envelope, signature: Data([1]))
+            Issue.record("expected a throw")
+        } catch let WalletKitError.internalError(message) {
+            #expect(message.contains("probably already been included"))
+        }
+    }
+
+    /// Before the index shows the transaction or a consumer, the first attempt may still confirm.
+    @Test func spentInputsStayUnresolvedUntilTheIndexCatchesUp() async throws {
+        let fixture = try spentInputsFixture(landed: false)
+
+        do {
+            _ = try await fixture.client.broadcast(transaction: fixture.envelope, signature: Data([1]))
+            Issue.record("expected a throw")
+        } catch let WalletKitError.internalError(message) {
+            #expect(message.contains("unresolved"))
+            #expect(!message.contains("status_code"))
+        }
+    }
+
+    /// A dapp resubmitting a confirmed transaction still gets its hash back.
+    @Test func aDappResubmissionOfAConfirmedTransactionReturnsItsHash() async throws {
+        let raw = Data([0x84, 0xA3, 0x00, 0x80, 0x01, 0x80, 0x02, 0x00, 0xA0, 0xF5, 0xF6])
+        let hash = try cardanoTransactionHash(transaction: raw).map { String(format: "%02x", $0) }.joined()
+        let stub = StubURLProtocol.makeSession(responsesByPath: [
+            "/api/v0/tx/submit": .success(statusCode: 400, body: Data(Self.spentInputs.utf8)),
+            "/api/v0/txs/\(hash)": .success(body: Data(#"{"hash":"\#(hash)"}"#.utf8))
+        ])
+        let client = CardanoClient(endpoint: endpoint, projectId: "project-id", session: stub.urlSession)
+
+        #expect(try await client.submit(rawTransaction: raw) == hash)
     }
 
     @Test func transactionHistoryMapsBlockfrostTransactions() async throws {
