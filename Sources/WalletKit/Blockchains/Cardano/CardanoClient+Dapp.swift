@@ -20,9 +20,11 @@ public struct CardanoAddressUsage: Equatable, Sendable {
         }
     }
 
-    /// The first external address with no history.
-    public func firstUnusedExternalIndex() -> UInt32 {
-        (used.filter { $0.role == 0 }.map(\.index).max()).map { $0 + 1 } ?? 0
+    /// The next external index to hand out, or `nil` when all `addressIndexLimit` are used.
+    public func firstUnusedExternalIndex() -> UInt32? {
+        let indices = Set(used.filter { $0.role == 0 }.map(\.index))
+
+        return indices.isEmpty ? 0 : CardanoAccountDescriptor.nextExternalIndex(after: indices)
     }
 }
 
@@ -47,16 +49,45 @@ extension CardanoClient {
     /// Gap limit: unused indices scanned past the last used one.
     static let discoveryGap = 20
     /// Hard cap on derivation indices scanned per role.
-    static let discoveryCap = 1_000
+    static let discoveryCap = Int(CardanoAccountDescriptor.addressIndexLimit)
 
     /// Used addresses of `owner`: every address Blockfrost lists for the
-    /// stake key (spent-out ones included), matched against the account's
-    /// derived addresses. Scans both roles up to `discoveryGap` past the
-    /// last used index, and keeps going — up to `discoveryCap` — while a
-    /// known address is unmatched. If any remain, the ownership view would
-    /// be incomplete, so this throws instead of omitting them.
-    public func addressUsage(_ owner: CardanoAccountDescriptor) async throws -> CardanoAddressUsage {
-        let known = Set(try await ownedAddresses(owner))
+    /// stake key (spent-out ones included) or that holds a UTxO, matched
+    /// against the account's derived addresses. Throws if a listed address
+    /// can't be matched within `discoveryCap` indices, since the ownership
+    /// view would be incomplete.
+    ///
+    /// - Parameter utxoAddresses: The addresses holding UTxOs, if already read.
+    public func addressUsage(
+        _ owner: CardanoAccountDescriptor,
+        utxoAddresses: Set<String>? = nil
+    ) async throws -> CardanoAddressUsage {
+        let utxoAddresses = if let utxoAddresses {
+            utxoAddresses
+        } else {
+            try await utxoSnapshot(owner).addresses
+        }
+
+        let scan = try await scanUsage(owner, utxoAddresses: utxoAddresses)
+
+        guard scan.unmatched.isEmpty else {
+            throw WalletKitError.internalError(
+                message: "Cardano discovery could not match \(scan.unmatched.count) known address(es) "
+                    + "within \(Self.discoveryCap) indices: \(scan.unmatched.sorted().joined(separator: ", "))"
+            )
+        }
+
+        return CardanoAddressUsage(used: scan.used)
+    }
+
+    /// The scan behind ``addressUsage(_:utxoAddresses:)``. `unmatched` holds listed
+    /// addresses the account doesn't own; UTxO-only strangers are dropped silently.
+    func scanUsage(
+        _ owner: CardanoAccountDescriptor,
+        utxoAddresses: Set<String>
+    ) async throws -> (used: [CardanoUsedAddress], unmatched: Set<String>) {
+        let listed = Set(try await ownedAddresses(owner))
+        let known = listed.union(utxoAddresses)
         var remaining = known
         var used: [CardanoUsedAddress] = []
         var lastUsed: [UInt32: Int] = [0: -1, 1: -1]
@@ -92,14 +123,7 @@ extension CardanoClient {
             }
         }
 
-        guard remaining.isEmpty else {
-            throw WalletKitError.internalError(
-                message: "Cardano discovery could not match \(remaining.count) known address(es) "
-                    + "within \(Self.discoveryCap) indices: \(remaining.sorted().joined(separator: ", "))"
-            )
-        }
-
-        return CardanoAddressUsage(used: used.sorted { ($0.role, $0.index) < ($1.role, $1.index) })
+        return (used.sorted { ($0.role, $0.index) < ($1.role, $1.index) }, remaining.intersection(listed))
     }
 
     /// CIP-30 `getUtxos`: the CBOR hex of the account's UTxOs, in a stable
@@ -185,9 +209,10 @@ extension CardanoClient {
     /// that can't be is left out, which the resolver reports as unresolved.
     public func resolveSigners(transaction: Data, owner: CardanoAccountDescriptor) async throws -> CardanoSigners {
         let decoded = try remappingWalletKitError { try cardanoDecodeTransaction(transaction: transaction) }
-        let usage = try await addressUsage(owner)
+        let entries = try await accountUTxOs(owner)
+        let usage = try await addressUsage(owner, utxoAddresses: Set(entries.map(\.address)))
 
-        var ownedOutputs = try await accountUTxOs(owner).map { entry in
+        var ownedOutputs = try entries.map { entry in
             CardanoResolvedOutputFfi(
                 address: entry.address,
                 outputIndex: entry.outputIndex,

@@ -199,13 +199,20 @@ extension CardanoClient {
         var page = 1
 
         while true {
-            let entries: [AddressEntry] = try await get(
-                "accounts/\(owner.stakeAddress)/addresses",
-                query: [
-                    URLQueryItem(name: "count", value: "\(count)"),
-                    URLQueryItem(name: "page", value: "\(page)")
-                ]
-            )
+            let entries: [AddressEntry]
+
+            do {
+                entries = try await get(
+                    "accounts/\(owner.stakeAddress)/addresses",
+                    query: [
+                        URLQueryItem(name: "count", value: "\(count)"),
+                        URLQueryItem(name: "page", value: "\(page)")
+                    ]
+                )
+            } catch HTTPError.notFound where page == 1 {
+                // Never-used account; a 404 after paging began is a real failure.
+                return []
+            }
 
             addresses.append(contentsOf: entries.map(\.address))
 

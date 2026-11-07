@@ -159,6 +159,25 @@ public func cardanoSigningPath(
     .map(CardanoSigningPath.init)
 }
 
+/// The external key behind `address` if it is one of `indices` of `owner`, proven
+/// by deriving from the account key. Needs no network, so it covers addresses issued
+/// locally that the on-chain usage window doesn't reach yet.
+public func cardanoIssuedSigningPath(
+    for address: Data,
+    owner: CardanoAccountDescriptor,
+    indices: Set<UInt32>
+) throws -> CardanoSigningPath? {
+    for index in indices.sorted() where index < CardanoAccountDescriptor.addressIndexLimit {
+        let derived = try cardanoAddressBytes(owner.address(role: 0, index: index).string)
+
+        if derived == address {
+            return CardanoSigningPath(index: index, role: 0)
+        }
+    }
+
+    return nil
+}
+
 /// Raw address bytes of a Cardano address, as CIP-30 exchanges them.
 public func cardanoAddressBytes(_ address: String) throws -> Data {
     try remappingWalletKitError { try cardanoAddressToBytes(address: address) }

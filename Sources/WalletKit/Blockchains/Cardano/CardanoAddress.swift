@@ -112,7 +112,7 @@ public struct CardanoAccountDescriptor: BlockchainAddress {
     /// `addresses` this account owns, searched up to `searchLimit` indices per role.
     func signingPaths(
         for addresses: Set<String>,
-        searchLimit: UInt32 = 1_000
+        searchLimit: UInt32 = CardanoAccountDescriptor.addressIndexLimit
     ) throws -> [String: CardanoSigningPathFfi] {
         var paths: [String: CardanoSigningPathFfi] = [:]
 
@@ -126,6 +126,19 @@ public struct CardanoAccountDescriptor: BlockchainAddress {
         }
 
         return paths
+    }
+
+    /// Indices per role that discovery and signing search (`0..<addressIndexLimit`).
+    public static let addressIndexLimit: UInt32 = 1_000
+
+    /// The index to hand out next: one past the newest of `indices`, else the
+    /// lowest free index below the limit, else `nil` when all are taken.
+    public static func nextExternalIndex(after indices: Set<UInt32>) -> UInt32? {
+        if let newest = indices.max(), newest < addressIndexLimit - 1 {
+            return newest + 1
+        }
+
+        return (0..<addressIndexLimit).first { !indices.contains($0) }
     }
 
     public var receiveAddress: CardanoAddress {

@@ -73,6 +73,7 @@ struct CardanoDappTests {
         [{"address":"\(later)"},{"address":"\(change)"},{"address":"\(first)"}]
         """
         let stub = StubURLProtocol.makeSession(responsesByPath: [
+            "/api/v0/accounts/\(owner.stakeAddress)/utxos": json("[]"),
             "/api/v0/accounts/\(owner.stakeAddress)/addresses": json(response)
         ])
 
@@ -91,6 +92,7 @@ struct CardanoDappTests {
             path: path
         ).receiveAddress.string
         let stub = StubURLProtocol.makeSession(responsesByPath: [
+            "/api/v0/accounts/\(owner.stakeAddress)/utxos": json("[]"),
             "/api/v0/accounts/\(owner.stakeAddress)/addresses": json(#"[{"address":"\#(foreign)"}]"#)
         ])
 
@@ -102,6 +104,7 @@ struct CardanoDappTests {
     @Test func anAccountWithNoHistoryHasNoUsedAddresses() async throws {
         let owner = try descriptor()
         let stub = StubURLProtocol.makeSession(responsesByPath: [
+            "/api/v0/accounts/\(owner.stakeAddress)/utxos": json("[]"),
             "/api/v0/accounts/\(owner.stakeAddress)/addresses": json("[]")
         ])
 

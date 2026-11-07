@@ -177,17 +177,7 @@ public struct CardanoClient: BlockchainClientProtocol, Sendable {
     }
 
     public func getAllBalances(_ owner: CardanoAccountDescriptor) async throws -> [String: BigUInt] {
-        let entries = try await accountUTxOs(owner)
-
-        return entries.reduce(into: [:]) { balances, entry in
-            for amount in entry.amount {
-                guard let quantity = BigUInt(amount.quantity) else {
-                    continue
-                }
-
-                balances[amount.unit, default: 0] += quantity
-            }
-        }
+        try await utxoSnapshot(owner).balances
     }
 
     public func getBalance(_ owner: CardanoAccountDescriptor, token: String) async throws -> BigUInt {
@@ -342,7 +332,8 @@ extension CardanoClient {
                         URLQueryItem(name: "page", value: "\(page)")
                     ]
                 )
-            } catch HTTPError.notFound {
+            } catch HTTPError.notFound where page == 1 {
+                // Never-used account; a 404 after paging began is a real failure.
                 return []
             }
 
@@ -430,7 +421,7 @@ extension CardanoClient {
     }
 }
 
-private enum HTTPError: Swift.Error, LocalizedError {
+enum HTTPError: Swift.Error, LocalizedError {
     case notFound
 
     var errorDescription: String? {
