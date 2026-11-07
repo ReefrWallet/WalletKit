@@ -499,8 +499,8 @@ private func resolveProvisionedBinaries() throws -> URL {
 
     for name in ["solana-test-validator", "solana-keygen", "spl-token"] {
         guard FileManager.default.isExecutableFile(atPath: binDirectory.appendingPathComponent(name).path) else {
-            throw SolanaLaunchError(
-                description: "\(name) not found at \(binDirectory.path) — run `make solana-testing` from the WalletKit directory first"
+            try skipTestForMissingBinary(
+                "\(name) not found at \(binDirectory.path) — run `make solana-testing` from the WalletKit directory first"
             )
         }
     }

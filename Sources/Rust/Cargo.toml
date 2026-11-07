@@ -5,3 +5,8 @@ members = [
     "walletkit-hardware",
     "walletkit-trezor",
 ]
+
+# Xcode 27 ld emits proc-macro dylibs dyld rejects ("mis-aligned LINKEDIT")
+# when stripping at a deployment target below the host's.
+[profile.release.build-override]
+strip = "none"

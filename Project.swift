@@ -91,7 +91,8 @@ private let walletKitTesting: Target = .target(
         .external(name: "GRPCNIOTransportHTTP2Posix"),
         .target(name: "WalletKit"),
         .target(name: "WalletKitGRPC")
-    ]
+    ],
+    settings: .settings(base: ["ENABLE_TESTING_SEARCH_PATHS": "YES"])
 )
 
 private let walletKitTestsMac: Target = .target(

@@ -346,7 +346,7 @@ private func resolveProvisionedBinary() throws -> URL {
     let binary = URL(fileURLWithPath: sourceRoot).appendingPathComponent(".build/aptos-testing/bin/aptos")
 
     guard FileManager.default.isExecutableFile(atPath: binary.path) else {
-        throw AptosLaunchError(description: "aptos not found at \(binary.path) — run `make aptos-testing` in WalletKit first")
+        try skipTestForMissingBinary("aptos not found at \(binary.path) — run `make aptos-testing` in WalletKit first")
     }
 
     return binary

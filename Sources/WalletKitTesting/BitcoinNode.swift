@@ -564,8 +564,8 @@ private func resolveProvisionedBinaries() throws -> ( // swiftlint:disable:this 
 
     for (name, path) in [("bitcoind", bitcoindPath), ("bitcoin-cli", bitcoinCLIPath), ("electrs", electrsPath)] {
         guard FileManager.default.isExecutableFile(atPath: path) else {
-            throw BitcoinLaunchError(
-                description: "\(name) not found at \(path) — run `make bitcoin-testing` from the WalletKit directory first"
+            try skipTestForMissingBinary(
+                "\(name) not found at \(path) — run `make bitcoin-testing` from the WalletKit directory first"
             )
         }
     }
