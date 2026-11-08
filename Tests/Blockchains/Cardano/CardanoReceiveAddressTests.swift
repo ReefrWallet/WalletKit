@@ -83,6 +83,7 @@ struct CardanoReceiveAddressTests {
             addresses: json(listed([used, funded])),
             utxos: json("[" + utxo(funded, lovelace: "7000000") + "]")
         )
+
         let client = client(stub)
 
         let snapshot = try await client.utxoSnapshot(owner)
@@ -144,7 +145,8 @@ struct CardanoReceiveAddressTests {
     @Test func aFailureAfterPagingBeganThrowsInsteadOfReturningAPartialRead() async throws {
         let owner = try descriptor()
         let address = try owner.address(role: 0, index: 0).string
-        let fullPage = "[" + Array(repeating: utxo(address, lovelace: "1000000"), count: 100).joined(separator: ",") + "]"
+        let utxos = Array(repeating: utxo(address, lovelace: "1000000"), count: 100)
+        let fullPage = "[" + utxos.joined(separator: ",") + "]"
         let session = StubURLProtocol.makeSession(responseSequence: [
             json(fullPage),
             .success(statusCode: 404, body: Data("{}".utf8))

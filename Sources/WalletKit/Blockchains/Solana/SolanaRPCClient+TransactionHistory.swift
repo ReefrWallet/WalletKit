@@ -397,10 +397,24 @@ extension SolanaRPCClient {
             .sorted { $0.slot > $1.slot }
 
         var transactions: [BlockchainTransaction] = []
+        var hasUnavailableTransaction = false
         for info in merged {
             if let transaction = try await transaction(signature: info.signature, owner: owner) {
                 transactions.append(transaction)
+            } else {
+                hasUnavailableTransaction = true
             }
+        }
+
+        // A confirmed signature can precede this node's full transaction record.
+        // Keep the durable cursor in place until every detail read is available.
+        if hasUnavailableTransaction {
+            return BlockchainTransactionPage(
+                transactions: transactions,
+                nextCursor: request.cursor,
+                reachedBoundary: false,
+                head: merged.map(\.slot).max()
+            )
         }
 
         let reachedBoundary = states.values.allSatisfy(\.drained)

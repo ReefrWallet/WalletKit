@@ -15,7 +15,7 @@ import Foundation
 /// Used by the `UnsignedSui*` transaction builders and returned by
 /// ``SuiGRPCClient/ownedCoins(of:coinType:)`` as part of
 /// ``SuiCoinObject/reference``.
-public struct SuiObjectReference: Sendable {
+public struct SuiObjectReference: Sendable, Equatable {
     /// The object's ID as 32 raw bytes (not `0x`-prefixed).
     public let objectId: Data
     /// The object's sequence number / version.

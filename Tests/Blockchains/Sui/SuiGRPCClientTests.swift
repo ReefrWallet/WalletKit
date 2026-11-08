@@ -45,6 +45,11 @@ private let usdcCoinType = "0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf2526
 struct SuiGRPCClientTests {
     private let client = SuiGRPCClient(host: "fullnode.testnet.sui.io")
 
+    @Test func historyBeginsAtTheNodeRetentionFloor() {
+        #expect(SuiGRPCClient.availableHistoryLowerBound(requested: 0, lowestAvailable: 42) == 42)
+        #expect(SuiGRPCClient.availableHistoryLowerBound(requested: 100, lowestAvailable: 42) == 100)
+    }
+
     @Test func nativeBalanceSucceedsAgainstTheLiveTestnet() async throws {
         await withKnownIssue("requires network access to Sui's testnet gRPC full node", isIntermittent: true) {
             _ = try await client.nativeBalance(of: systemPackageAddress)

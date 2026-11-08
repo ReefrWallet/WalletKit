@@ -59,12 +59,23 @@ public struct SuiTransactionDataSummary: Sendable, Equatable {
     /// Every `Command::MoveCall` the transaction's PTB contains, in
     /// command order.
     public let moveCalls: [SuiMoveCallSummary]
+    /// The `Epoch` expiration, present only under ``SuiTransactionDataPolicy/wallet``.
+    public let expirationEpoch: UInt64?
 
     public static func == (lhs: SuiTransactionDataSummary, rhs: SuiTransactionDataSummary) -> Bool {
         lhs.sender == rhs.sender && lhs.gasOwner == rhs.gasOwner && lhs.gasBudget == rhs.gasBudget
             && lhs.gasPrice == rhs.gasPrice
             && lhs.commandCount == rhs.commandCount && lhs.moveCalls == rhs.moveCalls
+            && lhs.expirationEpoch == rhs.expirationEpoch
     }
+}
+
+/// What the decoder accepts.
+public enum SuiTransactionDataPolicy: Sendable {
+    /// Untrusted dapp bytes: no `Epoch` expiration, no shared-object inputs.
+    case dapp
+    /// Transactions this wallet built itself, e.g. staking.
+    case wallet
 }
 
 /// Parses a raw, dapp-supplied `TransactionData::V1` BCS blob into a
@@ -89,7 +100,7 @@ public enum SuiTransactionDataDecoder {
     ///   ULEB128, or exceeds a bounded collection count/payload size.
     ///   Never traps — `data` originates from an untrusted web page.
     public static func summarize( // swiftlint:disable:this function_body_length
-        _ data: Data
+        _ data: Data, policy: SuiTransactionDataPolicy = .dapp
     ) -> SuiTransactionDataSummary? {
         guard data.count <= maxTotalByteCount else {
             return nil
@@ -118,7 +129,7 @@ public enum SuiTransactionDataDecoder {
         }
 
         for _ in 0..<inputCount {
-            guard reader.skipCallArg(maxPureLength: maxByteVectorLength) else {
+            guard reader.skipCallArg(maxPureLength: maxByteVectorLength, allowsShared: policy == .wallet) else {
                 return nil
             }
         }
@@ -166,12 +177,22 @@ public enum SuiTransactionDataDecoder {
             return nil
         }
 
-        // TransactionExpiration::None — `Epoch(u64)` and `ValidDuring`
-        // both exist in current Sui but aren't accepted here; a
-        // non-`None` expiration changes how the transaction should be
-        // interpreted, so support for it is deferred until genuinely
-        // needed and verified.
-        guard reader.readByte() == 0x00 else {
+        // TransactionExpiration::None. `Epoch(u64)` is accepted only under
+        // the `.wallet` policy (self-built staking transactions);
+        // `ValidDuring` is never accepted. A dapp-supplied non-`None`
+        // expiration changes how the transaction should be interpreted,
+        // so it fails closed.
+        var expirationEpoch: UInt64?
+        switch reader.readByte() {
+        case 0x00:
+            break
+        case 0x01 where policy == .wallet:
+            guard let epoch = reader.readU64() else {
+                return nil
+            }
+
+            expirationEpoch = epoch
+        default:
             return nil
         }
 
@@ -187,7 +208,8 @@ public enum SuiTransactionDataDecoder {
             gasBudget: gasBudget,
             gasPrice: gasPrice,
             commandCount: commandCount,
-            moveCalls: moveCalls
+            moveCalls: moveCalls,
+            expirationEpoch: expirationEpoch
         )
     }
 }
@@ -215,6 +237,15 @@ private struct Reader {
         let byte = data[offset]
         offset += 1
         return byte
+    }
+
+    /// Reads a canonical BCS `bool` (`0` or `1`).
+    mutating func readBool() -> Bool? {
+        switch readByte() {
+        case 0x00: false
+        case 0x01: true
+        default: nil
+        }
     }
 
     mutating func readBytes(_ count: Int) -> Data? {
@@ -348,7 +379,7 @@ private struct Reader {
     /// `FundsWithdrawal` (both real, current Sui variants) aren't
     /// validated against this codebase's own tested encoders, so they
     /// fail closed rather than being guessed at.
-    mutating func skipCallArg(maxPureLength: Int) -> Bool {
+    mutating func skipCallArg(maxPureLength: Int, allowsShared: Bool) -> Bool {
         guard let tag = readByte() else {
             return false
         }
@@ -364,7 +395,9 @@ private struct Reader {
             switch objectArgTag {
             case 0, 2: // ImmOrOwnedObject, Receiving — same ObjectRef shape
                 return skipObjectRef(maxDigestLength: maxPureLength)
-            default: // SharedObject(1), or any newer variant
+            case 1 where allowsShared: // SharedObject { id, initial_shared_version, mutable }
+                return readBytes(32) != nil && readU64() != nil && readBool() != nil
+            default: // SharedObject(1) under the dapp policy, or any newer variant
                 return false
             }
 

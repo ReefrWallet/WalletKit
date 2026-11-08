@@ -57,4 +57,4 @@ pub use ethereum_signer::{
 };
 pub use solana::{solana_associated_token_address, solana_find_program_address, solana_metadata_address, SolanaAddressFfi};
 pub use sui_address::SuiAddressFfi;
-pub use sui_signer::SuiSignerFfi;
+pub use sui_signer::{blake2b256, SuiSignerFfi};

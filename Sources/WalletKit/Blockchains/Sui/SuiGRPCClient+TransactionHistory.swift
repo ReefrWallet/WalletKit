@@ -27,8 +27,16 @@ extension SuiGRPCClient {
         let savedCursor = try request.cursor.map { try JSONDecoder().decode(SuiHistoryCursor.self, from: $0) }
 
         let direction = savedCursor?.direction ?? request.direction
-        let head = try await suiTransactionHead()
-        let lowerBound = savedCursor?.lowerBound ?? request.lowerBound ?? 0
+        let serviceInfo = try await suiServiceInfo()
+        let head = serviceInfo.checkpointHeight
+        // Public full nodes only retain a recent checkpoint range. Asking
+        // below it can stream valid transactions and then fail the RPC,
+        // which would otherwise discard the whole page.
+        let lowerBound = Self.availableHistoryLowerBound(
+            requested: savedCursor?.lowerBound ?? request.lowerBound ?? 0,
+            lowestAvailable: serviceInfo.lowestAvailableCheckpoint
+        )
+
         let upperBound = savedCursor?.upperBound ?? request.upperBound ?? head
 
         // swiftlint:disable:next large_tuple
@@ -152,15 +160,19 @@ extension SuiGRPCClient {
     }
 }
 
+extension SuiGRPCClient {
+    static func availableHistoryLowerBound(requested: UInt64, lowestAvailable: UInt64) -> UInt64 {
+        max(requested, lowestAvailable)
+    }
+}
+
 private extension SuiGRPCClient {
-    func suiTransactionHead() async throws -> UInt64 {
+    func suiServiceInfo() async throws -> Sui_Rpc_V2_GetServiceInfoResponse {
         try await withLedgerServiceClient { ledger in
-            let response = try await ledger.getServiceInfo(
+            try await ledger.getServiceInfo(
                 request: ClientRequest(message: Sui_Rpc_V2_GetServiceInfoRequest()),
                 options: self.callOptions
             )
-
-            return response.checkpointHeight
         }
     }
 

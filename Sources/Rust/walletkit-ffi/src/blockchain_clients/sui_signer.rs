@@ -70,6 +70,13 @@ fn blake2b_256(parts: &[&[u8]]) -> [u8; 32] {
     digest
 }
 
+/// Blake2b-256 of `data`: the digest Sui uses for addresses, signing and
+/// transaction digests. Exposed so Swift never carries its own Blake2b.
+#[uniffi::export]
+pub fn blake2b256(data: Vec<u8>) -> Vec<u8> {
+    blake2b_256(&[&data]).to_vec()
+}
+
 /// Which signature scheme this signer's accounts use — the `CurveFfi`
 /// carried by `Blockchain.sui(_:)`.
 #[derive(Debug, Clone, Copy, uniffi::Object)]
@@ -300,6 +307,26 @@ mod tests {
         let key = public_key(CurveFfi::Secp256k1);
         let address = signer.address(key.clone()).unwrap();
         assert_eq!(address.raw_bytes(), blake2b_256(&[&[0x01], &key.raw_bytes()]));
+    }
+
+    #[test]
+    fn blake2b256_matches_reference_vectors() {
+        // Generated with Python's hashlib.blake2b(digest_size=32) over
+        // bytes `(i * 7 + 1) & 0xff`, covering the empty input and the
+        // 127/128/129-byte block boundaries.
+        let cases = [
+            (0, "0e5751c026e543b2e8ab2eb06099daa1d1e5df47778f7787faab45cdf12fe3a8"),
+            (3, "e43d000b0a37d6fcddcd15640107181a908675e1820dd5ae307155ffff196ba5"),
+            (127, "3b03a73c3c02e3eef11be3e2e16c12ccf6090dea00aa861ded320910892e13ac"),
+            (128, "6b89237e0a469a721c700b8bbcb51b6231c48e71ff023e0e3444ec84882ae32e"),
+            (129, "524a9dc9d008a9ce1d9d2a111bcd10d2461a02dadf30ec5a47225501608a87eb"),
+            (200, "68750259ede3be4895b7b2daee7657821d094106e8378ee645c1f10a4e205c4c"),
+            (256, "e7001e3026924e6650fcd5b274bc3ddf556a6c7fedfe038383c0f4ad5f26cfc9"),
+        ];
+        for (length, expected) in cases {
+            let data: Vec<u8> = (0..length).map(|i| (i * 7 + 1) as u8).collect();
+            assert_eq!(hex::encode(blake2b256(data)), expected, "length {length}");
+        }
     }
 
     #[test]
