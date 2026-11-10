@@ -464,9 +464,11 @@ extension CardanoClient {
     }
 
     private func requestData(_ target: BlockfrostAPI, path: String) async throws -> Data {
-        let policy = RateGateRegistry.shared.makeRetryPolicy(for: origin, provider: .blockfrost)
-        let afSession = Session(configuration: session.configuration, interceptor: policy)
-        let provider = MoyaProvider<BlockfrostAPI>(session: afSession)
+        let provider: MoyaProvider<BlockfrostAPI> = RateGateRegistry.shared.makeProvider(
+            origin: origin,
+            provider: .blockfrost,
+            configuration: session.configuration
+        )
 
         do {
             return try await provider.requestData(target)

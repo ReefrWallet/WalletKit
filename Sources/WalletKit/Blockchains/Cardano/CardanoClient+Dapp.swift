@@ -8,7 +8,7 @@ public struct CardanoUsedAddress: Equatable, Sendable {
     public let role: UInt32
 }
 
-/// Which of an account's addresses have been used, from ``CardanoClient/addressUsage(_:)``.
+/// Which of an account's addresses have been used, from ``CardanoClient/addressUsage(_:utxoAddresses:)``.
 public struct CardanoAddressUsage: Equatable, Sendable {
     /// Ordered by (role, index).
     public let used: [CardanoUsedAddress]
@@ -57,7 +57,9 @@ extension CardanoClient {
     /// can't be matched within `discoveryCap` indices, since the ownership
     /// view would be incomplete.
     ///
-    /// - Parameter utxoAddresses: The addresses holding UTxOs, if already read.
+    /// - Parameters:
+    ///   - owner: The account whose addresses are checked.
+    ///   - utxoAddresses: The addresses holding UTxOs, if already read.
     public func addressUsage(
         _ owner: CardanoAccountDescriptor,
         utxoAddresses: Set<String>? = nil

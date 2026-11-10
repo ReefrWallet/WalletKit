@@ -75,6 +75,10 @@ public struct BlockchainTransaction: Codable, Hashable, Sendable {
     public let fee: String?
     /// Chain-specific method/action label, e.g. "Transfer", "Approve", "SOL: Stake".
     public let method: String?
+    /// `true` when a source lists only some effects of a transaction it doesn't list in full
+    /// (e.g. an inbound token transfer). Storing it adds those effects but never overwrites an
+    /// existing transaction's own fields.
+    public let isEffectsOnly: Bool?
 
     public init(
         identifier: String,
@@ -89,7 +93,8 @@ public struct BlockchainTransaction: Codable, Hashable, Sendable {
         effects: [BlockchainTransactionEffect] = [],
         counterpartyName: String? = nil,
         fee: String? = nil,
-        method: String? = nil
+        method: String? = nil,
+        isEffectsOnly: Bool? = nil
     ) {
         self.identifier = identifier
         self.blockHeight = blockHeight
@@ -104,6 +109,7 @@ public struct BlockchainTransaction: Codable, Hashable, Sendable {
         self.counterpartyName = counterpartyName
         self.fee = fee
         self.method = method
+        self.isEffectsOnly = isEffectsOnly
     }
 }
 
@@ -128,7 +134,8 @@ public extension BlockchainTransaction {
             effects: effects ?? self.effects,
             counterpartyName: counterpartyName,
             fee: fee ?? self.fee,
-            method: method ?? self.method
+            method: method ?? self.method,
+            isEffectsOnly: isEffectsOnly
         )
     }
 }

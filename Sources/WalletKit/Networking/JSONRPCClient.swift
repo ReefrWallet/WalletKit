@@ -36,9 +36,50 @@ struct JSONRPCClient {
         let params: Params
     }
 
+    /// Provider quota metadata (Infura's `backoff_seconds`, `allowed_rps`, ...) from `error.data`.
+    private struct ErrorData: Decodable {
+        enum CodingKeys: String, CodingKey {
+            case allowedRps = "allowed_rps"
+            case backoffSeconds = "backoff_seconds"
+            case currentRps = "current_rps"
+            case retryAfter = "retry_after"
+        }
+
+        let values: [String: Any]
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            var values: [String: Any] = [:]
+
+            for key in [CodingKeys.allowedRps, .backoffSeconds, .currentRps, .retryAfter] {
+                if let value = try? container.decodeIfPresent(Double.self, forKey: key) {
+                    values[key.rawValue] = value
+                }
+            }
+
+            self.values = values
+        }
+    }
+
     private struct ErrorPayload: Decodable {
+        enum CodingKeys: String, CodingKey {
+            case code, data, message
+        }
+
         let code: Int
         let message: String
+        let data: ErrorData?
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            code = try container.decode(Int.self, forKey: .code)
+            message = try container.decode(String.self, forKey: .message)
+            data = try? container.decodeIfPresent(ErrorData.self, forKey: .data)
+        }
+
+        var quota: QuotaSignal.Classification? {
+            QuotaSignal.detect(code: code, message: message, data: data?.values)
+        }
     }
 
     private struct ResponseEnvelope<Result: Decodable>: Decodable {
@@ -74,13 +115,14 @@ struct JSONRPCClient {
         }
 
         if let error = envelope.error {
-            throw BlockchainClientError.rpcError(code: error.code, message: error.message)
+            throw await mapped(error)
         }
 
         guard let result = envelope.result else {
             throw BlockchainClientError.invalidResponse(reason: "response had neither result nor error")
         }
 
+        await RateGateRegistry.shared.reportSuccess(origin: origin, provider: .jsonRPC)
         return result
     }
 
@@ -109,15 +151,22 @@ struct JSONRPCClient {
         }
 
         if let error = envelope["error"] as? [String: Any] {
-            throw BlockchainClientError.rpcError(
-                code: error["code"] as? Int ?? 0,
-                message: error["message"] as? String ?? "unknown error"
-            )
+            let code = error["code"] as? Int ?? 0
+            let message = error["message"] as? String ?? "unknown error"
+            let data = error["data"] as? [String: Any]
+
+            guard let quota = QuotaSignal.detect(code: code, message: message, data: data) else {
+                throw BlockchainClientError.rpcError(code: code, message: message)
+            }
+
+            throw await reportQuota(code: code, message: message, quota: quota)
         }
 
         guard let result = envelope["result"] else {
             throw BlockchainClientError.invalidResponse(reason: "response had neither result nor error")
         }
+
+        await RateGateRegistry.shared.reportSuccess(origin: origin, provider: .jsonRPC)
 
         return try JSONSerialization.data(withJSONObject: result, options: [.fragmentsAllowed])
     }
@@ -147,8 +196,21 @@ struct JSONRPCClient {
         }
 
         var results: [Result?] = Array(repeating: nil, count: params.count)
+        var quota: QuotaSignal.Classification?
         for envelope in envelopes where envelope.id > 0 && envelope.id <= params.count {
             results[envelope.id - 1] = envelope.error == nil ? envelope.result : nil
+            quota = quota ?? envelope.error?.quota
+        }
+
+        // Partial results are kept either way; a quota reply still slows the origin.
+        if let quota {
+            await RateGateRegistry.shared.reportQuotaExceeded(
+                origin: origin,
+                provider: .jsonRPC,
+                retryAfter: quota.retryAfter
+            )
+        } else if results.contains(where: { $0 != nil }) {
+            await RateGateRegistry.shared.reportSuccess(origin: origin, provider: .jsonRPC)
         }
 
         return results
@@ -156,13 +218,38 @@ struct JSONRPCClient {
 
     // MARK: - Private helpers
 
+    /// The error for a JSON-RPC `error` reply, reporting it to the gate when it's a quota signal.
+    private func mapped(_ error: ErrorPayload) async -> BlockchainClientError {
+        guard let quota = error.quota else {
+            return .rpcError(code: error.code, message: error.message)
+        }
+
+        return await reportQuota(code: error.code, message: error.message, quota: quota)
+    }
+
+    private func reportQuota(
+        code: Int,
+        message: String,
+        quota: QuotaSignal.Classification
+    ) async -> BlockchainClientError {
+        await RateGateRegistry.shared.reportQuotaExceeded(
+            origin: origin,
+            provider: .jsonRPC,
+            retryAfter: quota.retryAfter
+        )
+
+        return .quotaExceeded(code: code, message: message, retryAfter: quota.retryAfter)
+    }
+
     /// POSTs `body`, retrying rate-limited (429) and unavailable (503)
     /// responses with backoff via ``RateGateRegistry``'s shared interceptor
     /// for this endpoint.
     private func send(_ body: Data) async throws -> Data {
-        let policy = RateGateRegistry.shared.makeRetryPolicy(for: origin, provider: .jsonRPC)
-        let afSession = Session(configuration: session.configuration, interceptor: policy)
-        let provider = MoyaProvider<JSONRPCTarget>(session: afSession)
+        let provider: MoyaProvider<JSONRPCTarget> = RateGateRegistry.shared.makeProvider(
+            origin: origin,
+            provider: .jsonRPC,
+            configuration: session.configuration
+        )
 
         do {
             return try await provider.requestData(.post(endpoint: endpoint, body: body))

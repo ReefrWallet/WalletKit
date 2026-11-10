@@ -1,4 +1,6 @@
+import Alamofire
 import Foundation
+import Moya
 
 /// Identifies which 3rd-party API a client is talking to, independent of
 /// the specific origin (host/port) — needed because some providers (Cardano
@@ -10,19 +12,22 @@ public enum ProviderKind: Hashable, Sendable {
     case aptosLabs
     case blockfrost
     case blockscout
+    case electrum
     case esplora
     case etherscan
     case jsonRPC
     case stakewiz
+    case suiGRPC
     case tronGrid
 }
 
-/// `maxCallsPerSecond == nil` means reactive retry only (HTTP 429/503 with
-/// backoff) and no proactive pacing — the deliberate default for providers
-/// (or origins) whose real rate limit hasn't been confirmed. Assigning a
-/// guessed proactive rate has a real cost (throttling a local node or a
-/// generous provider as if it were the strictest one), so a rate is only
-/// ever added once it's known, not assumed.
+/// `maxCallsPerSecond == nil` means an adaptive gate: no pacing until the
+/// origin signals quota, then a pace learned from that signal (see
+/// `RateGate`) — the deliberate default for providers (or origins) whose
+/// real rate limit hasn't been confirmed. Assigning a guessed proactive rate
+/// has a real cost (throttling a local node or a generous provider as if it
+/// were the strictest one), so a fixed rate is only ever added once it's
+/// known, not assumed.
 public struct RateLimitPolicy: Sendable {
     public let maxCallsPerSecond: Double?
     public let maxRetryCount: Int
@@ -97,10 +102,12 @@ public struct RateLimitPolicy: Sendable {
         .aptosLabs: .reactiveOnly,
         .blockfrost: .reactiveOnly,
         .blockscout: .reactiveOnly,
+        .electrum: .reactiveOnly,
         .esplora: .reactiveOnly,
         .etherscan: .reactiveOnly,
         .jsonRPC: .reactiveOnly,
         .stakewiz: .reactiveOnly,
+        .suiGRPC: .reactiveOnly,
         .tronGrid: .reactiveOnly
     ]
 }
@@ -144,13 +151,10 @@ public final class RateGateRegistry: @unchecked Sendable {
         return exactPolicies[key] ?? providerDefaults[provider] ?? .reactiveOnly
     }
 
-    private func gate(for origin: String, provider: ProviderKind) -> RateGate<ContinuousClock>? {
+    /// Every origin has a gate: fixed-rate when its rate is confirmed, otherwise
+    /// adaptive (admits freely until the origin signals quota).
+    func gate(for origin: String, provider: ProviderKind) -> RateGate<ContinuousClock> {
         let resolved = policy(for: origin, provider: provider)
-
-        guard let rate = resolved.maxCallsPerSecond else {
-            return nil
-        }
-
         let key = PolicyKey(origin: origin, provider: provider)
         lock.lock()
         defer { lock.unlock() }
@@ -159,23 +163,88 @@ public final class RateGateRegistry: @unchecked Sendable {
             return existing
         }
 
-        let gate = RateGate(clock: ContinuousClock(), maxCallsPerSecond: rate)
+        let gate = RateGate(clock: ContinuousClock(), maxCallsPerSecond: resolved.maxCallsPerSecond)
         gates[key] = gate
         return gate
     }
 
-    /// The only thing a client needs: a ready-to-attach interceptor for
-    /// this origin/provider, proactive pacing included when configured.
+    /// A ready-to-attach interceptor for this origin/provider.
     public func makeRetryPolicy(for origin: String, provider: ProviderKind) -> RateLimitRetryPolicy {
         let resolved = policy(for: origin, provider: provider)
-        return RateLimitRetryPolicy(gate: gate(for: origin, provider: provider), maxRetryCount: resolved.maxRetryCount)
+
+        return RateLimitRetryPolicy(
+            gate: gate(for: origin, provider: provider),
+            maxRetryCount: resolved.maxRetryCount,
+            // These report success after classifying the body: quota arrives in-band.
+            countsHTTPSuccess: ![.etherscan, .jsonRPC].contains(provider)
+        )
+    }
+
+    /// A Moya provider whose requests are paced by this origin's gate, in the
+    /// ``RequestLane`` of the task that issues each request.
+    public func makeProvider<Target: TargetType>(
+        origin: String,
+        provider: ProviderKind,
+        configuration: URLSessionConfiguration = .default
+    ) -> MoyaProvider<Target> {
+        let policy = makeRetryPolicy(for: origin, provider: provider)
+
+        // Runs synchronously inside `MoyaProvider.request`, on the calling
+        // task, so the task-local lane is still readable.
+        let requestClosure: MoyaProvider<Target>.RequestClosure = { endpoint, done in
+            let lane = RequestLane.current
+
+            MoyaProvider<Target>.defaultRequestMapping(for: endpoint) { result in
+                guard case let .success(request) = result else {
+                    done(result)
+                    return
+                }
+
+                let stamped = (request as NSURLRequest).mutableCopy() as? NSMutableURLRequest
+                stamped.map { URLProtocol.setProperty(lane.rawValue, forKey: RateLimitRetryPolicy.laneKey, in: $0) }
+                done(.success((stamped as URLRequest?) ?? request))
+            }
+        }
+
+        return MoyaProvider<Target>(
+            requestClosure: requestClosure,
+            session: Session(configuration: configuration, interceptor: policy, eventMonitors: [policy])
+        )
+    }
+
+    /// Suspends until the calling task's lane has a slot on this origin, for
+    /// transports without a Moya pipeline (gRPC, raw sockets).
+    public func acquire(origin: String, provider: ProviderKind) async throws {
+        try await gate(for: origin, provider: provider).acquire(lane: RequestLane.current)
+    }
+
+    /// The origin reported quota (HTTP 429, `resource_exhausted`, an in-band
+    /// error): applies its cooldown and, for an adaptive origin, lowers the pace.
+    public func reportQuotaExceeded(origin: String, provider: ProviderKind, retryAfter: Duration?) async {
+        let cooldown = min(max(retryAfter ?? .seconds(1), .zero), .seconds(QuotaSignal.maxRetryAfterSeconds))
+        await gate(for: origin, provider: provider).penalize(by: cooldown)
+    }
+
+    /// Per-lane admission statistics of every gate created so far, keyed `provider@origin`.
+    public func admissionStats() async -> [String: [RequestLane: LaneAdmissionStats]] {
+        let snapshot = lock.withLock { gates }
+        var result: [String: [RequestLane: LaneAdmissionStats]] = [:]
+
+        for (key, gate) in snapshot {
+            result["\(key.provider)@\(key.origin)"] = await gate.stats
+        }
+
+        return result
+    }
+
+    /// One successful, quota-free response from the origin.
+    public func reportSuccess(origin: String, provider: ProviderKind) async {
+        await gate(for: origin, provider: provider).recordSuccess()
     }
 
     /// For Etherscan's in-band rate-limit signal, invisible to
-    /// `RateLimitRetryPolicy` (it's an HTTP 200 body, not a real failure) —
-    /// pushes the same gate the interceptor uses, if one is configured for
-    /// this origin/provider; a no-op otherwise.
+    /// `RateLimitRetryPolicy` (it's an HTTP 200 body, not a real failure).
     public func penalize(origin: String, provider: ProviderKind, by duration: Duration) async {
-        await gate(for: origin, provider: provider)?.penalize(by: duration)
+        await reportQuotaExceeded(origin: origin, provider: provider, retryAfter: duration)
     }
 }

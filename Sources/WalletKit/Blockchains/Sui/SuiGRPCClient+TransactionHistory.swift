@@ -69,29 +69,31 @@ extension SuiGRPCClient {
                 ]
             }
 
-            return try await ledger.listTransactions(
-                request: ClientRequest(message: grpcRequest),
-                options: self.callOptions
-            ) { response in
-                var transactions: [Sui_Rpc_V2_ExecutedTransaction] = []
-                var watermark: Data?
-                var reachedBoundary = false
+            return try await rpc(.read) {
+                try await ledger.listTransactions(
+                    request: ClientRequest(message: grpcRequest),
+                    options: self.callOptions
+                ) { response in
+                    var transactions: [Sui_Rpc_V2_ExecutedTransaction] = []
+                    var watermark: Data?
+                    var reachedBoundary = false
 
-                for try await message in response.messages {
-                    if message.hasTransaction {
-                        transactions.append(message.transaction)
+                    for try await message in response.messages {
+                        if message.hasTransaction {
+                            transactions.append(message.transaction)
+                        }
+
+                        if message.watermark.hasCursor {
+                            watermark = message.watermark.cursor
+                        }
+
+                        if message.hasEnd {
+                            reachedBoundary = message.end.reason != .itemLimit && message.end.reason != .scanLimit
+                        }
                     }
 
-                    if message.watermark.hasCursor {
-                        watermark = message.watermark.cursor
-                    }
-
-                    if message.hasEnd {
-                        reachedBoundary = message.end.reason != .itemLimit && message.end.reason != .scanLimit
-                    }
+                    return (transactions, watermark, reachedBoundary)
                 }
-
-                return (transactions, watermark, reachedBoundary)
             }
         }
 
@@ -125,28 +127,8 @@ extension SuiGRPCClient {
         AsyncThrowingStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             let task = Task {
                 do {
-                    try await withSubscriptionServiceClient { service in
-                        let request = Sui_Rpc_V2_SubscribeTransactionsRequest.with {
-                            $0.filter = Self.transactionFilter(owner)
-                            $0.readMask.paths = ["digest", "checkpoint"]
-                        }
-
-                        try await service.subscribeTransactions(
-                            request: ClientRequest(message: request),
-                            options: .defaults
-                        ) { response in
-                            for try await message in response.messages {
-                                if message.transaction.hasCheckpoint {
-                                    continuation.yield(
-                                        BlockchainTransactionHead(height: message.transaction.checkpoint)
-                                    )
-                                } else if message.watermark.hasCheckpoint {
-                                    continuation.yield(
-                                        BlockchainTransactionHead(height: message.watermark.checkpoint)
-                                    )
-                                }
-                            }
-                        }
+                    try await runSubscription(yielding: continuation) { deliver in
+                        try await subscribe(owner, deliver: deliver)
                     }
 
                     continuation.finish()
@@ -164,15 +146,75 @@ extension SuiGRPCClient {
     static func availableHistoryLowerBound(requested: UInt64, lowestAvailable: UInt64) -> UInt64 {
         max(requested, lowestAvailable)
     }
+
+    /// Forwards heads from `subscribe`. A quota error before the stream delivers anything
+    /// is retried after the gate's cooldown; once established, a quota error is reported
+    /// and propagated, so the caller's polling fallback waits out the same cooldown.
+    func runSubscription(
+        yielding continuation: AsyncThrowingStream<BlockchainTransactionHead, any Swift.Error>.Continuation,
+        subscribe: (_ deliver: @escaping (BlockchainTransactionHead) -> Void) async throws -> Void
+    ) async throws {
+        let registry = retryContext.registry
+
+        for attempt in 0... {
+            try await registry.acquire(origin: rateOrigin, provider: .suiGRPC)
+            let established = EstablishedFlag()
+
+            do {
+                try await subscribe { head in
+                    established.set()
+                    continuation.yield(head)
+                }
+
+                return
+            } catch let error as BlockchainClientError {
+                guard case let .quotaExceeded(_, _, retryAfter) = error else {
+                    throw error
+                }
+
+                let delay = retryAfter ?? retryContext.backoff(attempt)
+                await registry.reportQuotaExceeded(origin: rateOrigin, provider: .suiGRPC, retryAfter: delay)
+
+                guard !established.isSet, attempt < Self.maxQuotaRetries else {
+                    throw error
+                }
+            }
+        }
+    }
+
+    /// Opens the gRPC stream and delivers each checkpoint head.
+    func subscribe(_ owner: SuiAddress, deliver: @escaping (BlockchainTransactionHead) -> Void) async throws {
+        try await withSubscriptionServiceClient { service in
+            let request = Sui_Rpc_V2_SubscribeTransactionsRequest.with {
+                $0.filter = Self.transactionFilter(owner)
+                $0.readMask.paths = ["digest", "checkpoint"]
+            }
+
+            try await service.subscribeTransactions(
+                request: ClientRequest(message: request),
+                options: .defaults
+            ) { response in
+                for try await message in response.messages {
+                    if message.transaction.hasCheckpoint {
+                        deliver(BlockchainTransactionHead(height: message.transaction.checkpoint))
+                    } else if message.watermark.hasCheckpoint {
+                        deliver(BlockchainTransactionHead(height: message.watermark.checkpoint))
+                    }
+                }
+            }
+        }
+    }
 }
 
 private extension SuiGRPCClient {
     func suiServiceInfo() async throws -> Sui_Rpc_V2_GetServiceInfoResponse {
         try await withLedgerServiceClient { ledger in
-            try await ledger.getServiceInfo(
-                request: ClientRequest(message: Sui_Rpc_V2_GetServiceInfoRequest()),
-                options: self.callOptions
-            )
+            try await rpc(.read) {
+                try await ledger.getServiceInfo(
+                    request: ClientRequest(message: Sui_Rpc_V2_GetServiceInfoRequest()),
+                    options: self.callOptions
+                )
+            }
         }
     }
 
@@ -266,5 +308,19 @@ private extension SuiGRPCClient {
 private extension String {
     var drop0x: Substring {
         hasPrefix("0x") ? dropFirst(2) : Substring(self)
+    }
+}
+
+/// Set once a stream delivers its first message.
+private final class EstablishedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    var isSet: Bool {
+        lock.withLock { value }
+    }
+
+    func set() {
+        lock.withLock { value = true }
     }
 }

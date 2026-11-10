@@ -75,10 +75,12 @@ extension SuiGRPCClient: SuiStakingChain {
 
     public func serviceInfo() async throws -> SuiServiceInfo {
         try await withLedgerServiceClient { ledger in
-            let response = try await ledger.getServiceInfo(
-                request: ClientRequest(message: Sui_Rpc_V2_GetServiceInfoRequest()),
-                options: self.callOptions
-            )
+            let response = try await rpc(.read) {
+                try await ledger.getServiceInfo(
+                    request: ClientRequest(message: Sui_Rpc_V2_GetServiceInfoRequest()),
+                    options: self.callOptions
+                )
+            }
 
             return SuiServiceInfo(
                 chainId: response.chainID,
@@ -106,10 +108,12 @@ extension SuiGRPCClient: SuiStakingChain {
                 }
             }
 
-            let response = try await client.simulateTransaction(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            )
+            let response = try await rpc(.read) {
+                try await client.simulateTransaction(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }
 
             let effects = response.transaction.effects
             let gas = effects.gasUsed
@@ -168,10 +172,12 @@ extension SuiGRPCClient: SuiStakingChain {
                 $0.readMask = Google_Protobuf_FieldMask.with { $0.paths = paths }
             }
 
-            return try await ledger.getTransaction(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            ).transaction
+            return try await rpc(.read) {
+                try await ledger.getTransaction(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }.transaction
         }
     }
 
@@ -247,10 +253,12 @@ extension SuiGRPCClient: SuiStakingChain {
                 }
             }
 
-            return try await client.getObject(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            ).object
+            return try await rpc(.read) {
+                try await client.getObject(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }.object
         }
     }
 }

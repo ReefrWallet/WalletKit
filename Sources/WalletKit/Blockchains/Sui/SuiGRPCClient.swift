@@ -19,6 +19,8 @@ public struct SuiGRPCClient: Sendable {
     private let port: Int
     private let useTLS: Bool
     private let rpcTimeout: Int
+    /// Substituted by tests.
+    var retryContext = QuotaRetryContext()
 
     /// Creates a client for the gRPC full node at `host`.
     ///
@@ -56,10 +58,12 @@ public struct SuiGRPCClient: Sendable {
                 $0.coinType = coinType
             }
 
-            let response = try await client.getBalance(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            )
+            let response = try await rpc(.read) {
+                try await client.getBalance(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }
 
             return response.balance.balance
         }
@@ -71,10 +75,12 @@ public struct SuiGRPCClient: Sendable {
                 $0.owner = address.string
             }
 
-            let response = try await client.listBalances(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            )
+            let response = try await rpc(.read) {
+                try await client.listBalances(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }
 
             return response.balances
         }
@@ -92,10 +98,12 @@ public struct SuiGRPCClient: Sendable {
                 $0.coinType = coinType
             }
 
-            let response = try await client.getCoinInfo(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            )
+            let response = try await rpc(.read) {
+                try await client.getCoinInfo(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }
 
             let isNative = try MoveTypeTag.canonicalCoinType(coinType)
                 == MoveTypeTag.canonicalCoinType("0x2::sui::SUI")
@@ -134,10 +142,12 @@ public struct SuiGRPCClient: Sendable {
                 $0.owner = owner.string
             }
 
-            let response = try await client.listOwnedObjects(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            )
+            let response = try await rpc(.read) {
+                try await client.listOwnedObjects(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }
 
             return response.objects
         }
@@ -168,10 +178,12 @@ public struct SuiGRPCClient: Sendable {
                 }
             }
 
-            let response = try await client.getObject(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            )
+            let response = try await rpc(.read) {
+                try await client.getObject(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }
 
             return response.object
         }
@@ -204,10 +216,12 @@ public struct SuiGRPCClient: Sendable {
                 }
             }
 
-            let response = try await client.batchGetObjects(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            )
+            let response = try await rpc(.read) {
+                try await client.batchGetObjects(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }
 
             return try response.objects.map { result in
                 guard case .object(let object)? = result.result else {
@@ -261,10 +275,12 @@ public struct SuiGRPCClient: Sendable {
                 $0.name = name
             }
 
-            let response = try await client.getFunction(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            )
+            let response = try await rpc(.read) {
+                try await client.getFunction(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }
 
             return SuiMoveFunctionSignature(parameters: response.function.parameters.map(Self.convert))
         }
@@ -349,10 +365,12 @@ public struct SuiGRPCClient: Sendable {
                 $0.readMask.paths = ["digest"]
             }
 
-            let response = try await client.executeTransaction(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            )
+            let response = try await rpc(.submit) {
+                try await client.executeTransaction(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }
 
             return response.transaction.digest
         }
@@ -397,124 +415,14 @@ public struct SuiGRPCClient: Sendable {
                 $0.readMask.paths = ["digest", "transaction.effects.bcs"]
             }
 
-            let response = try await client.executeTransaction(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            )
-
-            return (digest: response.transaction.digest, effects: response.transaction.effects.bcs.value)
-        }
-    }
-
-    /// Lists all owned `Coin<coinType>` objects for `address`, sorted by
-    /// balance descending (largest first).
-    ///
-    /// Uses `StateService.listOwnedObjects` with an `objectType` filter of
-    /// `"0x2::coin::Coin<coinType>"` and reads `objectId`, `version`,
-    /// `digest`, and `balance` for each result. Object IDs are decoded from
-    /// `0x`-hex with a local hexadecimal decoder; digests from Base58 (the Sui
-    /// gRPC API uses Base58 for digests, unlike `0x`-hex everywhere else).
-    ///
-    /// - Parameters:
-    ///   - address: The account to list coins for.
-    ///   - coinType: The coin type to query, e.g. `"0x2::sui::SUI"` or a
-    ///     custom Move coin type string.
-    /// - Returns: The account's owned coins of the given type, each carrying
-    ///   an object reference and balance, sorted largest-balance-first.
-    /// - Throws: ``BlockchainClientError`` on a transport, RPC, or decoding
-    ///   failure.
-    public func ownedCoins(of address: SuiAddress, coinType: String) async throws -> [SuiCoinObject] {
-        try await withStateServiceClient { stateClient in
-            var coins: [SuiCoinObject] = []
-            var pageToken = Data()
-
-            repeat {
-                let pageRequest = Sui_Rpc_V2_ListOwnedObjectsRequest.with {
-                    $0.owner = address.string
-                    $0.objectType = "0x2::coin::Coin<\(coinType)>"
-                    $0.readMask = Google_Protobuf_FieldMask.with {
-                        $0.paths = ["object_id", "version", "digest", "balance"]
-                    }
-
-                    if !pageToken.isEmpty { $0.pageToken = pageToken }
-                }
-
-                let response = try await stateClient.listOwnedObjects(
-                    request: ClientRequest(message: pageRequest),
+            let response = try await rpc(.submit) {
+                try await client.executeTransaction(
+                    request: ClientRequest(message: request),
                     options: self.callOptions
                 )
-
-                let page = try response.objects.map { object in
-                    SuiCoinObject(
-                        reference: SuiObjectReference(
-                            objectId: try Data(hexString: object.objectID),
-                            version: object.version,
-                            digest: try Base58.decode(object.digest)
-                        ),
-                        balance: object.balance
-                    )
-                }
-
-                coins.append(contentsOf: page)
-                pageToken = response.nextPageToken
-            } while !pageToken.isEmpty
-
-            return coins.sorted {
-                $0.balance > $1.balance
-            }
-        }
-    }
-
-    /// Fetches the current epoch's `reference_gas_price` (MIST per gas unit)
-    /// via `LedgerService.getEpoch` with a narrow read mask.
-    public func referenceGasPrice() async throws -> UInt64 {
-        try await withLedgerServiceClient { ledger in
-            let request = Sui_Rpc_V2_GetEpochRequest.with {
-                $0.readMask = Google_Protobuf_FieldMask.with { $0.paths = ["reference_gas_price"] }
             }
 
-            let response = try await ledger.getEpoch(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            )
-
-            return response.epoch.referenceGasPrice
-        }
-    }
-
-    /// Simulates `transactionData` (unsigned BCS `TransactionData`) and
-    /// returns its gas cost.
-    public func gasCostSummary(transactionData: Data) async throws -> SuiGasCostSummary {
-        let cost = try await simulateGasCost(transactionData: transactionData)
-        return SuiGasCostSummary(
-            computationCost: cost.computationCost, storageCost: cost.storageCost, storageRebate: cost.storageRebate
-        )
-    }
-
-    /// Simulates `transactionData` via
-    /// `TransactionExecutionService.simulateTransaction` and returns the
-    /// resulting `GasCostSummary` (`computation_cost`, `storage_cost`,
-    /// `storage_rebate`, `non_refundable_storage_fee`).
-    func simulateGasCost(transactionData: Data) async throws -> Sui_Rpc_V2_GasCostSummary {
-        try await withTransactionExecutionServiceClient { client in
-            let request = Sui_Rpc_V2_SimulateTransactionRequest.with {
-                $0.transaction = Sui_Rpc_V2_Transaction.with {
-                    $0.bcs = Sui_Rpc_V2_Bcs.with { $0.value = transactionData }
-                }
-
-                // Request only the gas summary — avoids deserialising the
-                // full object/event lists the node would otherwise populate.
-                $0.readMask = Google_Protobuf_FieldMask.with {
-                    $0.paths = ["transaction.effects.gas_used"]
-                }
-            }
-
-            let response = try await client.simulateTransaction(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            )
-
-            return response.transaction.effects.gasUsed
+            return (digest: response.transaction.digest, effects: response.transaction.effects.bcs.value)
         }
     }
 
@@ -576,10 +484,175 @@ extension SuiGRPCClient {
             return try await body()
         } catch let error as BlockchainClientError {
             throw error
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as RPCError where error.code == .resourceExhausted {
+            throw BlockchainClientError.quotaExceeded(
+                code: error.code.rawValue,
+                message: error.message,
+                retryAfter: nil
+            )
         } catch let error as RPCError {
             throw BlockchainClientError.rpcError(code: error.code.rawValue, message: error.message)
         } catch {
             throw BlockchainClientError.transportError(reason: error.localizedDescription)
+        }
+    }
+}
+
+extension SuiGRPCClient {
+    enum RPCKind {
+        /// Safe to replay after a quota error.
+        case read
+        /// Submits a transaction: reports quota but is never replayed.
+        case submit
+    }
+
+    static let maxQuotaRetries = 3
+
+    /// Lists all owned `Coin<coinType>` objects for `address`, sorted by
+    /// balance descending (largest first).
+    ///
+    /// Uses `StateService.listOwnedObjects` with an `objectType` filter of
+    /// `"0x2::coin::Coin<coinType>"` and reads `objectId`, `version`,
+    /// `digest`, and `balance` for each result. Object IDs are decoded from
+    /// `0x`-hex with a local hexadecimal decoder; digests from Base58 (the Sui
+    /// gRPC API uses Base58 for digests, unlike `0x`-hex everywhere else).
+    ///
+    /// - Parameters:
+    ///   - address: The account to list coins for.
+    ///   - coinType: The coin type to query, e.g. `"0x2::sui::SUI"` or a
+    ///     custom Move coin type string.
+    /// - Returns: The account's owned coins of the given type, each carrying
+    ///   an object reference and balance, sorted largest-balance-first.
+    /// - Throws: ``BlockchainClientError`` on a transport, RPC, or decoding
+    ///   failure.
+    public func ownedCoins(of address: SuiAddress, coinType: String) async throws -> [SuiCoinObject] {
+        try await withStateServiceClient { stateClient in
+            var coins: [SuiCoinObject] = []
+            var pageToken = Data()
+
+            repeat {
+                let pageRequest = Sui_Rpc_V2_ListOwnedObjectsRequest.with {
+                    $0.owner = address.string
+                    $0.objectType = "0x2::coin::Coin<\(coinType)>"
+                    $0.readMask = Google_Protobuf_FieldMask.with {
+                        $0.paths = ["object_id", "version", "digest", "balance"]
+                    }
+
+                    if !pageToken.isEmpty { $0.pageToken = pageToken }
+                }
+
+                let response = try await rpc(.read) {
+                    try await stateClient.listOwnedObjects(
+                        request: ClientRequest(message: pageRequest),
+                        options: self.callOptions
+                    )
+                }
+
+                let page = try response.objects.map { object in
+                    SuiCoinObject(
+                        reference: SuiObjectReference(
+                            objectId: try Data(hexString: object.objectID),
+                            version: object.version,
+                            digest: try Base58.decode(object.digest)
+                        ),
+                        balance: object.balance
+                    )
+                }
+
+                coins.append(contentsOf: page)
+                pageToken = response.nextPageToken
+            } while !pageToken.isEmpty
+
+            return coins.sorted {
+                $0.balance > $1.balance
+            }
+        }
+    }
+
+    /// Fetches the current epoch's `reference_gas_price` (MIST per gas unit)
+    /// via `LedgerService.getEpoch` with a narrow read mask.
+    public func referenceGasPrice() async throws -> UInt64 {
+        try await withLedgerServiceClient { ledger in
+            let request = Sui_Rpc_V2_GetEpochRequest.with {
+                $0.readMask = Google_Protobuf_FieldMask.with { $0.paths = ["reference_gas_price"] }
+            }
+
+            let response = try await rpc(.read) {
+                try await ledger.getEpoch(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }
+
+            return response.epoch.referenceGasPrice
+        }
+    }
+
+    /// Simulates `transactionData` (unsigned BCS `TransactionData`) and
+    /// returns its gas cost.
+    public func gasCostSummary(transactionData: Data) async throws -> SuiGasCostSummary {
+        let cost = try await simulateGasCost(transactionData: transactionData)
+        return SuiGasCostSummary(
+            computationCost: cost.computationCost, storageCost: cost.storageCost, storageRebate: cost.storageRebate
+        )
+    }
+
+    /// Simulates `transactionData` via
+    /// `TransactionExecutionService.simulateTransaction` and returns the
+    /// resulting `GasCostSummary` (`computation_cost`, `storage_cost`,
+    /// `storage_rebate`, `non_refundable_storage_fee`).
+    func simulateGasCost(transactionData: Data) async throws -> Sui_Rpc_V2_GasCostSummary {
+        try await withTransactionExecutionServiceClient { client in
+            let request = Sui_Rpc_V2_SimulateTransactionRequest.with {
+                $0.transaction = Sui_Rpc_V2_Transaction.with {
+                    $0.bcs = Sui_Rpc_V2_Bcs.with { $0.value = transactionData }
+                }
+
+                // Request only the gas summary — avoids deserialising the
+                // full object/event lists the node would otherwise populate.
+                $0.readMask = Google_Protobuf_FieldMask.with {
+                    $0.paths = ["transaction.effects.gas_used"]
+                }
+            }
+
+            let response = try await rpc(.read) {
+                try await client.simulateTransaction(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }
+
+            return response.transaction.effects.gasUsed
+        }
+    }
+
+    var rateOrigin: String {
+        "grpc://\(host):\(port)"
+    }
+
+    /// Runs one RPC attempt per gate slot, in the calling task's ``RequestLane``.
+    /// A `resource_exhausted` status slows the origin's gate; a `.read` is
+    /// replayed (only this call, not a pagination loop around it) with backoff,
+    /// a `.submit` is not. Sits inside the service closures, so a cancelled
+    /// queued acquisition stays a `CancellationError` rather than a recorded failure.
+    func rpc<Response>(_ kind: RPCKind, _ call: () async throws -> Response) async throws -> Response {
+        try await QuotaRetry.run(
+            retryContext,
+            origin: rateOrigin,
+            provider: .suiGRPC,
+            retries: kind == .read ? Self.maxQuotaRetries : 0
+        ) {
+            do {
+                return try await call()
+            } catch let error as RPCError where error.code == .resourceExhausted {
+                throw BlockchainClientError.quotaExceeded(
+                    code: error.code.rawValue,
+                    message: error.message,
+                    retryAfter: nil
+                )
+            }
         }
     }
 } // swiftlint:disable:this file_length

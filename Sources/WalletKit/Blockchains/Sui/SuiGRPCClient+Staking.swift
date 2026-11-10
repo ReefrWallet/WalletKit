@@ -63,10 +63,12 @@ extension SuiGRPCClient {
                 }
             }
 
-            let response = try await ledger.getEpoch(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            )
+            let response = try await rpc(.read) {
+                try await ledger.getEpoch(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }
 
             let state = response.epoch.systemState
             let validators = state.validators.activeValidators.map { validator in
@@ -121,10 +123,12 @@ extension SuiGRPCClient {
                     }
                 }
 
-                let response = try await stateClient.listOwnedObjects(
-                    request: ClientRequest(message: request),
-                    options: self.callOptions
-                )
+                let response = try await rpc(.read) {
+                    try await stateClient.listOwnedObjects(
+                        request: ClientRequest(message: request),
+                        options: self.callOptions
+                    )
+                }
 
                 for object in response.objects {
                     stakes.append(try Self.stakedSui(from: object))
@@ -249,10 +253,12 @@ extension SuiGRPCClient {
                 $0.readMask = Google_Protobuf_FieldMask.with { $0.paths = ["object_id", "contents"] }
             }
 
-            let response = try await client.batchGetObjects(
-                request: ClientRequest(message: request),
-                options: self.callOptions
-            )
+            let response = try await rpc(.read) {
+                try await client.batchGetObjects(
+                    request: ClientRequest(message: request),
+                    options: self.callOptions
+                )
+            }
 
             return response.objects
         }

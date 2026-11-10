@@ -89,10 +89,12 @@ extension SuiGRPCClient {
                     }
                 }
 
-                let response = try await client.listDynamicFields(
-                    request: ClientRequest(message: page),
-                    options: self.callOptions
-                )
+                let response = try await rpc(.read) {
+                    try await client.listDynamicFields(
+                        request: ClientRequest(message: page),
+                        options: self.callOptions
+                    )
+                }
 
                 for field in response.dynamicFields {
                     let json = field.fieldObject.json
@@ -104,16 +106,18 @@ extension SuiGRPCClient {
                         continue
                     }
 
-                    let inner = try await client.listDynamicFields(
-                        request: ClientRequest(message: Sui_Rpc_V2_ListDynamicFieldsRequest.with {
-                            $0.parent = versionedId
-                            $0.pageSize = 10
-                            $0.readMask = Google_Protobuf_FieldMask.with {
-                                $0.paths = ["value_type", "field_object.json"]
-                            }
-                        }),
-                        options: self.callOptions
-                    )
+                    let inner = try await rpc(.read) {
+                        try await client.listDynamicFields(
+                            request: ClientRequest(message: Sui_Rpc_V2_ListDynamicFieldsRequest.with {
+                                $0.parent = versionedId
+                                $0.pageSize = 10
+                                $0.readMask = Google_Protobuf_FieldMask.with {
+                                    $0.paths = ["value_type", "field_object.json"]
+                                }
+                            }),
+                            options: self.callOptions
+                        )
+                    }
 
                     for candidate in inner.dynamicFields where candidate.valueType.hasSuffix("::validator::Validator") {
                         if let entry = Self.inactivePool(from: candidate.fieldObject.json) {

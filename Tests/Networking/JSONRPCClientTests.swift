@@ -108,4 +108,70 @@ struct JSONRPCClientTests {
             }
         }
     }
+
+    // MARK: - Quota feedback
+
+    /// A client on its own origin, so a quota signal can't slow other tests' shared gate.
+    private func isolatedClient(replying body: String) -> (client: JSONRPCClient, origin: String) {
+        let stub = StubURLProtocol.makeSession(response: .success(body: Data(body.utf8)))
+        let origin = "https://quota-\(UUID().uuidString.lowercased()).example.com"
+        return (JSONRPCClient(endpoint: URL(string: "\(origin)/rpc")!, session: stub.urlSession), origin)
+    }
+
+    private func gate(_ origin: String) -> RateGate<ContinuousClock> {
+        RateGateRegistry.shared.gate(for: origin, provider: .jsonRPC)
+    }
+
+    @Test func aMetadataOnlyQuotaReplyIsQuotaExceededAndSlowsTheGate() async throws {
+        let data = #"{"backoff_seconds":2,"allowed_rps":5}"#
+        let (client, origin) = isolatedClient(
+            replying: #"{"id":1,"error":{"code":-32005,"message":"limit","data":\#(data)}}"#
+        )
+
+        do {
+            let _: String = try await client.call(method: "eth_call", params: [String]())
+            Issue.record("expected a throw")
+        } catch let error as BlockchainClientError {
+            #expect(error == .quotaExceeded(code: -32005, message: "limit", retryAfter: .seconds(2)))
+            #expect(error.isQuotaExceeded)
+        }
+
+        #expect(await gate(origin).mode == .paced)
+    }
+
+    @Test func anEthGetLogsResultCapIsNotQuota() async throws {
+        let message = "query returned more than 10000 results"
+        let body = #"{"id":1,"error":{"code":-32005,"message":"\#(message)"}}"#
+        let (client, origin) = isolatedClient(replying: body)
+
+        do {
+            let _: String = try await client.call(method: "eth_getLogs", params: [String]())
+            Issue.record("expected a throw")
+        } catch let error as BlockchainClientError {
+            #expect(error == .rpcError(code: -32005, message: message))
+        }
+
+        #expect(await gate(origin).mode == .unpaced)
+    }
+
+    @Test func aBatchWithAQuotaErrorKeepsItsPartialResultsAndSlowsTheGate() async throws {
+        let (client, origin) = isolatedClient(
+            replying: #"[{"id":1,"result":"0x1"},{"id":2,"error":{"code":429,"message":"too many requests"}}]"#
+        )
+
+        let results: [String?] = try await client.callBatch(method: "eth_call", params: ["a", "b"])
+
+        #expect(results == ["0x1", nil])
+        #expect(await gate(origin).mode == .paced)
+    }
+
+    @Test func aHealthyBatchRecordsOneSuccessAndAnAllErrorBatchNone() async throws {
+        let (client, origin) = isolatedClient(replying: #"[{"id":1,"result":"0x1"},{"id":2,"result":"0x2"}]"#)
+        let _: [String?] = try await client.callBatch(method: "eth_call", params: ["a", "b"])
+        #expect(await gate(origin).recordedSuccesses == 1)
+
+        let (other, otherOrigin) = isolatedClient(replying: #"[{"id":1,"error":{"code":-32000,"message":"boom"}}]"#)
+        let _: [String?] = try await other.callBatch(method: "eth_call", params: ["a"])
+        #expect(await gate(otherOrigin).recordedSuccesses == 0)
+    }
 }

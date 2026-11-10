@@ -116,12 +116,18 @@ endif
 # generated once, from whichever build finished first.
 BINDGEN_SOURCE_LIB := $(TARGET_DIR)/aarch64-apple-darwin/release/$(LIB_NAME)
 
+# Inputs that invalidate the XCFramework / generated gRPC sources.
+RUST_INPUTS := $(shell find $(RUST_DIR) -path $(TARGET_DIR) -prune -o \
+	\( -name '*.rs' -o -name Cargo.toml -o -name Cargo.lock -o -name uniffi.toml \) -print)
+GRPC_STAMP := $(GENERATED_GRPC_SOURCES_DIR)/.stamp
+GRPC_INPUTS := $(shell find $(SUI_PROTO_SUBMODULE) -name '*.proto' 2>/dev/null) $(MAKEFILE_LIST)
+
 .DEFAULT_GOAL := spm
 .PHONY: all aptos-testing bitcoin-testing clean distclean docs docs-index docs-preview rust-targets solana-testing sui-grpc test walletkit-ffi
 
 all: $(XCFRAMEWORK) test docs docs-index
 
-docs: $(XCFRAMEWORK)
+docs: $(XCFRAMEWORK) $(GRPC_STAMP)
 	@echo "==> Building DocC documentation into $(DOCS_DIR)/"
 	@rm -rf $(DOCS_BUILD_DIR)
 	@mkdir -p $(DOCS_BUILD_DIR)
@@ -158,8 +164,6 @@ docs-index:
 spm: walletkit-ffi sui-grpc
 	@swift build
 
-$(XCFRAMEWORK): spm
-
 # Internal helper, not one of the four requested targets: makes sure the
 # Apple cross-compilation targets are installed before building. Cheap and
 # idempotent, so it's safe to run on every `make walletkit-ffi`.
@@ -170,7 +174,10 @@ rust-targets:
 
 test: rust-tests swift-tests
 
-walletkit-ffi: rust-targets
+# Rebuilt only when Rust inputs change; `make -B walletkit-ffi` forces it.
+walletkit-ffi: $(XCFRAMEWORK)
+
+$(XCFRAMEWORK): $(RUST_INPUTS) $(MAKEFILE_LIST) | rust-targets
 	@echo "==> Building walletkit-ffi (release): $(ALL_TARGETS)"
 	@cd $(RUST_DIR) && for target in $(ALL_TARGETS); do \
 		echo "  -- $$target"; \
@@ -207,7 +214,9 @@ endif
 		$(XCFRAMEWORK_LIBS) \
 		-output $(XCFRAMEWORK)
 
-sui-grpc:
+sui-grpc: $(GRPC_STAMP)
+
+$(GRPC_STAMP): $(GRPC_INPUTS)
 	@test -d $(SUI_PROTO_DIR)/sui/rpc/v2 || { \
 		echo "$(SUI_PROTO_SUBMODULE) is empty — run: git submodule update --init --recursive"; \
 		exit 1; \
@@ -224,6 +233,7 @@ sui-grpc:
 		$(SUI_PROTO_DIR)/sui/rpc/v2/*.proto \
 		$(SUI_PROTO_DIR)/google/rpc/*.proto
 	@echo "    Swift bindings: $(GENERATED_GRPC_SOURCES_DIR)/sui/rpc/v2/*.swift"
+	@touch $(GRPC_STAMP)
 
 bitcoin-testing: $(BITCOIN_CORE_STAMP) $(ELECTRS_STAMP)
 
@@ -305,7 +315,7 @@ ifeq ($(GITHUB_ACTIONS),)
 SWIFT_TEST_NODE_DEPS := aptos-testing bitcoin-testing solana-testing
 endif
 
-swift-tests: $(XCFRAMEWORK) $(SWIFT_TEST_NODE_DEPS)
+swift-tests: $(XCFRAMEWORK) $(GRPC_STAMP) $(SWIFT_TEST_NODE_DEPS)
 	@echo "==> Running Swift tests"
 	@swift test
 	@cd

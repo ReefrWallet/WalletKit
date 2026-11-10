@@ -456,9 +456,11 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
             target = .get(url: url, apiKey: apiKey)
         }
 
-        let policy = RateGateRegistry.shared.makeRetryPolicy(for: origin, provider: .tronGrid)
-        let afSession = Session(configuration: session.configuration, interceptor: policy)
-        let provider = MoyaProvider<TronGridAPI>(session: afSession)
+        let provider: MoyaProvider<TronGridAPI> = RateGateRegistry.shared.makeProvider(
+            origin: origin,
+            provider: .tronGrid,
+            configuration: session.configuration
+        )
 
         do {
             return try await provider.requestData(target)
@@ -492,9 +494,11 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
     private func requestJSONObject(_ target: TronGridAPI, context: String) async throws -> [String: Any] {
         // TronScan requests get their own rate gate.
         let origin = Self.origin(of: target.baseURL)
-        let policy = RateGateRegistry.shared.makeRetryPolicy(for: origin, provider: .tronGrid)
-        let afSession = Session(configuration: session.configuration, interceptor: policy)
-        let provider = MoyaProvider<TronGridAPI>(session: afSession)
+        let provider: MoyaProvider<TronGridAPI> = RateGateRegistry.shared.makeProvider(
+            origin: origin,
+            provider: .tronGrid,
+            configuration: session.configuration
+        )
 
         do {
             return try await provider.requestJSONObject(target)

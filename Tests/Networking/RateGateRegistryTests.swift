@@ -18,7 +18,7 @@ struct RateGateRegistryTests {
         )
     }
 
-    @Test func unlistedOriginResolvesByProviderNotJustByBeingUnlisted() {
+    @Test func unlistedOriginResolvesByProviderNotJustByBeingUnlisted() async {
         let registry = makeRegistry()
 
         let etherscanPolicy = registry.makeRetryPolicy(for: "https://custom.example.com", provider: .etherscan)
@@ -27,13 +27,13 @@ struct RateGateRegistryTests {
         // Same origin, different provider kinds — must resolve to each
         // provider's own default, not whichever one happens to be looked
         // up first for that origin.
-        #expect(etherscanPolicy.gate != nil)
+        #expect(await etherscanPolicy.gate?.mode == .fixed)
         #expect(etherscanPolicy.maxRetryCount == 5)
-        #expect(blockfrostPolicy.gate == nil)
+        #expect(await blockfrostPolicy.gate?.mode == .unpaced)
         #expect(blockfrostPolicy.maxRetryCount == 2)
     }
 
-    @Test func exactOriginOverrideIsScopedToItsOwnProviderKind() {
+    @Test func exactOriginOverrideIsScopedToItsOwnProviderKind() async {
         let registry = RateGateRegistry(
             exactPolicies: [
                 RateLimitPolicy.ExactEntry(origin: "https://shared-host.example.com", provider: .etherscan, policy: Self.proactive)
@@ -47,35 +47,35 @@ struct RateGateRegistryTests {
         let etherscanPolicy = registry.makeRetryPolicy(for: "https://shared-host.example.com", provider: .etherscan)
         let blockfrostPolicy = registry.makeRetryPolicy(for: "https://shared-host.example.com", provider: .blockfrost)
 
-        #expect(etherscanPolicy.gate != nil)
+        #expect(await etherscanPolicy.gate?.mode == .fixed)
         #expect(etherscanPolicy.maxRetryCount == 5)
-        #expect(blockfrostPolicy.gate == nil)
+        #expect(await blockfrostPolicy.gate?.mode == .unpaced)
         #expect(blockfrostPolicy.maxRetryCount == 2)
     }
 
-    @Test func unconfiguredProviderAndOriginFallBackToReactiveOnly() {
+    @Test func unconfiguredProviderAndOriginFallBackToAnAdaptiveGate() async {
         let registry = RateGateRegistry(exactPolicies: [], providerDefaults: [:])
 
         let policy = registry.makeRetryPolicy(for: "https://anything.example.com", provider: .tronGrid)
 
-        #expect(policy.gate == nil)
+        #expect(await policy.gate?.mode == .unpaced)
     }
 
-    @Test func publicTronGridOriginsArePacedAndCustomNodesAreNot() {
+    @Test func publicTronGridOriginsArePacedAndCustomNodesAreAdaptive() async {
         let registry = RateGateRegistry()
 
         for origin in ["https://api.trongrid.io", "https://nile.trongrid.io"] {
-            #expect(registry.makeRetryPolicy(for: origin, provider: .tronGrid).gate != nil)
+            #expect(await registry.makeRetryPolicy(for: origin, provider: .tronGrid).gate?.mode == .fixed)
         }
 
-        #expect(registry.makeRetryPolicy(for: "https://node.example.com", provider: .tronGrid).gate == nil)
+        #expect(await registry.makeRetryPolicy(for: "https://node.example.com", provider: .tronGrid).gate?.mode == .unpaced)
     }
 
-    @Test func penalizingAProviderWithNoConfiguredGateIsANoOp() async {
+    @Test func penalizingAnAdaptiveOriginSwitchesItToPaced() async {
         let registry = makeRegistry()
+        let origin = "https://custom.example.com"
 
-        // `.blockfrost` is reactive-only in this registry — penalizing it
-        // must not throw or crash, just do nothing.
-        await registry.penalize(origin: "https://custom.example.com", provider: .blockfrost, by: .seconds(5))
+        await registry.penalize(origin: origin, provider: .blockfrost, by: .seconds(5))
+        #expect(await registry.gate(for: origin, provider: .blockfrost).mode == .paced)
     }
 }

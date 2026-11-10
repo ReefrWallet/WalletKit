@@ -43,8 +43,11 @@ enum SolanaStakewiz {
 
     static func validators(endpoint: URL, session: URLSession) async throws -> Data {
         let origin = endpoint.host.map { "\(endpoint.scheme ?? "https")://\($0)" } ?? endpoint.absoluteString
-        let policy = RateGateRegistry.shared.makeRetryPolicy(for: origin, provider: .stakewiz)
-        let provider = MoyaProvider<API>(session: Session(configuration: session.configuration, interceptor: policy))
+        let provider: MoyaProvider<API> = RateGateRegistry.shared.makeProvider(
+            origin: origin,
+            provider: .stakewiz,
+            configuration: session.configuration
+        )
 
         do {
             return try await provider.requestData(API(endpoint: endpoint))

@@ -48,10 +48,13 @@ extension AptosClient {
     }
 
     func requestData(_ target: AptosAPI) async throws -> Data {
-        let policy = RateGateRegistry.shared.makeRetryPolicy(for: origin, provider: .aptosLabs)
         let configuration = session.configuration
         configuration.timeoutIntervalForRequest = Self.callTimeout
-        let provider = MoyaProvider<AptosAPI>(session: Session(configuration: configuration, interceptor: policy))
+        let provider: MoyaProvider<AptosAPI> = RateGateRegistry.shared.makeProvider(
+            origin: origin,
+            provider: .aptosLabs,
+            configuration: configuration
+        )
 
         do {
             return try await provider.requestData(target)

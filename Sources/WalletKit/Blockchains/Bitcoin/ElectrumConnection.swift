@@ -36,6 +36,10 @@ actor ElectrumConnection {
     private let host: NWEndpoint.Host
     private let port: NWEndpoint.Port
     private let useTLS: Bool
+    private let rateOrigin: String
+    private let sendOverride: (@Sendable (String, [Any]) async throws -> Any)?
+    /// Substituted by tests.
+    private(set) var retryContext = QuotaRetryContext()
     private var connection: NWConnection?
     private var state: ConnectionState = .idle
     private var receiveBuffer = Data()
@@ -48,7 +52,12 @@ actor ElectrumConnection {
     ///   - port: The Electrum server's port.
     ///   - useTLS: Whether to connect over TLS (`ssl://`) rather than
     ///     plain TCP (`tcp://`).
-    init(host: String, port: UInt16, useTLS: Bool) {
+    init(
+        host: String,
+        port: UInt16,
+        useTLS: Bool,
+        sendOverride: (@Sendable (String, [Any]) async throws -> Any)? = nil
+    ) {
         guard let endpointPort = NWEndpoint.Port(rawValue: port) else {
             preconditionFailure("invalid Electrum port \(port)")
         }
@@ -56,10 +65,16 @@ actor ElectrumConnection {
         self.host = NWEndpoint.Host(host)
         self.port = endpointPort
         self.useTLS = useTLS
+        rateOrigin = "electrum://\(host):\(port)"
+        self.sendOverride = sendOverride
     }
 
     deinit {
         connection?.cancel()
+    }
+
+    func setRetryContext(_ context: QuotaRetryContext) {
+        retryContext = context
     }
 
     /// Establishes the connection if it isn't already, waiting until it's
@@ -109,6 +124,34 @@ actor ElectrumConnection {
     /// - Throws: ``BlockchainClientError`` on a transport failure, or if
     ///   the server returns a JSON-RPC `error` object.
     func call(method: String, params: [Any]) async throws -> Any {
+        // A broadcast may have landed even when its reply is a quota error: never replay it.
+        let retries = method == "blockchain.transaction.broadcast" ? 0 : Self.maxQuotaRetries
+
+        return try await QuotaRetry.run(
+            retryContext,
+            origin: rateOrigin,
+            provider: .electrum,
+            retries: retries
+        ) {
+            if let sendOverride {
+                return try await sendOverride(method, params)
+            }
+
+            return try await send(method: method, params: params)
+        }
+    }
+
+    private static let maxQuotaRetries = 3
+
+    /// Server replies that mean the session is over its resource budget. ElectrumX
+    /// answers `-101 "excessive resource usage"` and then closes the session;
+    /// Fulcrum sends no error, it drops the connection (a transport failure).
+    static func isQuotaReply(code: Int, message: String) -> Bool {
+        (code == -101 && message.lowercased().contains("excessive resource usage"))
+            || QuotaSignal.detect(code: code, message: message, data: nil) != nil
+    }
+
+    private func send(method: String, params: [Any]) async throws -> Any {
         try await connect()
 
         guard let connection else {
@@ -312,7 +355,11 @@ actor ElectrumConnection {
             if let errorObject = object["error"] as? [String: Any] {
                 let code = errorObject["code"] as? Int ?? 0
                 let message = errorObject["message"] as? String ?? "\(errorObject)"
-                continuation.resume(throwing: BlockchainClientError.rpcError(code: code, message: message))
+                let error: BlockchainClientError = Self.isQuotaReply(code: code, message: message)
+                    ? .quotaExceeded(code: code, message: message, retryAfter: nil)
+                    : .rpcError(code: code, message: message)
+
+                continuation.resume(throwing: error)
                 return
             }
 

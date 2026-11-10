@@ -33,6 +33,12 @@ public enum BlockchainClientError: Error, Equatable {
     /// parsed into the shape the caller expected (bad hex, wrong ABI word
     /// count, ...). `reason` describes what went wrong.
     case decodingFailed(reason: String)
+
+    /// The node rejected the call because this app is over its quota
+    /// (rate limit). `retryAfter` is the cooldown the node asked for, if any.
+    /// Unlike ``rpcError(code:message:)`` this survives provider metadata
+    /// the code and message don't carry.
+    case quotaExceeded(code: Int, message: String, retryAfter: Duration?)
 }
 
 extension BlockchainClientError: LocalizedError {
@@ -40,6 +46,7 @@ extension BlockchainClientError: LocalizedError {
         switch self {
         case let .decodingFailed(reason): "Unexpected node result: \(reason)"
         case let .invalidResponse(reason): "Invalid node response: \(reason)"
+        case let .quotaExceeded(code, message, _): "Node rate limit exceeded (\(code)): \(message)"
         case let .rpcError(code, message): "Node rejected the request (\(code)): \(message)"
         case let .transportError(reason): "Couldn't reach the node: \(reason)"
         }

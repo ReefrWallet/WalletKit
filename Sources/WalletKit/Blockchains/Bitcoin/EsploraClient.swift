@@ -178,9 +178,11 @@ struct EsploraClient: Sendable {
     }
 
     private func requestData(_ target: EsploraAPI) async throws -> Data {
-        let policy = RateGateRegistry.shared.makeRetryPolicy(for: origin, provider: .esplora)
-        let afSession = Session(configuration: session.configuration, interceptor: policy)
-        let provider = MoyaProvider<EsploraAPI>(session: afSession)
+        let provider: MoyaProvider<EsploraAPI> = RateGateRegistry.shared.makeProvider(
+            origin: origin,
+            provider: .esplora,
+            configuration: session.configuration
+        )
 
         do {
             return try await provider.requestData(target)
