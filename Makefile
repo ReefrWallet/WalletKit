@@ -32,6 +32,8 @@ DOCS_BASE_PATH ?= WalletKit
 docs_redirect = printf '%s\n' '<!doctype html>' '<meta charset="utf-8">' \
 	'<meta http-equiv="refresh" content="0; url=$(2)">' '<link rel="canonical" href="$(2)">' \
 	'<title>Redirecting…</title>' '<a href="$(2)">Continue to the documentation</a>' > $(1)
+# pandoc is pinned in mise.toml, which only a shell inside this directory activates.
+PANDOC ?= $(if $(shell command -v mise 2>/dev/null),mise x -- pandoc,pandoc)
 FRAMEWORKS_DIR := Frameworks
 GENERATED_SOURCES_DIR := $(SOURCES_DIR)/Generated/Bindings
 XCFRAMEWORK := $(FRAMEWORKS_DIR)/WalletKit.xcframework
@@ -158,7 +160,7 @@ docs-preview:
 docs-index:
 	@echo "==> Building docs landing page from $(DOCS_SITE_DIR)/index.md"
 	@mkdir -p $(DOCS_DIR)
-	@pandoc $(DOCS_SITE_DIR)/index.md --standalone \
+	@$(PANDOC) $(DOCS_SITE_DIR)/index.md --standalone \
 		--template $(DOCS_SITE_DIR)/template.html --output $(DOCS_DIR)/index.html
 
 spm: walletkit-ffi sui-grpc

@@ -17,11 +17,9 @@
 //!                   HardwareDeviceInfoFfi, HardwareDeviceFfi,
 //!                   HardwareDeviceManagerFfi, HardwareDeviceDelegateFfi —
 //!                   Trezor over USB (macOS only)
-//!   blockchain_clients/  Signer, BlockchainAddress; EthereumSigner,
-//!                   EthereumAddress — implemented (Alloy-backed), including
-//!                   the decode/signature/encode seam a hardware-backed
-//!                   signer composes; SuiSigner, SuiAddress — address
-//!                   derivation only, implemented (blake2-backed)
+//!   blockchain_clients/  Chain-specific address, transaction, and signing
+//!                   primitives for the Swift clients. Tron transaction
+//!                   encoding lives alongside its Trezor bridge in hardware/.
 
 uniffi::setup_scaffolding!();
 

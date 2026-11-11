@@ -9,12 +9,12 @@ accounts, read blockchain state, build transactions, sign them, and submit
 them to a network. It supports software-held and hardware-held accounts across
 Bitcoin, Cardano, EVM networks, Solana, Sui, and Tron.
 
-Start with a ``Mnemonic`` to create or restore a wallet. Derive an
+Start with a ``Mnemonic`` (or a SLIP-39 share, see ``Slip39``) to create or restore a wallet. Derive an
 ``ExtendedKey`` and the chain-specific ``Signer`` for an account, then use a
 ``BlockchainClientProtocol`` conformer with a
 ``BlockchainTransactionBuilderProtocol`` to prepare and send transfers.
 
-> Warning: A mnemonic, seed, private key, or private extended-key
+> Warning: A mnemonic, SLIP-39 share or master secret, seed, private key, or private extended-key
 > serialization can control wallet funds. Keep these values out of logs,
 > analytics, backups that are not encrypted, and user-visible error messages.
 
@@ -25,6 +25,10 @@ Start with a ``Mnemonic`` to create or restore a wallet. Derive an
 - <doc:InitializeAWalletAndSendATransaction>
 - ``Mnemonic``
 - ``Seed``
+- ``Slip39``
+- ``Slip39ShareSet``
+- ``Slip39EncryptedSecret``
+- ``Slip39GeneratedShare``
 - ``ExtendedKey``
 - ``DerivationPath``
 - ``Account``

@@ -1,6 +1,5 @@
-//! `SuiSignerFfi`: address derivation for Sui, backed by RustCrypto's
-//! `blake2` crate for Sui's Blake2b-256 flag-tagged address scheme. See
-//! `Walletkit/Docs/Design Specification/Clients/Sui/SuiSigner.swift`.
+//! Sui address derivation and signing for transactions and personal messages,
+//! using Blake2b-256.
 
 use std::sync::Arc;
 

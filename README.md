@@ -10,6 +10,7 @@ WalletKit is a Swift toolkit for building non-custodial multi-chain crypto walle
 ## Features
 
 - **Keys and accounts** — BIP-39 mnemonic generation and import with ten wordlists and optional seed passphrases.
+  SLIP-39 share decoding, single-share generation (20 or 33 words), multi-group share-set validation, and cancellable passphrase decryption to a 16–32-byte master secret that seeds BIP-32 and SLIP-0010 derivation.
   BIP-32 secp256k1 and SLIP-0010 Ed25519 key derivation, extended-key serialization, raw private-key import, and address derivation and validation.
 - **Blockchain clients** — Balance and token metadata queries, paginated account history, fee estimation, and transaction construction and broadcast.
   Batch balance queries and live transaction or block streams on supported backends.
@@ -19,30 +20,16 @@ WalletKit is a Swift toolkit for building non-custodial multi-chain crypto walle
 
 ## Supported blockchains
 
-- **Aptos** — Node REST and indexer GraphQL support for APT, Coin, and Fungible Asset balances and history.
-  BCS transfer construction, simulation-based gas estimation, transaction submission, and status queries.
-  Local Ed25519 transaction and message signing and Wallet Standard account authenticator generation.
-- **Bitcoin** — BIP-84 native SegWit and BIP-86 Taproot descriptors, single-address watch-only accounts, and gap-limit address discovery.
-  Balances, UTxOs, transaction history, fee estimation, PSBT construction, local or Trezor signing, and Electrum or Esplora broadcast.
-- **Cardano** — CIP-1852 account and Shelley address derivation, receive-address discovery and rotation, and per-address ADA balances.
-  Blockfrost account, UTxO, native-asset, and history queries and transaction submission. ADA and native-asset transfer construction and local or Trezor signing.
-  CIP-30 dapp primitives for CBOR balance and UTxO reads, transaction decoding, signer resolution, witness signing, and CIP-8 data signing.
-  Native staking with stake and reward queries, stake registration, pool and DRep delegation, reward withdrawal, and stake deregistration.
-- **Ethereum and EVM chains** — Native and ERC-20 balances, metadata, and history over JSON-RPC, including ERC-20 approval events.
-  Gas estimation, ABI encoding, and EIP-1559 and legacy EIP-155 transaction construction for transfers and arbitrary contract calls.
-  Local or Trezor signing for transactions, EIP-191 personal messages, and EIP-712 typed data. Transaction broadcast over JSON-RPC.
-- **Solana** — SOL, SPL Token, and Token-2022 balances, token metadata, and history over RPC.
-  Transfer construction, base and priority fee estimation, legacy and version 0 wire transaction decoding, and RPC broadcast.
-  Local or Trezor transaction signing, local raw message signing, and Trezor OCMS v1 text signing.
-  Native staking with stake-account discovery, validator and reward data, delegation, full and partial deactivation, and withdrawal.
-- **Sui** — gRPC queries for coin balances, history, objects, and Move function signatures.
-  BCS transfer and programmable transaction construction, transaction data decoding, gas simulation, and broadcast.
-  Local transaction and personal-message signing. Native staking with validator and stake queries, reward estimation, delegation,
-  full and partial unstaking, and pending submission resolution.
-- **Tron** — TRX and TRC-20 balances and history through TronGrid, with optional TronScan history for internal TRX transfers.
-  Transfer construction, bandwidth and energy cost estimation, raw transaction decoding, and TronGrid broadcast.
-  Local or Trezor transaction signing and local TIP-191 message signing. Stake 2.0 support for bandwidth and energy staking,
-  unstaking, withdrawal, representative voting, reward claims, and local-key cancellation of pending unstakes.
+All seven chains support local transaction signing. Trezor transaction signing is available for Bitcoin, Cardano,
+EVM chains, Solana, and Tron.
+
+- **Aptos** — APT, Coin, and Fungible Assets via REST and GraphQL, plus Wallet Standard account authenticators.
+- **Bitcoin** — Electrum and Esplora backends, SegWit and Taproot descriptors, watch-only accounts, and PSBTs.
+- **Cardano** — ADA and native assets via Blockfrost, BIP-39 and SLIP-39 account derivation, CIP-30 dapp primitives, and native staking.
+- **Ethereum and EVM chains** — ERC-20 tokens and approval events, contract calls, and EIP-191 and EIP-712 signing.
+- **Solana** — SPL Token, Token-2022, message signing, and native staking.
+- **Sui** — gRPC, programmable transactions, and native staking.
+- **Tron** — TRC-20 via TronGrid, optional TronScan history, and Stake 2.0.
 
 ## Requirements
 

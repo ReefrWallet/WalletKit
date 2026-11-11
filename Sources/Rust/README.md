@@ -1,65 +1,47 @@
 # WalletKit — Rust workspace
 
-Three crates:
+- `walletkit-ffi` — the UniFFI bridge for key management, chain-specific
+  primitives for Aptos, Bitcoin, Cardano, Ethereum/EVM, Solana, and Sui,
+  plus Tron transaction encoding and Trezor integration. Network clients
+  live in Swift.
+- `walletkit-hardware` — shared hardware wallet traits and types.
+- `walletkit-trezor` — Trezor USB support on macOS via `trezor-client`.
+  On other platforms, discovery returns an empty list and connections return
+  `TransportUnavailable`.
 
-- `walletkit-ffi` — the UniFFI export layer covering software key
-  management (BIP39 mnemonics, BIP32/SLIP-0010 derivation), Ethereum/Sui
-  chain clients, and the hardware-wallet FFI surface (`hardware/`).
-- `walletkit-hardware` — vendor-agnostic hardware wallet traits/types, no
-  vendor protocol code.
-- `walletkit-trezor` — implements those traits for Trezor over USB,
-  wrapping the Trezor team's own `trezor-client` crate. Only builds real
-  USB support on macOS (Trezor devices aren't MFi-certified, so iOS has no
-  generic USB HID access); other targets compile the same public API as a
-  transport-unavailable stub.
+## Rust development
 
-See `../Docs/Overview.md` for the target architecture and
-`../Docs/Design Specification/` for the Swift API this crate backs.
-
-For the full macOS + iOS (device + simulator) XCFramework build, use the
-top-level `../Makefile` (`make walletkit-ffi`, `make test`, `make all`,
-`make clean`) rather than the manual commands below — those are still
-useful for quick host-only iteration while developing, but the Makefile is
-what actually produces something Xcode can link against.
-
-## Build (host-only, for local iteration)
+Build and test all three crates for the host platform from `Sources/Rust`.
 
 ```sh
-cargo build --workspace
+cargo build --workspace --locked
+cargo test --workspace --locked
 ```
 
-## Test
+## Build the XCFramework and Swift bindings
 
-Rust-side tests live alongside the code they cover, per
-`../Docs/Overview.md`'s testing strategy:
+On macOS, install Xcode and use `rustup` to install Rust. Run from the WalletKit root.
 
 ```sh
-cargo test --workspace
+make walletkit-ffi
 ```
 
-Hardware-wallet tests here are unit tests over pure logic (path/error
-mapping, byte encoding) — they don't need a connected device. Tests that
-do need one live on the Swift side (`Tests/Hardware/`,
-`Tests/Blockchains/EthereumTrezorSignerTests.swift`), gated with
-`withKnownIssue` so they skip cleanly in CI.
+The [Makefile](../../Makefile) builds the macOS, iOS device, and iOS simulator
+slices into `Frameworks/WalletKit.xcframework` and generates the Swift bindings
+in `Sources/Generated/Bindings/`.
 
-## Generate Swift bindings
+## Build and test WalletKit
 
-UniFFI's recommended "library mode" generates bindings straight from the
-compiled library, so build first, then run the `uniffi-bindgen` binary
-declared in `walletkit-ffi/Cargo.toml`:
+Install the prerequisites in the [WalletKit README](../../README.md#requirements)
+and the [CI workflow](../../.github/workflows/ci.yml). From the WalletKit root,
+initialize the Sui protobuf submodule and install the pinned tools.
 
 ```sh
-cd walletkit-ffi
-cargo build
-cargo run --features cli --bin uniffi-bindgen -- generate \
-    --library target/debug/libwalletkit_ffi.dylib \
-    --language swift \
-    --out-dir ../generated/swift
+git submodule update --init --recursive
+mise install
 ```
 
-(`.dylib` on macOS; adjust the path/extension for other platforms.) This
-generates the real `WalletKit.swift`/`.h`/`.modulemap` files — a separate
-artifact from the hand-written API spec under
-`Docs/Design Specification/`, which describes the *target* surface rather
-than being compiled itself.
+Run `make spm` to build the Swift package or `make test` to run the Rust FFI and
+Swift test suites. Both targets generate the XCFramework, Swift bindings, and
+Sui gRPC sources as needed. Local test runs also provision node tools for Aptos,
+Bitcoin, and Solana.

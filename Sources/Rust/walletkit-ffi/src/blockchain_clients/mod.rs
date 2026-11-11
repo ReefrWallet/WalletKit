@@ -1,21 +1,7 @@
-//! Blockchain-client extension points. See
-//! `Walletkit/Docs/Design Specification/Clients/` for the target Swift
-//! shape: `Signer`, `BlockchainAddress`, `EthereumPKeySigner`,
-//! `EthereumTrezorSigner`, `EthereumAddress`, `SuiPKeySigner`, `SuiAddress`.
-//! `EthereumSignerFfi`/`EthereumAddressFfi` and `SuiSignerFfi`/
-//! `SuiAddressFfi` here are the Rust-side primitives-based
-//! implementations that back those Swift signer/address types —
-//! operating on `PublicKeyFfi`/`PrivateKeyFfi` rather than the Swift-only
-//! `Account` type, since `Account` has no Rust representation.
-//! `EthereumSignerFfi` additionally exposes `decode_signing_data`/
-//! `signature`/`encode_signed` as the seam a hardware-backed signer (no
-//! private key, a device instead) composes to reach the same signed
-//! output as the software `sign` path. `SuiSignerFfi` covers address
-//! derivation only, matching the Swift spec. `ethereum_function_selector`
-//! is a standalone Keccak-256-based helper backing `EthereumABI.selector(_:)`
-//! on the Swift side, for encoding arbitrary contract calls (ERC-20,
-//! oracle reads, ...) rather than signing/address derivation. Every other
-//! chain client remains design-only.
+//! Address, transaction, and signing primitives for Swift blockchain clients.
+//! `EthereumSignerFfi` exposes transaction decoding and signature assembly
+//! for hardware signing. `SuiSignerFfi` derives addresses and signs
+//! transactions and personal messages.
 
 mod aptos_address;
 mod aptos_signer;
