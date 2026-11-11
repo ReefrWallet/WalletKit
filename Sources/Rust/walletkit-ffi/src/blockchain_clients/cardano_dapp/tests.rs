@@ -10,7 +10,7 @@ use cardano_serialization_lib::{
 
 use super::*;
 use crate::blockchain_clients::cardano::{
-    cardano_account_xpub_from_entropy, cardano_base_address, cardano_stake_address, CardanoAssetFfi, CardanoSigningPathFfi,
+    cardano_account_xpub, cardano_base_address, cardano_stake_address, CardanoAssetFfi, CardanoSigningPathFfi,
     CardanoUtxoFfi,
 };
 
@@ -33,7 +33,7 @@ fn key_hash(entropy: &[u8], role: u32, index: u32) -> Ed25519KeyHash {
 }
 
 fn xpub() -> String {
-    cardano_account_xpub_from_entropy(ENTROPY.to_vec(), 0).unwrap()
+    cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0).unwrap()
 }
 
 fn address(index: u32) -> String {
@@ -187,7 +187,7 @@ fn signing_returns_only_new_vkeys_and_drops_existing_witnesses() {
     existing.set_native_scripts(&scripts(&[script]));
     let tx = transaction(&body, &existing);
 
-    let witnesses = cardano_sign_dapp_transaction(ENTROPY.to_vec(), 0, vec![path(0, 0)], tx).unwrap();
+    let witnesses = cardano_sign_dapp_transaction(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0, vec![path(0, 0)], tx).unwrap();
     let witnesses = TransactionWitnessSet::from_bytes(witnesses).unwrap();
     let vkeys = witnesses.vkeys().unwrap();
 
@@ -203,12 +203,12 @@ fn signing_returns_only_new_vkeys_and_drops_existing_witnesses() {
 fn signing_deduplicates_paths_and_rejects_bad_requests() {
     let tx = transaction(&body(&[input(1, 0)]), &TransactionWitnessSet::new());
 
-    let set = cardano_sign_dapp_transaction(ENTROPY.to_vec(), 0, vec![path(0, 0), path(0, 0)], tx.clone()).unwrap();
+    let set = cardano_sign_dapp_transaction(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0, vec![path(0, 0), path(0, 0)], tx.clone()).unwrap();
     assert_eq!(TransactionWitnessSet::from_bytes(set).unwrap().vkeys().unwrap().len(), 1);
 
-    assert!(cardano_sign_dapp_transaction(vec![], 0, vec![path(0, 0)], tx.clone()).is_err());
-    assert!(cardano_sign_dapp_transaction(ENTROPY.to_vec(), 0, vec![], tx.clone()).is_err());
-    assert!(cardano_sign_dapp_transaction(ENTROPY.to_vec(), 0, vec![path(3, 0)], tx).is_err());
+    assert!(cardano_sign_dapp_transaction(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(vec![]), 0, vec![path(0, 0)], tx.clone()).is_err());
+    assert!(cardano_sign_dapp_transaction(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0, vec![], tx.clone()).is_err());
+    assert!(cardano_sign_dapp_transaction(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0, vec![path(3, 0)], tx).is_err());
 }
 
 #[test]
@@ -512,7 +512,7 @@ fn classify_maps_addresses_to_account_keys() {
     let payment = cardano_address_to_bytes(address(4)).unwrap();
     let reward = cardano_address_to_bytes(cardano_stake_address(xpub(), NETWORK).unwrap()).unwrap();
     let foreign = cardano_address_to_bytes(cardano_base_address(
-        cardano_account_xpub_from_entropy(FOREIGN_ENTROPY.to_vec(), 0).unwrap(),
+        cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(FOREIGN_ENTROPY.to_vec()), 0).unwrap(),
         NETWORK,
         0,
         0,
@@ -530,7 +530,7 @@ fn cip8_signature_verifies_over_the_unhashed_payload() {
     let address = cardano_address_to_bytes(address(0)).unwrap();
     let payload = b"hello reefr".to_vec();
 
-    let result = cardano_cip8_sign_data(ENTROPY.to_vec(), 0, path(0, 0), address.clone(), payload.clone()).unwrap();
+    let result = cardano_cip8_sign_data(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0, path(0, 0), address.clone(), payload.clone()).unwrap();
 
     let key = account_key(&ENTROPY, 0, 0).to_public();
     // COSE_Sign1 is a 4-element array: protected, unprotected, payload, signature.
@@ -559,7 +559,7 @@ fn cip8_signature_verifies_over_the_unhashed_payload() {
 fn cip8_assemble_matches_software_signing() {
     let address = cardano_address_to_bytes(address(0)).unwrap();
     let payload = vec![1, 2, 3];
-    let signed = cardano_cip8_sign_data(ENTROPY.to_vec(), 0, path(0, 0), address.clone(), payload.clone()).unwrap();
+    let signed = cardano_cip8_sign_data(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0, path(0, 0), address.clone(), payload.clone()).unwrap();
     let key = account_key(&ENTROPY, 0, 0);
     let signature = key.sign(&cip8::structure_for_tests(&address, &payload));
 
@@ -688,7 +688,7 @@ fn output_at(seed: u8, index: u32, address: String) -> CardanoResolvedOutputFfi 
 #[test]
 fn a_resolved_foreign_key_input_is_a_missing_signer_not_unresolved() {
     let foreign = cardano_base_address(
-        cardano_account_xpub_from_entropy(FOREIGN_ENTROPY.to_vec(), 0).unwrap(),
+        cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(FOREIGN_ENTROPY.to_vec()), 0).unwrap(),
         NETWORK,
         0,
         0,

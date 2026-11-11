@@ -40,10 +40,10 @@ pub use bitcoin::{
     BitcoinSignerFfi,
 };
 pub use cardano::{
-    cardano_account_xpub_from_entropy, cardano_assemble_transaction, cardano_base_address, cardano_build_transfer,
+    cardano_account_xpub, cardano_assemble_transaction, cardano_base_address, cardano_build_transfer,
     cardano_sign_transaction, cardano_stake_address, cardano_validate_address, CardanoAssetFfi,
     cardano_transaction_body_hash, CardanoWitnessFfi,
-    CardanoProtocolParametersFfi, CardanoSigningPathFfi, CardanoTransactionInputFfi,
+    CardanoProtocolParametersFfi, CardanoRootSecretFfi, CardanoSigningPathFfi, CardanoTransactionInputFfi,
     CardanoTransactionOutputFfi, CardanoUnsignedTransactionFfi, CardanoUtxoFfi,
 };
 pub use ethereum_abi::{ethereum_function_selector, ethereum_keccak256};

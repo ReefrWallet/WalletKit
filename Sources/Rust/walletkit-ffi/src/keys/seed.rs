@@ -11,7 +11,7 @@ use crate::keys::extended_key::ExtendedKeyFfi;
 
 #[derive(uniffi::Object)]
 pub struct SeedFfi {
-    raw_bytes: Zeroizing<[u8; 64]>,
+    raw_bytes: Zeroizing<Vec<u8>>,
 }
 
 impl std::fmt::Debug for SeedFfi {
@@ -23,7 +23,7 @@ impl std::fmt::Debug for SeedFfi {
 impl SeedFfi {
     pub(crate) fn new(raw_bytes: [u8; 64]) -> SeedFfi {
         SeedFfi {
-            raw_bytes: Zeroizing::new(raw_bytes),
+            raw_bytes: Zeroizing::new(raw_bytes.to_vec()),
         }
     }
 }
@@ -39,6 +39,21 @@ impl SeedFfi {
             reason: format!("expected a 64-byte seed, got {} bytes", raw_bytes.len()),
         })?;
         Ok(SeedFfi::new(array))
+    }
+
+    /// Wraps a master secret that isn't a BIP-39 seed (e.g. SLIP-39).
+    /// Accepts 16 to 64 bytes of even length, as BIP-32 and SLIP-10 allow;
+    /// throws `.invalidSeed` otherwise.
+    #[uniffi::constructor]
+    pub fn from_master_secret(master_secret: Vec<u8>) -> Result<SeedFfi, WalletKitErrorFfi> {
+        if !(16..=64).contains(&master_secret.len()) || master_secret.len() % 2 != 0 {
+            return Err(WalletKitErrorFfi::InvalidSeed {
+                reason: format!("unsupported master secret length: {} bytes", master_secret.len()),
+            });
+        }
+        Ok(SeedFfi {
+            raw_bytes: Zeroizing::new(master_secret),
+        })
     }
 
     /// Derives the master `ExtendedKeyFfi` for the requested curve/scheme.
@@ -105,5 +120,20 @@ mod tests {
             SeedFfi::from_raw_bytes(vec![0u8; 63]),
             Err(WalletKitErrorFfi::InvalidSeed { .. })
         ));
+    }
+
+    #[test]
+    fn from_master_secret_accepts_16_to_64_even_bytes() {
+        for len in [16usize, 20, 32, 64] {
+            let seed = SeedFfi::from_master_secret(vec![7u8; len]).unwrap();
+            assert_eq!(seed.export_raw().len(), len);
+        }
+    }
+
+    #[test]
+    fn from_master_secret_rejects_bad_lengths() {
+        for len in [0usize, 15, 17, 65, 66] {
+            assert!(SeedFfi::from_master_secret(vec![7u8; len]).is_err(), "{len}");
+        }
     }
 }

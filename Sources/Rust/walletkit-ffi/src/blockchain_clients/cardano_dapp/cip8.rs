@@ -4,16 +4,13 @@
 //! and hardware signers must produce byte-identical output, so both go
 //! through `assemble`. CIP-30 signs the supplied payload un-hashed.
 
-use cardano_serialization_lib::{Bip32PrivateKey, PublicKey};
+use cardano_serialization_lib::PublicKey;
 
-use crate::blockchain_clients::cardano::{signing_failed, CardanoSigningPathFfi};
+use crate::blockchain_clients::cardano::{account_private_key, signing_failed, CardanoRootSecretFfi, CardanoSigningPathFfi};
 use crate::errors::WalletKitErrorFfi;
 
 const ALG_EDDSA: i64 = -8;
-const CARDANO_COIN_TYPE: u32 = 1815;
-const CIP1852_PURPOSE: u32 = 1852;
 const CRV_ED25519: u64 = 6;
-const HARDENED: u32 = 0x8000_0000;
 const KTY_OKP: u64 = 1;
 const MAX_ROLE: u32 = 2;
 
@@ -133,23 +130,17 @@ pub fn cardano_cip8_assemble(
 /// checked that `signing_path` is the key behind it.
 #[uniffi::export]
 pub fn cardano_cip8_sign_data(
-    entropy: Vec<u8>,
+    root: CardanoRootSecretFfi,
     account_index: u32,
     signing_path: CardanoSigningPathFfi,
     address: Vec<u8>,
     payload: Vec<u8>,
 ) -> Result<CardanoCip8Ffi, WalletKitErrorFfi> {
-    if entropy.is_empty() {
-        return Err(WalletKitErrorFfi::InvalidEntropy);
-    }
     if signing_path.role > MAX_ROLE {
         return Err(signing_failed("Cardano signing path has an unsupported role"));
     }
 
-    let key = Bip32PrivateKey::from_bip39_entropy(&entropy, &[])
-        .derive(CIP1852_PURPOSE | HARDENED)
-        .derive(CARDANO_COIN_TYPE | HARDENED)
-        .derive(account_index | HARDENED)
+    let key = account_private_key(&root, account_index)?
         .derive(signing_path.role)
         .derive(signing_path.index)
         .to_raw_key();

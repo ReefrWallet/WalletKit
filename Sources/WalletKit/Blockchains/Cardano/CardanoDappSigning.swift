@@ -70,25 +70,33 @@ public protocol CardanoDappSigner {
     func signData(_ payload: Data, address: Data, path: CardanoSigningPath) async throws -> CardanoSignedData
 }
 
-/// Software Cardano signer over BIP-39 entropy.
+/// Software Cardano signer over a BIP-39 or SLIP-39 root secret.
 public struct CardanoPKeySigner: CardanoDappSigner, Sendable {
     private let accountIndex: UInt32
-    private let entropy: Data
+    private let root: CardanoRootSecret
 
     /// - Parameters:
     ///   - entropy: The wallet's BIP-39 entropy, from which the keys derive.
     ///   - network: The Cardano network the account is on.
     ///   - path: The account path, `m/1852'/1815'/N'`.
     public init(entropy: Data, network: CardanoNetwork, path: DerivationPath) throws {
+        try self.init(root: .bip39Entropy(entropy), network: network, path: path)
+    }
+
+    /// - Parameters:
+    ///   - root: The wallet's secret, from which the keys derive.
+    ///   - network: The Cardano network the account is on.
+    ///   - path: The account path, `m/1852'/1815'/N'`.
+    public init(root: CardanoRootSecret, network: CardanoNetwork, path: DerivationPath) throws {
         try path.validate(for: .cardano(network))
-        self.entropy = entropy
+        self.root = root
         accountIndex = path.segments[2].index
     }
 
     public func signDappTransaction(_ transaction: Data, paths: [CardanoSigningPath]) async throws -> Data {
         try remappingWalletKitError {
             try cardanoSignDappTransaction(
-                entropy: entropy,
+                root: root.raw,
                 accountIndex: accountIndex,
                 signingPaths: paths.map(\.raw),
                 transaction: transaction
@@ -99,7 +107,7 @@ public struct CardanoPKeySigner: CardanoDappSigner, Sendable {
     public func signData(_ payload: Data, address: Data, path: CardanoSigningPath) async throws -> CardanoSignedData {
         let result = try remappingWalletKitError {
             try cardanoCip8SignData(
-                entropy: entropy,
+                root: root.raw,
                 accountIndex: accountIndex,
                 signingPath: path.raw,
                 address: address,

@@ -18,6 +18,14 @@ public protocol SeedProtocol: AnyObject {
     ///   `rawBytes.count != 64`.
     init(rawBytes: Data) throws
 
+    /// Wraps a master secret that isn't a BIP-39 seed, such as a SLIP-39
+    /// master secret.
+    ///
+    /// - Parameter masterSecret: 16 to 64 bytes, of even length.
+    /// - Throws: ``WalletKitError/invalidSeed(reason:)`` for any other
+    ///   length.
+    init(masterSecret: Data) throws
+
     /// Derives the master ``ExtendedKey`` for `curve` from this seed, via
     /// HMAC-SHA512 with the curve's standard key ("Bitcoin seed" for
     /// secp256k1, "ed25519 seed" for ed25519).
@@ -53,6 +61,16 @@ public final class Seed: SeedProtocol {
     ///   `rawBytes.count != 64`.
     public convenience init(rawBytes: Data) throws {
         self.init(raw: try remappingWalletKitError { try SeedFfi.fromRawBytes(rawBytes: rawBytes) })
+    }
+
+    /// Wraps a master secret that isn't a BIP-39 seed, such as a SLIP-39
+    /// master secret.
+    ///
+    /// - Parameter masterSecret: 16 to 64 bytes, of even length.
+    /// - Throws: ``WalletKitError/invalidSeed(reason:)`` for any other
+    ///   length.
+    public convenience init(masterSecret: Data) throws {
+        self.init(raw: try remappingWalletKitError { try SeedFfi.fromMasterSecret(masterSecret: masterSecret) })
     }
 
     /// Derives the master ``ExtendedKey`` for `curve` from this seed, via

@@ -49,10 +49,17 @@ public struct CardanoUnsignedTransaction: Codable, Sendable {
     ///   - entropy: The wallet's BIP-39 entropy, from which the keys derive.
     ///   - path: The signing account's path, `m/1852'/1815'/N'`.
     public func signed(entropy: Data, path: DerivationPath) throws -> Data {
+        try signed(root: .bip39Entropy(entropy), path: path)
+    }
+
+    /// - Parameters:
+    ///   - root: The wallet's secret, from which the keys derive.
+    ///   - path: The signing account's path, `m/1852'/1815'/N'`.
+    public func signed(root: CardanoRootSecret, path: DerivationPath) throws -> Data {
         try path.validate(for: .cardano(.mainnet)) // the path shape is network-independent
         return try remappingWalletKitError {
             try cardanoSignTransaction(
-                entropy: entropy,
+                root: root.raw,
                 accountIndex: path.segments[2].index,
                 signingPaths: signingPaths,
                 transactionBody: transactionBody

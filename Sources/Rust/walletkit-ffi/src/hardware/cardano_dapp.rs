@@ -542,7 +542,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::blockchain_clients::cardano::{cardano_account_xpub_from_entropy, cardano_base_address};
+    use crate::blockchain_clients::cardano::{cardano_account_xpub, cardano_base_address};
     use crate::common::Segment;
 
     const ENTROPY: [u8; 16] = [0; 16];
@@ -554,11 +554,11 @@ mod tests {
             Segment { index: 0, hardened: true },
         ]);
 
-        Account::new(&path, &cardano_account_xpub_from_entropy(ENTROPY.to_vec(), 0).unwrap(), 0, 1).unwrap()
+        Account::new(&path, &cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0).unwrap(), 0, 1).unwrap()
     }
 
     fn base_body() -> TransactionBody {
-        let xpub = cardano_account_xpub_from_entropy(ENTROPY.to_vec(), 0).unwrap();
+        let xpub = cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0).unwrap();
         let mut inputs = TransactionInputs::new();
         inputs.add(&TransactionInput::new(&TransactionHash::from_bytes(vec![1; 32]).unwrap(), 0));
         let mut outputs = TransactionOutputs::new();
@@ -650,7 +650,7 @@ mod tests {
     fn address_types_map_to_message_headers() {
         let account = account();
         let payment = cardano_serialization_lib::Address::from_bech32(&cardano_base_address(
-            cardano_account_xpub_from_entropy(ENTROPY.to_vec(), 0).unwrap(),
+            cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0).unwrap(),
             0,
             0,
             3,

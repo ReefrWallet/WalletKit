@@ -97,12 +97,79 @@ pub(crate) fn signing_failed(reason: impl ToString) -> WalletKitErrorFfi {
     }
 }
 
-pub(crate) fn account_public_key(entropy: &[u8], account_index: u32) -> Bip32PublicKey {
-    Bip32PrivateKey::from_bip39_entropy(entropy, &[])
+/// The secret a Cardano wallet derives from: BIP-39 entropy (Icarus
+/// master key) or a SLIP-39 master secret (SLIP-23 master key).
+#[derive(Clone, uniffi::Enum)]
+pub enum CardanoRootSecretFfi {
+    Bip39Entropy { entropy: Vec<u8> },
+    Slip39MasterSecret { master_secret: Vec<u8> },
+}
+
+impl CardanoRootSecretFfi {
+    #[cfg(test)]
+    pub(crate) fn bip39(entropy: Vec<u8>) -> Self {
+        Self::Bip39Entropy { entropy }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn slip39(master_secret: Vec<u8>) -> Self {
+        Self::Slip39MasterSecret { master_secret }
+    }
+}
+
+const SLIP23_HMAC_KEY: &[u8] = b"ed25519 cardano seed";
+
+/// SLIP-23 root key from a SLIP-39 master secret.
+fn slip23_root_key(master_secret: &[u8]) -> Result<Bip32PrivateKey, WalletKitErrorFfi> {
+    use hmac::{Hmac, Mac};
+    use sha2::{Digest, Sha512};
+
+    let mut mac = Hmac::<Sha512>::new_from_slice(SLIP23_HMAC_KEY).expect("hmac accepts any key length");
+    mac.update(master_secret);
+    let i = mac.finalize().into_bytes();
+
+    let mut bytes = [0u8; 96];
+    bytes[..64].copy_from_slice(&Sha512::digest(&i[..32]));
+    bytes[64..].copy_from_slice(&i[32..]);
+    bytes[0] &= 0xf8;
+    bytes[31] &= 0x1f;
+    bytes[31] |= 0x40;
+
+    Bip32PrivateKey::from_bytes(&bytes).map_err(|_| WalletKitErrorFfi::InvalidEntropy)
+}
+
+/// The single place a Cardano account key (CIP-1852 purpose, coin type
+/// 1815, `account_index`, all hardened) is derived from a root secret.
+pub(crate) fn account_private_key(
+    root: &CardanoRootSecretFfi,
+    account_index: u32,
+) -> Result<Bip32PrivateKey, WalletKitErrorFfi> {
+    let root_key = match root {
+        CardanoRootSecretFfi::Bip39Entropy { entropy } => {
+            if entropy.is_empty() {
+                return Err(WalletKitErrorFfi::InvalidEntropy);
+            }
+            Bip32PrivateKey::from_bip39_entropy(entropy, &[])
+        }
+        CardanoRootSecretFfi::Slip39MasterSecret { master_secret } => {
+            if master_secret.is_empty() {
+                return Err(WalletKitErrorFfi::InvalidEntropy);
+            }
+            slip23_root_key(master_secret)?
+        }
+    };
+
+    Ok(root_key
         .derive(CIP1852_PURPOSE | HARDENED)
         .derive(CARDANO_COIN_TYPE | HARDENED)
-        .derive(account_index | HARDENED)
-        .to_public()
+        .derive(account_index | HARDENED))
+}
+
+pub(crate) fn account_public_key(
+    root: &CardanoRootSecretFfi,
+    account_index: u32,
+) -> Result<Bip32PublicKey, WalletKitErrorFfi> {
+    Ok(account_private_key(root, account_index)?.to_public())
 }
 
 /// Trezor's Cardano protocol returns the 64-byte account extended public key
@@ -119,17 +186,10 @@ pub(crate) fn normalize_account_xpub(account_xpub: &str) -> Result<String, Walle
         .map_err(invalid_address)
 }
 
-/// Returns the public CIP-1852 account key derived from BIP-39 entropy.
+/// Returns the public CIP-1852 account key derived from `root`.
 #[uniffi::export]
-pub fn cardano_account_xpub_from_entropy(
-    entropy: Vec<u8>,
-    account_index: u32,
-) -> Result<String, WalletKitErrorFfi> {
-    if entropy.is_empty() {
-        return Err(WalletKitErrorFfi::InvalidEntropy);
-    }
-
-    Ok(account_public_key(&entropy, account_index).to_bech32())
+pub fn cardano_account_xpub(root: CardanoRootSecretFfi, account_index: u32) -> Result<String, WalletKitErrorFfi> {
+    Ok(account_public_key(&root, account_index)?.to_bech32())
 }
 
 /// Derives a Shelley base address from a public CIP-1852 account key.
@@ -186,14 +246,12 @@ pub fn cardano_stake_address(
 /// Signs a transaction body with the payment/change keys that own its inputs.
 #[uniffi::export]
 pub fn cardano_sign_transaction(
-    entropy: Vec<u8>,
+    root: CardanoRootSecretFfi,
     account_index: u32,
     signing_paths: Vec<CardanoSigningPathFfi>,
     transaction_body: Vec<u8>,
 ) -> Result<Vec<u8>, WalletKitErrorFfi> {
-    if entropy.is_empty() {
-        return Err(WalletKitErrorFfi::InvalidEntropy);
-    }
+    let account = account_private_key(&root, account_index)?;
     if signing_paths.is_empty() {
         return Err(signing_failed("Cardano transaction has no signing paths"));
     }
@@ -201,10 +259,6 @@ pub fn cardano_sign_transaction(
     let body = TransactionBody::from_bytes(transaction_body).map_err(signing_failed)?;
     let digest = Blake2b::<U32>::digest(body.to_bytes());
     let body_hash = TransactionHash::from_bytes(digest.to_vec()).map_err(signing_failed)?;
-    let account = Bip32PrivateKey::from_bip39_entropy(&entropy, &[])
-        .derive(CIP1852_PURPOSE | HARDENED)
-        .derive(CARDANO_COIN_TYPE | HARDENED)
-        .derive(account_index | HARDENED);
     let mut witnesses = Vkeywitnesses::new();
 
     for path in signing_paths {
@@ -645,6 +699,49 @@ pub fn cardano_validate_address(address: String, network_id: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn slip39_root_matches_trezor_fixtures() {
+        // common/tests/fixtures/cardano/get_public_key.slip39.json (passphrase TREZOR)
+        let shares: Vec<String> = vec![
+            "extra extend academic bishop cricket bundle tofu goat apart victim enlarge program behavior permit course armed jerky faint language modern",
+            "extra extend academic acne away best indicate impact square oasis prospect painting voting guest either argue username racism enemy eclipse",
+            "extra extend academic arcade born dive legal hush gross briefing talent drug much home firefly toxic analysis idea umbrella slice",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect();
+        let master = crate::keys::slip39_recover_encrypted_secret(shares)
+            .unwrap()
+            .decrypt("TREZOR".to_string())
+            .unwrap();
+        for (path, public_key, chain_code) in [
+            ("m/44'/1815'/0'/0/0", "bc043d84b8b891d49890edb6aced6f2d78395f255c5b6aea8878b913f83e8579", "dc3f0d2b5cccb822335ef6213fd133f4ca934151ec44a6000aee43b8a101078c"),
+            ("m/44'/1815'/0'/0/1", "24c4fe188a39103db88818bc191fd8571eae7b284ebcbdf2462bde97b058a95c", "6f7a744035f4b3ddb8f861c18446169643cc3ae85e271b4b4f0eda05cf84c65b"),
+            ("m/44'/1815'/0'/0/2", "831a63d381a8dab1e6e1ee991a4300fc70687aae5f97f4fcf92ed1b6c2bd99de", "672d6af4707aba201b7940231e83dd357f92f8851b3dfdc224ef311e1b64cdeb"),
+        ] {
+            let mut key = slip23_root_key(&master).unwrap();
+            for segment in path.trim_start_matches("m/").split('/') {
+                let hardened = segment.ends_with('\'');
+                let index: u32 = segment.trim_end_matches('\'').parse().unwrap();
+                key = key.derive(if hardened { index | HARDENED } else { index });
+            }
+            let bytes = key.to_public().as_bytes();
+            assert_eq!(hex::encode(&bytes[..32]), public_key, "{path}");
+            assert_eq!(hex::encode(&bytes[32..]), chain_code, "{path}");
+        }
+    }
+
+    #[test]
+    fn root_secret_kinds_derive_different_accounts() {
+        let entropy = CardanoRootSecretFfi::bip39(ENTROPY.to_vec());
+        let slip39 = CardanoRootSecretFfi::slip39(ENTROPY.to_vec());
+        assert_ne!(
+            cardano_account_xpub(entropy, 0).unwrap(),
+            cardano_account_xpub(slip39, 0).unwrap()
+        );
+        assert!(cardano_account_xpub(CardanoRootSecretFfi::slip39(vec![]), 0).is_err());
+    }
+
     use super::*;
 
     const ENTROPY: [u8; 16] = [0; 16];
@@ -663,19 +760,19 @@ mod tests {
 
     #[test]
     fn cip1852_account_xpub_is_deterministic_and_account_scoped() {
-        let first = cardano_account_xpub_from_entropy(ENTROPY.to_vec(), 0).unwrap();
-        let second = cardano_account_xpub_from_entropy(ENTROPY.to_vec(), 1).unwrap();
+        let first = cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0).unwrap();
+        let second = cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 1).unwrap();
 
         assert_eq!(
             first,
-            cardano_account_xpub_from_entropy(ENTROPY.to_vec(), 0).unwrap()
+            cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0).unwrap()
         );
         assert_ne!(first, second);
     }
 
     #[test]
     fn normalizes_trezor_hex_extended_public_keys_to_bech32() {
-        let xpub = cardano_account_xpub_from_entropy(ENTROPY.to_vec(), 0).unwrap();
+        let xpub = cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0).unwrap();
         let bytes = Bip32PublicKey::from_bech32(&xpub).unwrap().as_bytes();
 
         assert_eq!(normalize_account_xpub(&hex::encode(bytes)).unwrap(), xpub);
@@ -683,7 +780,7 @@ mod tests {
 
     #[test]
     fn base_address_is_valid_only_for_its_network() {
-        let xpub = cardano_account_xpub_from_entropy(ENTROPY.to_vec(), 0).unwrap();
+        let xpub = cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0).unwrap();
         let mainnet = cardano_base_address(xpub, 1, 0, 0).unwrap();
 
         assert!(cardano_validate_address(mainnet.clone(), 1));
@@ -692,7 +789,7 @@ mod tests {
 
     #[test]
     fn ada_transfer_builds_and_signs_a_payment_witness() {
-        let xpub = cardano_account_xpub_from_entropy(ENTROPY.to_vec(), 0).unwrap();
+        let xpub = cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0).unwrap();
         let sender = cardano_base_address(xpub.clone(), 0, 0, 0).unwrap();
         let recipient = cardano_base_address(xpub, 0, 0, 1).unwrap();
         let unsigned = cardano_build_transfer(
@@ -712,7 +809,7 @@ mod tests {
         )
         .unwrap();
         let signed = cardano_sign_transaction(
-            ENTROPY.to_vec(),
+            crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()),
             0,
             unsigned.signing_paths,
             unsigned.transaction_body.clone(),
@@ -726,7 +823,7 @@ mod tests {
 
     #[test]
     fn native_asset_transfer_preserves_asset_signing_context() {
-        let xpub = cardano_account_xpub_from_entropy(ENTROPY.to_vec(), 0).unwrap();
+        let xpub = cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0).unwrap();
         let sender = cardano_base_address(xpub.clone(), 0, 0, 0).unwrap();
         let recipient = cardano_base_address(xpub, 0, 0, 1).unwrap();
         let asset = CardanoAssetFfi {
@@ -759,7 +856,7 @@ mod tests {
 
     #[test]
     fn assembled_device_witness_preserves_the_canonical_transaction_body() {
-        let xpub = cardano_account_xpub_from_entropy(ENTROPY.to_vec(), 0).unwrap();
+        let xpub = cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0).unwrap();
         let sender = cardano_base_address(xpub.clone(), 0, 0, 0).unwrap();
         let recipient = cardano_base_address(xpub, 0, 0, 1).unwrap();
         let unsigned = cardano_build_transfer(
@@ -778,7 +875,7 @@ mod tests {
             }],
         ).unwrap();
         let signed = cardano_sign_transaction(
-            ENTROPY.to_vec(),
+            crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()),
             0,
             unsigned.signing_paths,
             unsigned.transaction_body.clone(),
@@ -800,7 +897,7 @@ mod tests {
     }
 
     fn staking_fixture() -> (String, String, String) {
-        let xpub = cardano_account_xpub_from_entropy(ENTROPY.to_vec(), 0).unwrap();
+        let xpub = cardano_account_xpub(crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()), 0).unwrap();
         (
             cardano_base_address(xpub.clone(), 0, 0, 0).unwrap(),
             cardano_stake_address(xpub.clone(), 0).unwrap(),
@@ -1009,7 +1106,7 @@ mod tests {
         assert_eq!(Transaction::from_bytes(unsigned).unwrap().body().to_bytes(), body);
 
         let signed = cardano_sign_transaction(
-            ENTROPY.to_vec(),
+            crate::blockchain_clients::cardano::CardanoRootSecretFfi::bip39(ENTROPY.to_vec()),
             0,
             transaction.unsigned.signing_paths,
             body.clone(),
