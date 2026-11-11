@@ -190,13 +190,25 @@ struct EthereumABITests {
         #expect(data.count == 4 + 32 + 32 + 32 + 96 + 32 + 32)
     }
 
+    @Test func encodeAggregate3OffsetsAreRelativeToTheFirstElement() {
+        let data = EthereumABI.encodeAggregate3([
+            (target: someAddress, allowFailure: true, callData: Data([0x01])),
+            (target: someAddress, allowFailure: true, callData: Data([0x02]))
+        ])
+        let heads = data.dropFirst(4 + 32 + 32)
+
+        // Each element is 4 words + 1 padded data word = 160 bytes; two head words precede them.
+        #expect(EthereumABI.decodeUInt256(heads.prefix(32)) == 64)
+        #expect(EthereumABI.decodeUInt256(heads.dropFirst(32).prefix(32)) == 64 + 160)
+    }
+
     @Test func decodeAggregate3ReadsSuccessFlagsAndReturnData() throws {
         let first = Data(repeating: 0, count: 31) + Data([1])
             + word(BigUInt(64)) + word(BigUInt(32)) + Data(repeating: 0, count: 31) + Data([7])
         let second = Data(repeating: 0, count: 32)
             + word(BigUInt(64)) + word(BigUInt(0))
         let data = word(BigUInt(32)) + word(BigUInt(2))
-            + word(BigUInt(96)) + word(BigUInt(224)) + first + second
+            + word(BigUInt(64)) + word(BigUInt(192)) + first + second
 
         let results = try EthereumABI.decodeAggregate3(data)
         #expect(results.count == 2)

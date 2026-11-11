@@ -253,4 +253,102 @@ struct EthereumRPCClientTests {
 
         #expect(result == EthereumABI.keccak256(signedTransaction).hexEncoded)
     }
+
+    // MARK: - erc20Allowances
+
+    @Test func erc20AllowancesReadsOneMulticallAndMapsFailuresToNil() async throws {
+        let first = Data(repeating: 0, count: 31) + Data([1])
+            + word(BigUInt(64)) + word(BigUInt(32)) + word(BigUInt(7))
+        let second = Data(repeating: 0, count: 32) + word(BigUInt(64)) + word(BigUInt(0))
+        let aggregate = word(BigUInt(32)) + word(BigUInt(2))
+            + word(BigUInt(64)) + word(BigUInt(192)) + first + second
+        let stub = stubbedResult("0x" + aggregate.map { String(format: "%02x", $0) }.joined())
+
+        let allowances = try await makeClient(stub).erc20Allowances(
+            pairs: [(someAddress, someOtherAddress), (someOtherAddress, someAddress)],
+            owner: someAddress
+        )
+
+        #expect(allowances == [7, nil])
+
+        let body = try #require(stub.capturedBody.flatMap { String(data: $0, encoding: .utf8) })
+        let selector = EthereumABI.selector("aggregate3((address,bool,bytes)[])")
+            .map { String(format: "%02x", $0) }.joined()
+        #expect(body.contains(selector))
+    }
+
+    @Test func erc20AllowancesOfNoPairsSendsNothing() async throws {
+        let stub = stubbedResult("0x")
+
+        let allowances = try await makeClient(stub).erc20Allowances(pairs: [], owner: someAddress)
+
+        #expect(allowances.isEmpty)
+        #expect(stub.capturedBody == nil)
+    }
+
+    // MARK: - erc20TokenInfos
+
+    private func abiString(_ text: String) -> Data {
+        let bytes = Data(text.utf8)
+        let padded = bytes + Data(repeating: 0, count: (32 - bytes.count % 32) % 32)
+
+        return word(BigUInt(32)) + word(BigUInt(bytes.count)) + padded
+    }
+
+    /// An `aggregate3` result of successful calls returning `values`.
+    private func aggregate(_ values: [Data?]) -> String {
+        let items = values.map { value -> Data in
+            let data = value ?? Data()
+            let padded = data + Data(repeating: 0, count: (32 - data.count % 32) % 32)
+
+            return word(BigUInt(value == nil ? 0 : 1)) + word(BigUInt(64)) + word(BigUInt(data.count)) + padded
+        }
+
+        var offset = items.count * 32
+        var offsets = Data()
+
+        for item in items {
+            offsets += word(BigUInt(offset))
+            offset += item.count
+        }
+
+        let body = word(BigUInt(32)) + word(BigUInt(items.count)) + offsets + items.reduce(Data(), +)
+
+        return "0x" + body.map { String(format: "%02x", $0) }.joined()
+    }
+
+    @Test func erc20TokenInfosDecodesNameSymbolAndDecimalsPerToken() async throws {
+        let stub = stubbedResult(aggregate([
+            abiString("Tether"), abiString("USDT"), word(BigUInt(6)),
+            abiString("Dai"), abiString("DAI"), word(BigUInt(18))
+        ]))
+
+        let infos = try await makeClient(stub).erc20TokenInfos(tokens: [someAddress, someOtherAddress])
+
+        #expect(infos.count == 2)
+        #expect(infos[0]?.name == "Tether")
+        #expect(infos[0]?.symbol == "USDT")
+        #expect(infos[0]?.decimals == 6)
+        #expect(infos[1]?.symbol == "DAI")
+        #expect(infos[1]?.decimals == 18)
+    }
+
+    @Test func erc20TokenInfosIsNilForATokenWithAFailedCall() async throws {
+        let stub = stubbedResult(aggregate([
+            abiString("Tether"), abiString("USDT"), word(BigUInt(6)),
+            abiString("Broken"), nil, word(BigUInt(18))
+        ]))
+
+        let infos = try await makeClient(stub).erc20TokenInfos(tokens: [someAddress, someOtherAddress])
+
+        #expect(infos[0] != nil)
+        #expect(infos[1] == nil)
+    }
+
+    @Test func erc20TokenInfosOfNoTokensSendsNothing() async throws {
+        let stub = stubbedResult("0x")
+
+        #expect(try await makeClient(stub).erc20TokenInfos(tokens: []).isEmpty)
+        #expect(stub.capturedBody == nil)
+    }
 }

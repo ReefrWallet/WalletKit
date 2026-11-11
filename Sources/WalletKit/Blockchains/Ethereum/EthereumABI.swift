@@ -72,9 +72,9 @@ public enum EthereumABI {
         }
 
         let offsets = calls.indices.reduce(into: Data()) { result, index in
-            // Dynamic-array element offsets are relative to the array's length
-            // word, so the first element follows the length plus all offsets.
-            let offset = 32 + calls.count * 32 + encodedCalls[..<index].reduce(0) { $0 + $1.count }
+            // Dynamic-array element offsets are relative to the start of the
+            // array's elements, i.e. just after the length word.
+            let offset = calls.count * 32 + encodedCalls[..<index].reduce(0) { $0 + $1.count }
 
             result += word(BigUInt(offset))
         }
@@ -109,7 +109,7 @@ public enum EthereumABI {
             let relativeOffset = Int(
                 exactly: decodeUInt256(data[headsStart + index * 32..<headsStart + (index + 1) * 32])
             ) ?? -1
-            let tupleStart = arrayStart + relativeOffset
+            let tupleStart = headsStart + relativeOffset
             guard relativeOffset >= 0, tupleStart + 64 <= data.endIndex else {
                 throw BlockchainClientError.decodingFailed(reason: "aggregate3 response has an invalid tuple offset")
             }

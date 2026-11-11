@@ -134,7 +134,7 @@ struct Slip39Tests {
 struct Slip39ShareSetTests {
     /// A 2-of-3 backup (single group) and a 2-group backup from the vectors.
     private static func shares(containing count: Int, groups: Int? = nil) throws -> [Slip39Share] {
-        let candidates = try file.vectors.filter { !$0.masterSecret.isEmpty && $0.mnemonics.count == count }
+        let candidates = file.vectors.filter { !$0.masterSecret.isEmpty && $0.mnemonics.count == count }
         let decoded = try candidates.map { try $0.mnemonics.map(Slip39.decodeShare) }
         return try #require(decoded.first { groups == nil || Set($0.map(\.groupIndex)).count == groups })
     }
