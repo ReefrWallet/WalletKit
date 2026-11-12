@@ -9,11 +9,13 @@
 mod cardano_dapp;
 mod delegate;
 mod device;
+mod logger;
 mod manager;
 mod types;
 
 pub use delegate::HardwareDeviceDelegateFfi;
 pub use device::{CardanoInputFfi, CardanoOutputFfi, CardanoSignTxFfi, HardwareCardanoAssetFfi, tron_raw_data, HardwareDeviceFfi};
+pub use logger::{set_hardware_logger, HardwareLoggerFfi};
 pub use manager::HardwareDeviceManagerFfi;
 pub use types::{
     HardwareButtonRequestFfi, HardwareDeviceInfoFfi, HardwareInputRequestFfi, HardwareTransportKindFfi, HardwareVendorFfi,

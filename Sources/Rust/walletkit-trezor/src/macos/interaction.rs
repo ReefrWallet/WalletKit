@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use trezor_client::{client::common::TrezorResponse, TrezorMessage};
-use walletkit_hardware::{HardwareButtonRequest, HardwareDeviceDelegate, HardwareError, HardwareInputRequest};
+use walletkit_hardware::{hw_log, HardwareButtonRequest, HardwareDeviceDelegate, HardwareError, HardwareInputRequest};
 
 use super::error::map_trezor_error;
 
@@ -32,13 +32,21 @@ pub(super) fn drive_interaction<T, R: TrezorMessage>(
     let mut pin_attempt: u32 = 0;
     loop {
         resp = match resp {
-            TrezorResponse::Ok(value) => return Ok(value),
-            TrezorResponse::Failure(failure) => return Err(super::error::map_failure(&failure)),
+            TrezorResponse::Ok(value) => {
+                hw_log!("interaction: ok");
+                return Ok(value);
+            }
+            TrezorResponse::Failure(failure) => {
+                hw_log!("interaction: device failure {:?}: {}", failure.code(), failure.message());
+                return Err(super::error::map_failure(&failure));
+            }
             TrezorResponse::ButtonRequest(req) => {
+                hw_log!("interaction: button request ({button_kind:?})");
                 runtime.block_on(delegate.waiting_for_confirmation(button_kind.clone()));
                 req.ack().map_err(map_trezor_error)?
             }
             TrezorResponse::PinMatrixRequest(req) => {
+                hw_log!("interaction: PIN request");
                 pin_attempt += 1;
                 let pin = runtime.block_on(delegate.needs_input(HardwareInputRequest::Pin { attempt: pin_attempt }));
                 match pin {
@@ -47,6 +55,7 @@ pub(super) fn drive_interaction<T, R: TrezorMessage>(
                 }
             }
             TrezorResponse::PassphraseRequest(req) => {
+                hw_log!("interaction: passphrase request");
                 // The firmware's legacy `_on_device` request flag (< 2.3.0) no
                 // longer exists in the protocol; the host always supplies it.
                 let passphrase = runtime.block_on(delegate.needs_input(HardwareInputRequest::Passphrase));

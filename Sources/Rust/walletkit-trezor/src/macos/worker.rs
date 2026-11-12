@@ -1,15 +1,18 @@
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    mpsc, Arc,
+use std::{
+    panic::{catch_unwind, AssertUnwindSafe},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc, Mutex,
+    },
 };
 
 use tokio::sync::oneshot;
-use trezor_client::{protos, AvailableDevice};
+use trezor_client::{protos, AvailableDevice, Trezor};
 use walletkit_hardware::{
     CardanoDappTxRequest, CardanoDappTxSignature, CardanoMessageRequest, CardanoMessageSignature,
     CardanoTxFields, CardanoWitness, EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     EthereumTypedDataFields, HardwareBitcoinNetwork, HardwareButtonRequest, HardwareDeviceDelegate, HardwareError,
-    HardwarePathSegment, SolanaTxFields, TronTxFields,
+    HardwarePathSegment, SolanaTxFields, TronTxFields, hw_log,
 };
 
 use super::{error::map_trezor_error, interaction::drive_interaction};
@@ -78,6 +81,29 @@ enum Command {
     Disconnect,
 }
 
+impl Command {
+    fn name(&self) -> &'static str {
+        match self {
+            Command::PublicKey { .. } => "PublicKey",
+            Command::EthereumSignTx { .. } => "EthereumSignTx",
+            Command::EthereumSignTxEip1559 { .. } => "EthereumSignTxEip1559",
+            Command::EthereumSignMessage { .. } => "EthereumSignMessage",
+            Command::EthereumSignTypedData { .. } => "EthereumSignTypedData",
+            Command::TronSignTx { .. } => "TronSignTx",
+            Command::SolanaPublicKey { .. } => "SolanaPublicKey",
+            Command::SolanaSignTx { .. } => "SolanaSignTx",
+            Command::SolanaSignMessage { .. } => "SolanaSignMessage",
+            Command::CardanoXpub { .. } => "CardanoXpub",
+            Command::CardanoSignTx { .. } => "CardanoSignTx",
+            Command::CardanoSignDappTx { .. } => "CardanoSignDappTx",
+            Command::CardanoSignMessage { .. } => "CardanoSignMessage",
+            Command::BitcoinXpub { .. } => "BitcoinXpub",
+            Command::BitcoinSignPsbt { .. } => "BitcoinSignPsbt",
+            Command::Disconnect => "Disconnect",
+        }
+    }
+}
+
 /// Owns the device conversation on a dedicated OS thread, for as long as
 /// the device stays connected.
 ///
@@ -95,6 +121,8 @@ enum Command {
 pub(super) struct DeviceWorker {
     command_tx: mpsc::Sender<Command>,
     connected: Arc<AtomicBool>,
+    /// Why the worker thread died, if it panicked.
+    failure: Arc<Mutex<Option<String>>>,
 }
 
 impl DeviceWorker {
@@ -113,13 +141,18 @@ impl DeviceWorker {
         let (setup_tx, setup_rx) = oneshot::channel();
         let connected = Arc::new(AtomicBool::new(true));
         let connected_for_thread = connected.clone();
+        let failure = Arc::new(Mutex::new(None));
+        let failure_for_thread = failure.clone();
 
         std::thread::spawn(move || {
+            let _connected_guard = ConnectedGuard(connected_for_thread.clone());
+            hw_log!("worker: connecting to {available}");
             drain_stale_replies(&available);
 
             let mut trezor = match available.connect().map_err(map_trezor_error) {
                 Ok(trezor) => trezor,
                 Err(err) => {
+                    hw_log!("worker: connect failed: {err:?}");
                     let _ = setup_tx.send(Err(err));
                     connected_for_thread.store(false, Ordering::SeqCst);
                     return;
@@ -140,6 +173,7 @@ impl DeviceWorker {
             });
 
             let setup_ok = setup_result.is_ok();
+            hw_log!("worker: handshake ok: {setup_ok}");
             let _ = setup_tx.send(setup_result);
             if !setup_ok {
                 connected_for_thread.store(false, Ordering::SeqCst);
@@ -147,105 +181,52 @@ impl DeviceWorker {
             }
 
             for command in command_rx {
-                match command {
-                    Command::PublicKey { path, reply } => {
-                        let result = super::device::get_public_key(&mut trezor, &path, &delegate, &runtime);
-                        let _ = reply.send(result);
+                if matches!(command, Command::Disconnect) {
+                    break;
+                }
+
+                let name = command.name();
+                hw_log!("worker: {name} started");
+                let outcome = catch_unwind(AssertUnwindSafe(|| handle(command, &mut trezor, &delegate, &runtime)));
+                if let Err(payload) = outcome {
+                    let reason = format!("{name} panicked: {}", panic_message(payload.as_ref()));
+                    hw_log!("worker: {reason}");
+                    if let Ok(mut failure) = failure_for_thread.lock() {
+                        *failure = Some(reason);
                     }
-                    Command::EthereumSignTx { path, fields, reply } => {
-                        let result =
-                            super::device::ethereum_sign_tx(&mut trezor, &path, fields, &delegate, &runtime);
-                        let _ = reply.send(result);
-                    }
-                    Command::EthereumSignTxEip1559 { path, fields, reply } => {
-                        let result = super::device::ethereum_sign_tx_eip1559(
-                            &mut trezor,
-                            &path,
-                            fields,
-                            &delegate,
-                            &runtime,
-                        );
-                        let _ = reply.send(result);
-                    }
-                    Command::EthereumSignMessage { path, message, reply } => {
-                        let result =
-                            super::device::ethereum_sign_message(&mut trezor, &path, message, &delegate, &runtime);
-                        let _ = reply.send(result);
-                    }
-                    Command::EthereumSignTypedData { path, fields, reply } => {
-                        let result =
-                            super::device::ethereum_sign_typed_data(&mut trezor, &path, fields, &delegate, &runtime);
-                        let _ = reply.send(result);
-                    }
-                    Command::TronSignTx { path, fields, reply } => {
-                        let result = super::device::tron_sign_tx(&mut trezor, &path, fields, &delegate, &runtime);
-                        let _ = reply.send(result);
-                    }
-                    Command::SolanaPublicKey { path, reply } => {
-                        let result = super::device::solana_get_public_key(&mut trezor, &path, &delegate, &runtime);
-                        let _ = reply.send(result);
-                    }
-                    Command::SolanaSignTx { path, fields, reply } => {
-                        let result = super::device::solana_sign_tx(&mut trezor, &path, fields, &delegate, &runtime);
-                        let _ = reply.send(result);
-                    }
-                    Command::SolanaSignMessage { path, message, signers, reply } => {
-                        let result = super::device::solana_sign_message(
-                            &mut trezor,
-                            &path,
-                            message,
-                            signers,
-                            &delegate,
-                            &runtime,
-                        );
-                        let _ = reply.send(result);
-                    }
-                    Command::CardanoXpub { path, reply } => {
-                        let result = super::device::cardano_xpub(&mut trezor, &path, &delegate, &runtime);
-                        let _ = reply.send(result);
-                    }
-                    Command::CardanoSignTx { fields, reply } => {
-                        let result = super::device::cardano_sign_tx(&mut trezor, fields, &delegate, &runtime);
-                        let _ = reply.send(result);
-                    }
-                    Command::CardanoSignDappTx { request, reply } => {
-                        let result = super::device::cardano_sign_dapp_tx(&mut trezor, request, &delegate, &runtime);
-                        let _ = reply.send(result);
-                    }
-                    Command::CardanoSignMessage { request, reply } => {
-                        let result = super::device::cardano_sign_message(&mut trezor, request, &delegate, &runtime);
-                        let _ = reply.send(result);
-                    }
-                    Command::BitcoinXpub { path, reply } => {
-                        let result = super::device::bitcoin_xpub(&mut trezor, &path, &delegate, &runtime);
-                        let _ = reply.send(result);
-                    }
-                    Command::BitcoinSignPsbt { psbt, network, reply } => {
-                        let result =
-                            super::device::bitcoin_sign_psbt(&mut trezor, &psbt, network, &delegate, &runtime);
-                        let _ = reply.send(result);
-                    }
-                    Command::Disconnect => break,
+                    break;
                 }
             }
 
             connected_for_thread.store(false, Ordering::SeqCst);
+            hw_log!("worker: stopped");
             runtime.block_on(delegate.did_disconnect());
         });
 
-        (DeviceWorker { command_tx, connected }, setup_rx)
+        (DeviceWorker { command_tx, connected, failure }, setup_rx)
     }
 
     pub(super) fn is_connected(&self) -> bool {
         self.connected.load(Ordering::SeqCst)
     }
 
+    /// The error for a command whose reply never came: the worker thread
+    /// panicked (reported as a failure, not a disconnect) or is gone.
+    fn worker_lost(&self) -> HardwareError {
+        let reason = self.failure.lock().ok().and_then(|failure| failure.clone());
+        hw_log!("worker: command lost, panic: {reason:?}");
+        match reason {
+            Some(reason) => HardwareError::SigningFailed { reason },
+            None => HardwareError::Disconnected,
+        }
+    }
+
     pub(super) async fn public_key(&self, path: Vec<HardwarePathSegment>) -> Result<Vec<u8>, HardwareError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
             .send(Command::PublicKey { path, reply: reply_tx })
-            .map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+            .map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn ethereum_sign_tx(
@@ -256,8 +237,8 @@ impl DeviceWorker {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
             .send(Command::EthereumSignTx { path, fields, reply: reply_tx })
-            .map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+            .map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn ethereum_sign_tx_eip1559(
@@ -268,8 +249,8 @@ impl DeviceWorker {
         let (reply_tx, reply_rx) = oneshot::channel::<Result<EthereumEIP1559Signature, HardwareError>>();
         self.command_tx
             .send(Command::EthereumSignTxEip1559 { path, fields, reply: reply_tx })
-            .map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+            .map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn ethereum_sign_message(
@@ -280,8 +261,8 @@ impl DeviceWorker {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
             .send(Command::EthereumSignMessage { path, message, reply: reply_tx })
-            .map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+            .map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn ethereum_sign_typed_data(
@@ -292,8 +273,8 @@ impl DeviceWorker {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
             .send(Command::EthereumSignTypedData { path, fields, reply: reply_tx })
-            .map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+            .map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn tron_sign_tx(
@@ -304,16 +285,16 @@ impl DeviceWorker {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
             .send(Command::TronSignTx { path, fields, reply: reply_tx })
-            .map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+            .map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn solana_public_key(&self, path: Vec<HardwarePathSegment>) -> Result<Vec<u8>, HardwareError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
             .send(Command::SolanaPublicKey { path, reply: reply_tx })
-            .map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+            .map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn solana_sign_tx(
@@ -324,8 +305,8 @@ impl DeviceWorker {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
             .send(Command::SolanaSignTx { path, fields, reply: reply_tx })
-            .map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+            .map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn solana_sign_message(
@@ -337,40 +318,40 @@ impl DeviceWorker {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
             .send(Command::SolanaSignMessage { path, message, signers, reply: reply_tx })
-            .map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+            .map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn cardano_xpub(&self, path: Vec<HardwarePathSegment>) -> Result<String, HardwareError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.command_tx.send(Command::CardanoXpub { path, reply: reply_tx }).map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+        self.command_tx.send(Command::CardanoXpub { path, reply: reply_tx }).map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn cardano_sign_tx(&self, fields: CardanoTxFields) -> Result<Vec<CardanoWitness>, HardwareError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.command_tx.send(Command::CardanoSignTx { fields, reply: reply_tx }).map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+        self.command_tx.send(Command::CardanoSignTx { fields, reply: reply_tx }).map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn cardano_sign_dapp_tx(&self, request: CardanoDappTxRequest) -> Result<CardanoDappTxSignature, HardwareError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.command_tx.send(Command::CardanoSignDappTx { request, reply: reply_tx }).map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+        self.command_tx.send(Command::CardanoSignDappTx { request, reply: reply_tx }).map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn cardano_sign_message(&self, request: CardanoMessageRequest) -> Result<CardanoMessageSignature, HardwareError> {
         let (reply_tx, reply_rx) = oneshot::channel();
-        self.command_tx.send(Command::CardanoSignMessage { request, reply: reply_tx }).map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+        self.command_tx.send(Command::CardanoSignMessage { request, reply: reply_tx }).map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn bitcoin_xpub(&self, path: Vec<HardwarePathSegment>) -> Result<String, HardwareError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
             .send(Command::BitcoinXpub { path, reply: reply_tx })
-            .map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+            .map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn bitcoin_sign_psbt(
@@ -381,8 +362,8 @@ impl DeviceWorker {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.command_tx
             .send(Command::BitcoinSignPsbt { psbt, network, reply: reply_tx })
-            .map_err(|_| HardwareError::Disconnected)?;
-        reply_rx.await.map_err(|_| HardwareError::Disconnected)?
+            .map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
     pub(super) async fn disconnect(&self) {
@@ -391,6 +372,119 @@ impl DeviceWorker {
         // lets the worker thread run `did_disconnect` deterministically
         // even while other clones of this handle are still alive.
         let _ = self.command_tx.send(Command::Disconnect);
+    }
+}
+
+/// Runs one command to completion and sends its reply.
+fn handle(
+    command: Command,
+    trezor: &mut Trezor,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) {
+    match command {
+        Command::PublicKey { path, reply } => {
+            let result = super::device::get_public_key(trezor, &path, delegate, runtime);
+            reply_with(reply, result);
+        }
+        Command::EthereumSignTx { path, fields, reply } => {
+            let result =
+                super::device::ethereum_sign_tx(trezor, &path, fields, delegate, runtime);
+            reply_with(reply, result);
+        }
+        Command::EthereumSignTxEip1559 { path, fields, reply } => {
+            let result = super::device::ethereum_sign_tx_eip1559(
+                trezor,
+                &path,
+                fields,
+                delegate,
+                runtime,
+            );
+            reply_with(reply, result);
+        }
+        Command::EthereumSignMessage { path, message, reply } => {
+            let result =
+                super::device::ethereum_sign_message(trezor, &path, message, delegate, runtime);
+            reply_with(reply, result);
+        }
+        Command::EthereumSignTypedData { path, fields, reply } => {
+            let result =
+                super::device::ethereum_sign_typed_data(trezor, &path, fields, delegate, runtime);
+            reply_with(reply, result);
+        }
+        Command::TronSignTx { path, fields, reply } => {
+            let result = super::device::tron_sign_tx(trezor, &path, fields, delegate, runtime);
+            reply_with(reply, result);
+        }
+        Command::SolanaPublicKey { path, reply } => {
+            let result = super::device::solana_get_public_key(trezor, &path, delegate, runtime);
+            reply_with(reply, result);
+        }
+        Command::SolanaSignTx { path, fields, reply } => {
+            let result = super::device::solana_sign_tx(trezor, &path, fields, delegate, runtime);
+            reply_with(reply, result);
+        }
+        Command::SolanaSignMessage { path, message, signers, reply } => {
+            let result = super::device::solana_sign_message(
+                trezor,
+                &path,
+                message,
+                signers,
+                delegate,
+                runtime,
+            );
+            reply_with(reply, result);
+        }
+        Command::CardanoXpub { path, reply } => {
+            let result = super::device::cardano_xpub(trezor, &path, delegate, runtime);
+            reply_with(reply, result);
+        }
+        Command::CardanoSignTx { fields, reply } => {
+            let result = super::device::cardano_sign_tx(trezor, fields, delegate, runtime);
+            reply_with(reply, result);
+        }
+        Command::CardanoSignDappTx { request, reply } => {
+            let result = super::device::cardano_sign_dapp_tx(trezor, request, delegate, runtime);
+            reply_with(reply, result);
+        }
+        Command::CardanoSignMessage { request, reply } => {
+            let result = super::device::cardano_sign_message(trezor, request, delegate, runtime);
+            reply_with(reply, result);
+        }
+        Command::BitcoinXpub { path, reply } => {
+            let result = super::device::bitcoin_xpub(trezor, &path, delegate, runtime);
+            reply_with(reply, result);
+        }
+        Command::BitcoinSignPsbt { psbt, network, reply } => {
+            let result =
+                super::device::bitcoin_sign_psbt(trezor, &psbt, network, delegate, runtime);
+            reply_with(reply, result);
+        }
+        Command::Disconnect => {}
+    }
+}
+
+fn reply_with<T>(reply: oneshot::Sender<Result<T, HardwareError>>, result: Result<T, HardwareError>) {
+    if let Err(error) = &result {
+        hw_log!("worker: command failed: {error:?}");
+    }
+    let _ = reply.send(result);
+}
+
+fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+    payload
+        .downcast_ref::<&str>()
+        .map(|message| (*message).to_string())
+        .or_else(|| payload.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "unknown panic".to_string())
+}
+
+/// Marks the worker disconnected however its thread exits, panics included.
+struct ConnectedGuard(Arc<AtomicBool>);
+
+impl Drop for ConnectedGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
     }
 }
 

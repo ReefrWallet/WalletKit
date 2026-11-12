@@ -10,6 +10,7 @@ mod delegate;
 mod device;
 mod error;
 mod info;
+mod log;
 mod manager;
 mod path;
 
@@ -26,5 +27,6 @@ pub use device::{
 };
 pub use error::HardwareError;
 pub use info::{HardwareDeviceInfo, HardwareTransportKind, HardwareVendor};
+pub use log::{log, set_logger, HardwareLogger};
 pub use manager::HardwareDeviceManager;
 pub use path::HardwarePathSegment;
