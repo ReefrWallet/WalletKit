@@ -20,7 +20,7 @@ Create and restore wallets, derive accounts, read blockchain state, and build, s
 transactions with software-held or hardware-held keys.
 
 - BIP-39 mnemonics, BIP-32 secp256k1 and SLIP-0010 ed25519 derivation
-- Bitcoin, Cardano, Ethereum and EVM chains, Solana, Sui, and Tron
+- Bitcoin, Cardano, Ethereum and EVM chains, Solana, Sui, TON, and Tron
 - Balances, transaction history, fee estimation, and transaction construction
 - Local signing, and Trezor hardware wallets over USB on macOS
 

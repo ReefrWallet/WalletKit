@@ -20,6 +20,7 @@ public extension TokenInfo {
     static let ada = TokenInfo(decimals: 6, name: "Ada", isNative: true, symbol: "ADA")
     static let aptos = TokenInfo(decimals: 8, name: "Aptos", isNative: true, symbol: "APT")
     static let bitcoin = TokenInfo(decimals: 8, name: "Bitcoin", isNative: true, symbol: "BTC")
+    static let gram = TokenInfo(decimals: 9, name: "Gram", isNative: true, symbol: "GRAM")
     static let solana = TokenInfo(decimals: 9, name: "Solana", isNative: true, symbol: "SOL")
     static let sui = TokenInfo(decimals: 9, name: "Sui", isNative: true, symbol: "SUI")
     static let tron = TokenInfo(decimals: 6, name: "Tron", isNative: true, symbol: "TRX")

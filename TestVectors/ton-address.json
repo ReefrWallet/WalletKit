@@ -1,0 +1,46 @@
+[
+  {
+    "label": "seed-11-mainnet",
+    "network": "mainnet",
+    "privateKey": "1111111111111111111111111111111111111111111111111111111111111111",
+    "publicKey": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "address": "UQA6mmlmbvTArSX2TKXXLms7q7saf0UZzGu3Ub66VXPZHdAE",
+    "raw": "0:3a9a69666ef4c0ad25f64ca5d72e6b3babbb1a7f4519cc6bb751beba5573d91d",
+    "stateInitHash": "3a9a69666ef4c0ad25f64ca5d72e6b3babbb1a7f4519cc6bb751beba5573d91d",
+    "codeHash": "20834b7b72b112147e1b2fb457b84e74d1a30f04f737d4f62a668e9552d2b72f",
+    "dataHash": "9337535dabfa097233a66bae395c1cee462f5d485661bdaaa43c6bf3d7165cb2"
+  },
+  {
+    "label": "seed-11-testnet",
+    "network": "testnet",
+    "privateKey": "1111111111111111111111111111111111111111111111111111111111111111",
+    "publicKey": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
+    "address": "0QCq0NPGN63dQgdsousJbfeBKNRfapoJXRoie0h3taAsQakX",
+    "raw": "0:aad0d3c637addd42076ca2eb096df78128d45f6a9a095d1a227b4877b5a02c41",
+    "stateInitHash": "aad0d3c637addd42076ca2eb096df78128d45f6a9a095d1a227b4877b5a02c41",
+    "codeHash": "20834b7b72b112147e1b2fb457b84e74d1a30f04f737d4f62a668e9552d2b72f",
+    "dataHash": "bde34cf2d7d3be536e87217567759dc4bd77b5fb70a8e9c02b4bf47d6acbbaa9"
+  },
+  {
+    "label": "seed-22-mainnet",
+    "network": "mainnet",
+    "privateKey": "2222222222222222222222222222222222222222222222222222222222222222",
+    "publicKey": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "address": "UQC9rVYftQutjD6pxHKHfrISz1EoyQLeF95ZNP1ovFGRlMRo",
+    "raw": "0:bdad561fb50bad8c3ea9c472877eb212cf5128c902de17de5934fd68bc519194",
+    "stateInitHash": "bdad561fb50bad8c3ea9c472877eb212cf5128c902de17de5934fd68bc519194",
+    "codeHash": "20834b7b72b112147e1b2fb457b84e74d1a30f04f737d4f62a668e9552d2b72f",
+    "dataHash": "45495f434f22f435ca4e0d20b90f7046a17635d2f22c982bfe4924db7649b0d2"
+  },
+  {
+    "label": "seed-22-testnet",
+    "network": "testnet",
+    "privateKey": "2222222222222222222222222222222222222222222222222222222222222222",
+    "publicKey": "a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0",
+    "address": "0QCHZLdKN0H-MFuo6QpigHjstp9i9Y_-Qb5tefebm1GPrJS4",
+    "raw": "0:8764b74a3741fe305ba8e90a628078ecb69f62f58ffe41be6d79f79b9b518fac",
+    "stateInitHash": "8764b74a3741fe305ba8e90a628078ecb69f62f58ffe41be6d79f79b9b518fac",
+    "codeHash": "20834b7b72b112147e1b2fb457b84e74d1a30f04f737d4f62a668e9552d2b72f",
+    "dataHash": "25c2474cbf6c74744d2e8c8b2e0e735db4a92d79ee8d5ae5b21be536ce08c952"
+  }
+]

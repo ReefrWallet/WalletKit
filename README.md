@@ -20,7 +20,7 @@ WalletKit is a Swift toolkit for building non-custodial multi-chain crypto walle
 
 ## Supported blockchains
 
-All seven chains support local transaction signing. Trezor transaction signing is available for Bitcoin, Cardano,
+All eight chains support local transaction signing. Trezor transaction signing is available for Bitcoin, Cardano,
 EVM chains, Solana, and Tron.
 
 - **Aptos** — APT, Coin, and Fungible Assets via REST and GraphQL, plus Wallet Standard account authenticators.
@@ -29,6 +29,7 @@ EVM chains, Solana, and Tron.
 - **Ethereum and EVM chains** — ERC-20 tokens and approval events, contract calls, and EIP-191 and EIP-712 signing.
 - **Solana** — SPL Token, Token-2022, message signing, and native staking.
 - **Sui** — gRPC, programmable transactions, and native staking.
+- **TON** — Gram on V5R1 wallets via toncenter, deployment on first send, and a restart-safe send pipeline. Software signing only.
 - **Tron** — TRC-20 via TronGrid, optional TronScan history, and Stake 2.0.
 
 ## Requirements

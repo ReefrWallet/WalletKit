@@ -1,7 +1,7 @@
 # WalletKit — Rust workspace
 
 - `walletkit-ffi` — the UniFFI bridge for key management, chain-specific
-  primitives for Aptos, Bitcoin, Cardano, Ethereum/EVM, Solana, and Sui,
+  primitives for Aptos, Bitcoin, Cardano, Ethereum/EVM, Solana, Sui, and TON,
   plus Tron transaction encoding and Trezor integration. Network clients
   live in Swift.
 - `walletkit-hardware` — shared hardware wallet traits and types.

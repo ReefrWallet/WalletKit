@@ -47,6 +47,13 @@ public enum BlockchainTransactionBuilderOptions: Sendable {
     /// Bandwidth. This is a spending limit, not a validator priority fee.
     case tronFeeLimit(UInt64?)
 
+    /// Forces the bounce flag of a TON transfer. Without it the recipient's friendly-address
+    /// tag decides; a raw address is resolved from the recipient's on-chain state.
+    case tonBounce(Bool)
+
+    /// A text comment attached to a TON transfer.
+    case tonComment(String)
+
     /// Overrides the compute-unit price (the priority fee, in
     /// µLamports per compute unit validators are paid on top of the
     /// base fee) and/or compute-unit limit for a Solana transaction.

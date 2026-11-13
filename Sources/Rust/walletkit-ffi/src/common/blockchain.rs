@@ -14,6 +14,7 @@ pub enum BlockchainFfi {
     Solana,
     Cardano,
     Sui,
+    Ton,
 }
 
 #[cfg(test)]

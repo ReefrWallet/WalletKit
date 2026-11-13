@@ -7,7 +7,7 @@ Build secure, non-custodial wallet features for Apple platforms.
 WalletKit provides the types needed to create and restore wallets, derive
 accounts, read blockchain state, build transactions, sign them, and submit
 them to a network. It supports software-held and hardware-held accounts across
-Bitcoin, Cardano, EVM networks, Solana, Sui, and Tron.
+Bitcoin, Cardano, EVM networks, Solana, Sui, TON, and Tron.
 
 Start with a ``Mnemonic`` (or a SLIP-39 share, see ``Slip39``) to create or restore a wallet. Derive an
 ``ExtendedKey`` and the chain-specific ``Signer`` for an account, then use a
@@ -47,6 +47,7 @@ Start with a ``Mnemonic`` (or a SLIP-39 share, see ``Slip39``) to create or rest
 - ``EVMBlockchain``
 - ``SolanaNetwork``
 - ``SuiNetwork``
+- ``TonNetwork``
 - ``TronNetwork``
 
 ### Hardware Wallets

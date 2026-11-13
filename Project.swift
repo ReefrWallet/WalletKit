@@ -2,12 +2,15 @@ import Foundation
 import ProjectDescription
 import ProjectDescriptionHelpers
 
+/// Tuist only passes `TUIST_`-prefixed variables through to a manifest.
 private let testEnvironmentVariables: [String: EnvironmentVariable] = {
-    guard let apiKey = ProcessInfo.processInfo.environment["TUIST_TRONGRID_API_KEY"], !apiKey.isEmpty else {
-        return [:]
-    }
+    ["REEFR_TESTNET_MNEMONIC", "TONCENTER_API_KEY", "TRONGRID_API_KEY"].reduce(into: [:]) { variables, key in
+        guard let value = ProcessInfo.processInfo.environment["TUIST_\(key)"], !value.isEmpty else {
+            return
+        }
 
-    return ["TRONGRID_API_KEY": .environmentVariable(value: apiKey, isEnabled: true)]
+        variables[key] = .environmentVariable(value: value, isEnabled: true)
+    }
 }()
 
 private let walletKitGRPC: Target = .target(
