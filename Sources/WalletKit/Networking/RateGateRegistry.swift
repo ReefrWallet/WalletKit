@@ -18,6 +18,7 @@ public enum ProviderKind: Hashable, Sendable {
     case jsonRPC
     case stakewiz
     case suiGRPC
+    case toncenter
     case tronGrid
 }
 
@@ -108,6 +109,7 @@ public struct RateLimitPolicy: Sendable {
         .jsonRPC: .reactiveOnly,
         .stakewiz: .reactiveOnly,
         .suiGRPC: .reactiveOnly,
+        .toncenter: .reactiveOnly,
         .tronGrid: .reactiveOnly
     ]
 }

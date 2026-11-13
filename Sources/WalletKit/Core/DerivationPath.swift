@@ -85,6 +85,10 @@ public struct DerivationPath: Codable, Comparable, Equatable, Hashable, Sendable
 
             try self.init(string: "m/\(purpose)'/784'/0'/0'/\(accountIndex)'")
 
+        case .ton:
+            // TEP-3 multichain path, SLIP-44 coin type 607, all hardened.
+            try self.init(string: "m/44'/607'/\(accountIndex)'")
+
         case .bitcoin:
             throw WalletKitError.internalError( // swiftlint:disable:next line_length
                 message: "Bitcoin has no single derivation path — use DerivationPath.bitcoinAccount(network:scriptType:accountIndex:) instead"
@@ -194,6 +198,7 @@ public struct DerivationPath: Codable, Comparable, Equatable, Hashable, Sendable
     /// - Cardano: `m/1852'/1815'/N'`.
     /// - EVM, Tron: `m/44'/{60|195}'/A'/C/I`.
     /// - Solana: `m/44'/501'/A'` or `m/44'/501'/A'/C'`.
+    /// - TON: `m/44'/607'/A'`.
     /// - Aptos, Sui: `m/44'/{637|784}'/A'/C'/I'` for Ed25519; Aptos secp256k1
     ///   is `m/44'/637'/A'/C/I`, Sui secp256k1 `m/54'/784'/A'/C'/I'`.
     ///   `curve` is required.
@@ -230,6 +235,8 @@ public struct DerivationPath: Codable, Comparable, Equatable, Hashable, Sendable
             patterns = [[.hardened(44), .hardened(784), .hardened(), .hardened(), .hardened()]]
         case (.sui, .secp256k1?):
             patterns = [[.hardened(54), .hardened(784), .hardened(), .hardened(), .hardened()]]
+        case (.ton, _):
+            patterns = [[.hardened(44), .hardened(607), .hardened()]]
         case (.aptos, nil), (.sui, nil):
             throw WalletKitError.invalidDerivationPath(path: string)
         }

@@ -8708,6 +8708,7 @@ public enum BlockchainFfi: Equatable, Hashable, Codable {
     case solana
     case cardano
     case sui
+    case ton
 
 
 
@@ -8744,6 +8745,8 @@ public struct FfiConverterTypeBlockchainFfi: FfiConverterRustBuffer {
         
         case 7: return .sui
         
+        case 8: return .ton
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -8779,6 +8782,10 @@ public struct FfiConverterTypeBlockchainFfi: FfiConverterRustBuffer {
         
         case .sui:
             writeInt(&buf, Int32(7))
+        
+        
+        case .ton:
+            writeInt(&buf, Int32(8))
         
         }
     }

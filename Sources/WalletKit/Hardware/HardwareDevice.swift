@@ -60,7 +60,7 @@ public final class HardwareDevice: HardwareDeviceProtocol {
     ///   - account: The BIP44-style account index.
     /// - Returns: The resulting account, including its derived public key.
     public func account(_ blockchain: Blockchain, account: UInt32 = 0) async throws -> Account {
-        let curve = Self.curve(for: blockchain)
+        let curve = try Self.curve(for: blockchain)
         let path = try DerivationPath(blockchain, accountIndex: UInt64(account), curve: curve)
         let key = try await publicKey(path: path, curve: curve)
         return Account(blockchain: blockchain, derivationPath: path, curve: curve, source: source, publicKey: key)
@@ -71,11 +71,13 @@ public final class HardwareDevice: HardwareDeviceProtocol {
         await raw.disconnect()
     }
 
-    private static func curve(for blockchain: Blockchain) -> Curve {
+    private static func curve(for blockchain: Blockchain) throws -> Curve {
         switch blockchain {
         case .aptos, .sui: .ed25519
         case .solana, .cardano: .ed25519
         case .bitcoin, .evm, .tron: .secp256k1
+        // No Trezor TON app; never request a device key for TON.
+        case .ton: throw WalletKitError.unsupportedFeature
         }
     }
 }
