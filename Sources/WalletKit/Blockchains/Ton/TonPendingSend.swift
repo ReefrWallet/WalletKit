@@ -5,6 +5,7 @@
 //  Copyright © 2026 Reefr Wallet. All rights reserved.
 //
 
+import BigInt
 import Foundation
 
 /// A signed TON request kept until its outcome is known, so it survives an app restart.
@@ -67,6 +68,8 @@ public enum TonSendError: Error, Equatable {
     case wouldFail
     /// Sizing the attachment by emulation was interrupted after an attachment was refused, so no safe amount is known.
     case attachmentUndetermined
+    /// The wallet holds less Gram than the send needs (nanograms).
+    case insufficientGram(required: BigUInt, available: BigUInt)
 }
 
 extension TonSendError: LocalizedError {
@@ -75,8 +78,25 @@ extension TonSendError: LocalizedError {
         case .staleRequest: "The account sent another transfer meanwhile. Review and send again."
         case .unresolvedPendingSend: "An earlier TON transfer from this account is still being confirmed."
         case .wouldFail: "This transfer would be refused."
+        case let .insufficientGram(required, available):
+            "Not enough Gram: sending needs \(Self.gram(required)) and the account holds \(Self.gram(available))."
         case .attachmentUndetermined: "Couldn't work out how much Gram this transfer needs. Try again."
         }
+    }
+}
+
+extension TonSendError {
+    /// Nanograms as a whole-unit amount, for messages.
+    static func gram(_ nanograms: BigUInt) -> String {
+        let (whole, fraction) = nanograms.quotientAndRemainder(dividingBy: 1_000_000_000)
+        var digits = String(fraction)
+        digits = String(repeating: "0", count: 9 - digits.count) + digits
+
+        while digits.hasSuffix("0") {
+            digits.removeLast()
+        }
+
+        return "\(whole)\(digits.isEmpty ? "" : "." + digits) GRAM"
     }
 }
 

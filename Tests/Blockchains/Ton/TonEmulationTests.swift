@@ -210,6 +210,45 @@ struct TonEmulationTests {
         #expect(result.creditSeen)
     }
 
+    /// The recipient hop's inbound message with `decoded` null and only a raw body, as toncenter can return it.
+    private func rawBodyTrace(opcode: UInt64, queryId: UInt64) throws -> TonClient.EmulatedTrace {
+        var builder = TonCellBuilder()
+        builder.storeUInt(opcode, bits: 32)
+        builder.storeUInt(queryId, bits: 64)
+        let body = TonBOC.serialize(try builder.build()).base64EncodedString()
+        let receiverWallet = "0:C189FC4AB5903C60E7381B33333ED4D50F6CBB136CD55956D72D84F7BC0D387B"
+
+        return try trace("fresh") { capture in
+            var transactions = capture["transactions"] as? [String: [String: Any]] ?? [:]
+
+            for (hash, transaction) in transactions where (transaction["account"] as? String) == receiverWallet {
+                var edited = transaction
+                var inMessage = transaction["in_msg"] as? [String: Any] ?? [:]
+                inMessage["message_content"] = ["decoded": NSNull(), "body": body]
+                edited["in_msg"] = inMessage
+                transactions[hash] = edited
+            }
+
+            capture["transactions"] = transactions
+        }
+    }
+
+    @Test func aRecipientHopWithOnlyARawBodyIsStillMatchedByItsQueryId() throws {
+        let raw = try rawBodyTrace(opcode: TonJetton.internalTransferOpcode, queryId: 7_590_783_841_519_935_462)
+        let result = try quote(raw, transfer())
+        #expect(result.creditSeen)
+        #expect(!result.expectedToFail)
+
+        // Another query_id, or a body that isn't an internal_transfer, is not this transfer's hop.
+        let other = try rawBodyTrace(opcode: TonJetton.internalTransferOpcode, queryId: 1)
+        #expect(try quote(other, transfer()).expectedToFail)
+        let notTransfer = try rawBodyTrace(
+            opcode: TonJetton.transferNotificationOpcode,
+            queryId: 7_590_783_841_519_935_462
+        )
+        #expect(try quote(notTransfer, transfer()).expectedToFail)
+    }
+
     @Test func aNullChildListIsAnEmptyOneNotADecodingFailure() throws {
         // toncenter emits `null` for a transaction whose message produced no child transaction (yet).
         let nulled = try trace("fresh") { capture in

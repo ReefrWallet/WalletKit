@@ -13,6 +13,9 @@ import Foundation
 struct TonCell: Equatable, Sendable {
     static let maxBits = 1_023
     static let maxRefs = 4
+    /// TON's limit on how deep a cell's references may nest; a deeper one is invalid and, unchecked, a chain that
+    /// long can overflow the stack when it is released.
+    static let maxDepth = 1_024
     static let empty = TonCell(unchecked: Data(), bitCount: 0, refs: [])
 
     /// Left-aligned data bits, zero-padded to a whole byte (no completion tag).
@@ -25,6 +28,10 @@ struct TonCell: Equatable, Sendable {
     init(bits: Data, bitCount: Int, refs: [TonCell]) throws {
         guard (0...Self.maxBits).contains(bitCount), bits.count == (bitCount + 7) / 8, refs.count <= Self.maxRefs else {
             throw WalletKitError.internalError(message: "Invalid TON cell: \(bitCount) bits, \(refs.count) refs")
+        }
+
+        guard (refs.map(\.depth).max().map { $0 + 1 } ?? 0) <= Self.maxDepth else {
+            throw WalletKitError.internalError(message: "TON cell nested deeper than \(Self.maxDepth)")
         }
 
         self.init(unchecked: bits, bitCount: bitCount, refs: refs)
@@ -236,6 +243,12 @@ enum TonBOC {
             throw WalletKitError.internalError(message: "Empty BoC")
         }
 
+        // The header's counts are untrusted, so none may exceed what the bytes could hold (a cell takes two at least):
+        // that keeps every product and allocation below small.
+        guard cellCount <= data.count / 2, rootCount <= data.count else {
+            throw WalletKitError.internalError(message: "Inconsistent BoC header")
+        }
+
         let rootIndex = try reader.number(refSize)
         _ = try reader.take((rootCount - 1) * refSize)
 
@@ -270,12 +283,24 @@ enum TonBOC {
         let bytes: [UInt8]
         var position = 0
 
+        /// A big-endian number of at most 8 bytes (BoC fields are up to that wide), checked to fit an `Int`.
         mutating func number(_ count: Int) throws -> Int {
-            try take(count).reduce(0) { $0 << 8 | Int($1) }
+            guard (0 ... 8).contains(count) else {
+                throw WalletKitError.internalError(message: "Unsupported BoC number size")
+            }
+
+            let value = try take(count).reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
+
+            guard let number = Int(exactly: value) else {
+                throw WalletKitError.internalError(message: "BoC number out of range")
+            }
+
+            return number
         }
 
+        /// `count` comes from the data, so it is compared with what is left rather than added to the position.
         mutating func take(_ count: Int) throws -> [UInt8] {
-            guard count >= 0, position + count <= bytes.count else {
+            guard count >= 0, count <= bytes.count - position else {
                 throw WalletKitError.internalError(message: "Truncated BoC")
             }
 

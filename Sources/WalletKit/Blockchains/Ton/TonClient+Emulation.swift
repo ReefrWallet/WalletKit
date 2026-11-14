@@ -83,7 +83,7 @@ extension TonClient {
         }
 
         enum ContentKeys: String, CodingKey {
-            case decoded
+            case body, decoded
         }
 
         enum DecodedKeys: String, CodingKey {
@@ -97,7 +97,30 @@ extension TonClient {
 
             let content = try? container.nestedContainer(keyedBy: ContentKeys.self, forKey: .messageContent)
             let decoded = try? content?.nestedContainer(keyedBy: DecodedKeys.self, forKey: .decoded)
-            queryId = (try? decoded?.decodeIfPresent(String.self, forKey: .queryId)) ?? nil
+            let decodedId = (try? decoded?.decodeIfPresent(String.self, forKey: .queryId)) ?? nil
+
+            // toncenter can leave `decoded` null while still giving the raw body: read an `internal_transfer`'s
+            // `query_id` from it (TEP-74: a 32-bit opcode, then 64 bits).
+            let body = (try? content?.decodeIfPresent(String.self, forKey: .body)) ?? nil
+            queryId = decodedId ?? Self.internalTransferQueryId(inBody: body)
+        }
+
+        /// The `query_id` of a raw `internal_transfer` body (base64 BoC); `nil` for any other body.
+        static func internalTransferQueryId(inBody body: String?) -> String? {
+            guard let body, let data = Data(base64Encoded: body), let cell = try? TonBOC.parse(data),
+                  cell.bitCount >= 96, cell.bits.count >= 12
+            else {
+                return nil
+            }
+
+            let bytes = Array(cell.bits.prefix(12))
+            let opcode = bytes[0 ..< 4].reduce(UInt32(0)) { $0 << 8 | UInt32($1) }
+
+            guard UInt64(opcode) == TonJetton.internalTransferOpcode else {
+                return nil
+            }
+
+            return String(bytes[4 ..< 12].reduce(UInt64(0)) { $0 << 8 | UInt64($1) })
         }
     }
 
