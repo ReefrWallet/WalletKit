@@ -76,6 +76,17 @@ struct JSONRPCClientTests {
         }
     }
 
+    @Test func aServerErrorKeepsItsStatusApartFromARejection() async throws {
+        let stub = StubURLProtocol.makeSession(response: .success(statusCode: 500, body: Data()))
+
+        do {
+            let _: String = try await makeClient(stub).call(method: "eth_call", params: [String]())
+            Issue.record("expected call(method:params:) to throw")
+        } catch let error as BlockchainClientError {
+            #expect(error == .serverError(status: 500))
+        }
+    }
+
     @Test func callThrowsDecodingFailedWhenResultDoesNotMatchTheExpectedType() async throws {
         let stub = StubURLProtocol.makeSession(
             response: .success(body: Data(#"{"jsonrpc":"2.0","id":1,"result":42}"#.utf8))

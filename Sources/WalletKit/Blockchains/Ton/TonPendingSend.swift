@@ -124,7 +124,7 @@ public extension TonClient {
     static func isAmbiguous(_ error: any Swift.Error) -> Bool {
         switch error as? BlockchainClientError {
         // An unreadable answer to a request that may have been accepted proves nothing.
-        case .transportError, .quotaExceeded, .decodingFailed, .invalidResponse: true
+        case .transportError, .quotaExceeded, .decodingFailed, .invalidResponse, .serverError: true
         case let .rpcError(code, _)?: code >= 500 || code == 0
         default: false
         }

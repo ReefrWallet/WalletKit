@@ -183,6 +183,7 @@ struct TonPendingSendTests {
         #expect(TonClient.isAmbiguous(BlockchainClientError.transportError(reason: "x")))
         #expect(TonClient.isAmbiguous(BlockchainClientError.rpcError(code: 500, message: "x")))
         #expect(TonClient.isAmbiguous(BlockchainClientError.quotaExceeded(code: 429, message: "x", retryAfter: nil)))
+        #expect(TonClient.isAmbiguous(BlockchainClientError.serverError(status: 503)))
         #expect(!TonClient.isAmbiguous(BlockchainClientError.rpcError(code: 400, message: "bad seqno")))
         #expect(!TonClient.isAmbiguous(WalletKitError.invalidAddress(reason: "x")))
     }
