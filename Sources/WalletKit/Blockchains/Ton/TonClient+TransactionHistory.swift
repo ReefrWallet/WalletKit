@@ -31,14 +31,26 @@ public struct TonDeliveryReference: Codable, Equatable, Sendable {
     /// The first outgoing message's hash, as toncenter reports it (base64).
     public let outMessageHash: String
     /// Set when the request is a Jetton transfer: the outgoing message only reaches the sender's Jetton wallet, so
-    /// delivery is judged by the whole trace (``TonClient/jettonDelivery(ofRequest:transfer:)``).
+    /// delivery is judged by the whole trace (``TonClient/jettonDelivery(ofRequest:transfer:firstHopMessage:)``).
     public var isJettonRequest: Bool?
+    /// For a Jetton request: the transfer the trace must credit (master, recipient, amount, `query_id`), carried
+    /// over from the send record. For a restored entry it is rebuilt from its token effect, without the sender's
+    /// Jetton wallet.
+    public var jetton: TonJettonTransfer?
     public var outcome: Outcome?
+    /// For a Jetton request: its normalized hash, which finds the trace.
+    public let requestHash: String?
 
-    public init(outMessageHash: String, isJettonRequest: Bool? = nil, outcome: Outcome? = nil) {
+    public init(
+        outMessageHash: String,
+        isJettonRequest: Bool? = nil,
+        outcome: Outcome? = nil,
+        requestHash: String? = nil
+    ) {
         self.outMessageHash = outMessageHash
         self.isJettonRequest = isJettonRequest
         self.outcome = outcome
+        self.requestHash = requestHash
     }
 }
 
@@ -304,7 +316,11 @@ extension TonClient {
             // The request ran but sent no message: V5R1 commits `seqno` before the actions, so this is no payment.
             let sentNothing = isOutgoing && outMessages.isEmpty
             let aborted = description?.aborted == true || description?.computePhase?.success == false
-            let status: BlockchainTransactionStatus = sentNothing || (isOutgoing && aborted) ? .failed : .confirmed
+            // The wallet only emitted a Jetton request: the tokens are credited later, so it stays pending until the
+            // trace says so.
+            let status: BlockchainTransactionStatus = sentNothing || (isOutgoing && aborted)
+                ? .failed
+                : isJettonRequest ? .unconfirmed : .confirmed
             let identifier = isOutgoing ? (inMessage?.hashNorm.map(Self.hex(base64:)) ?? Self.hex(base64: hash)) : Self
                 .hex(base64: hash)
 
@@ -318,7 +334,11 @@ extension TonClient {
                 status: status,
                 rawPayload: isOutgoing ? outMessages.first.flatMap {
                     try? JSONEncoder().encode(
-                        TonDeliveryReference(outMessageHash: $0.hash, isJettonRequest: isJettonRequest ? true : nil)
+                        TonDeliveryReference(
+                            outMessageHash: $0.hash,
+                            isJettonRequest: isJettonRequest ? true : nil,
+                            requestHash: isJettonRequest ? identifier : nil
+                        )
                     )
                 } : nil,
                 effects: effects,

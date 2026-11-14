@@ -27,7 +27,8 @@ public struct TonJettonAction: Equatable, Sendable {
     /// The normalized hash (hex) of the external request that started the trace, if one did.
     public let requestHash: String?
     public let sender: TonAddress
-    public let success: Bool
+    /// `nil` while the indexer has not classified the action.
+    public let success: Bool?
     public let timestamp: Date?
     public let traceId: String
 
@@ -42,7 +43,7 @@ public struct TonJettonAction: Equatable, Sendable {
         receiver: TonAddress,
         requestHash: String? = nil,
         sender: TonAddress,
-        success: Bool = true,
+        success: Bool? = true,
         timestamp: Date? = nil,
         traceId: String
     ) {
@@ -114,39 +115,93 @@ public extension TonClient {
     }
 
     /// Whether the Jetton transfer submitted as the request with normalized hash `request` has credited its
-    /// recipient. With `transfer` the action must match its master and `query_id`; without it any successful Jetton
-    /// transfer in the trace counts. Judged by the whole trace: a failure anywhere is a failure, and a trace that is
-    /// still running or not yet classified is pending.
+    /// recipient. The trace's actions are read through every page (up to a cap) and the matching one decides: same
+    /// master, recipient (workchain and hash), amount and `query_id` (`query_id` can be reused, so it alone proves
+    /// nothing), with an explicit `success`. A matching action without a result stays pending.
+    ///
+    /// Failing earlier, the Jetton wallet may have refused the request itself (for example, more than the balance).
+    /// That is read from the exact transaction that processed the request's first outgoing message,
+    /// `firstHopMessage` (``TonDeliveryReference/outMessageHash``), not from a destination: a failed notification or
+    /// excess refund, or an unrelated failure in the trace, decides nothing. Anything else is pending.
+    ///
+    /// Without `request` or `transfer` (a restored entry whose intent can't be rebuilt, for example a refused send
+    /// that left no token effect) only the first hop can be checked.
     func jettonDelivery(
-        ofRequest request: String,
-        transfer: TonJettonTransfer? = nil
+        ofRequest request: String?,
+        transfer: TonJettonTransfer?,
+        firstHopMessage: String
     ) async throws -> TonJettonDelivery {
+        if let request, let transfer, let decided = try await tracedDelivery(ofRequest: request, transfer: transfer) {
+            return decided
+        }
+
+        switch try await deliveryStatus(ofOutgoingMessage: firstHopMessage) {
+        case .failed, .bounced: return .failed
+        case .delivered, .pending: return .pending
+        }
+    }
+
+    /// Pages of a trace's actions read at most.
+    static var maxTracePages: Int { 10 }
+
+    /// `nil` while the trace is incomplete or holds no decided matching action.
+    private func tracedDelivery(ofRequest request: String, transfer: TonJettonTransfer) async throws
+        -> TonJettonDelivery? {
         let traces: TracesResponse = try await getIndexerPage("traces", query: ["msg_hash": request, "limit": "1"])
 
         guard let trace = traces.traces.first, !trace.isIncomplete, trace.traceInfo.traceState == "complete" else {
-            return .pending
+            return nil
         }
 
-        let response: ActionsResponse = try await getIndexerPage(
-            "actions",
-            query: ["trace_id": trace.traceId, "limit": "50"]
-        )
+        let master = try makeAddress(transfer.master)
+        let recipient = try makeAddress(transfer.recipient)
+        var cursor: String?
 
-        let masterHash = try transfer.map { try makeAddress($0.master).hash }
+        for _ in 0 ..< Self.maxTracePages {
+            var query = ["trace_id": trace.traceId, "limit": "50"]
+            query["cursor"] = cursor
+            let page: ActionsResponse = try await getIndexerPage("actions", query: query)
 
-        for action in response.actions where action.type == "jetton_transfer" {
-            guard let parsed = try action.jettonAction(network: network),
-                  masterHash == nil || parsed.master.hash == masterHash,
-                  transfer == nil || parsed.queryId == transfer.map({ String($0.queryId) })
-            else {
-                continue
+            for action in page.actions {
+                guard let parsed = try action.jettonAction(network: network),
+                      Self.isSame(parsed.master, master), Self.isSame(parsed.receiver, recipient),
+                      String(parsed.amount) == transfer.amount, parsed.queryId == String(transfer.queryId)
+                else {
+                    continue
+                }
+
+                // Without an explicit result the indexer hasn't finished classifying it.
+                return parsed.success.map { $0 ? .delivered : .failed }
             }
 
-            return parsed.success ? .delivered : .failed
+            guard let next = page.nextCursor else {
+                return nil
+            }
+
+            cursor = next
         }
 
-        // The transfer was refused before it became a Jetton transfer (for example, more than the balance).
-        return response.actions.contains { $0.success == false } ? .failed : .pending
+        return nil
+    }
+
+    private static func isSame(_ lhs: TonAddress, _ rhs: TonAddress) -> Bool {
+        lhs.workchain == rhs.workchain && lhs.hash == rhs.hash
+    }
+}
+
+public extension TonJettonTransfer {
+    /// The effect of a send placeholder: the token payment, not the Gram that carries it. Its payload marks it local,
+    /// so the history effect with the same `query_id` replaces it.
+    func placeholderEffect(sender: String) -> BlockchainTransactionEffect {
+        BlockchainTransactionEffect(
+            index: 0,
+            kind: .tokenTransfer,
+            assetIdentifier: master,
+            amount: amount,
+            from: sender,
+            to: recipient,
+            rawPayload: Data((TonJettonAction.queryKey(String(queryId)) + TonJettonAction.localSuffix).utf8)
+        )
     }
 }
 
@@ -178,7 +233,7 @@ public extension TonJettonAction {
             timestamp: timestamp,
             sender: sender.string,
             recipient: receiver.string,
-            status: success ? .confirmed : .failed,
+            status: success.map { $0 ? .confirmed : .failed } ?? .unconfirmed,
             effects: [effect],
             method: isOutgoing ? "Transfer" : "Receive",
             isEffectsOnly: isOutgoing
@@ -206,12 +261,14 @@ extension TonClient {
         let amount: String?
         let asset: String?
         let comment: String?
+        let destination: String?
+        let opcode: String?
         let queryId: String?
         let receiver: String?
         let sender: String?
 
         enum CodingKeys: String, CodingKey {
-            case amount, asset, comment, receiver, sender
+            case amount, asset, comment, destination, opcode, receiver, sender
             case queryId = "query_id"
         }
     }
@@ -291,7 +348,7 @@ extension TonClient {
                     receiver: try canonical(receiver),
                     requestHash: traceExternalHashNorm.map(TonClient.IndexedTransaction.hex(base64:)),
                     sender: try canonical(sender),
-                    success: success ?? false,
+                    success: success,
                     timestamp: startUtime.map { Date(timeIntervalSince1970: TimeInterval($0)) },
                     traceId: traceId
                 )

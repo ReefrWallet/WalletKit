@@ -7,6 +7,7 @@ import Testing
 final class FakeTonTransport: TonTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var routes: [String: Data] = [:]
+    private var sequences: [String: [Data]] = [:]
     private var recorded: [(url: URL, body: Data?)] = []
     private var submitted = 0
 
@@ -21,6 +22,11 @@ final class FakeTonTransport: TonTransport, @unchecked Sendable {
 
     func route(_ path: String, _ json: String) {
         lock.withLock { routes[path] = Data(json.utf8) }
+    }
+
+    /// Answers successive requests to `path` with `responses` in order, then repeats the last.
+    func route(_ path: String, sequence responses: [String]) {
+        lock.withLock { sequences[path] = responses.map { Data($0.utf8) } }
     }
 
     func get(_ url: URL) async throws -> Data {
@@ -39,6 +45,11 @@ final class FakeTonTransport: TonTransport, @unchecked Sendable {
     private func respond(_ url: URL, body: Data?) throws -> Data {
         try lock.withLock {
             recorded.append((url, body))
+
+            if let queue = sequences[url.lastPathComponent], let first = queue.first {
+                sequences[url.lastPathComponent] = queue.count > 1 ? Array(queue.dropFirst()) : queue
+                return first
+            }
 
             guard let data = routes[url.lastPathComponent] else {
                 throw BlockchainClientError.transportError(reason: "no route for \(url.lastPathComponent)")
