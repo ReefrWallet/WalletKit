@@ -13,6 +13,15 @@ import Moya
 protocol TonTransport: Sendable {
     func get(_ url: URL) async throws -> Data
     func post(_ url: URL, body: Data) async throws -> Data
+    /// A POST that must not be replayed after an ambiguous failure: only a rate-limit refusal (429, the request
+    /// was not processed) is retried; a 503 is left to the caller's reconciliation.
+    func submit(_ url: URL, body: Data) async throws -> Data
+}
+
+extension TonTransport {
+    func submit(_ url: URL, body: Data) async throws -> Data {
+        try await post(url, body: body)
+    }
 }
 
 /// toncenter over `URLSession`, through the shared rate gate.
@@ -30,6 +39,10 @@ struct TonCenterTransport: TonTransport {
         try await request(.post(url: url, headers: headers, body: body))
     }
 
+    func submit(_ url: URL, body: Data) async throws -> Data {
+        try await request(.post(url: url, headers: headers, body: body), retriedStatuses: [429])
+    }
+
     private var headers: [String: String] {
         var headers = ["Accept": "application/json", "Content-Type": "application/json"]
 
@@ -40,7 +53,7 @@ struct TonCenterTransport: TonTransport {
         return headers
     }
 
-    private func request(_ target: TonCenterAPI) async throws -> Data {
+    private func request(_ target: TonCenterAPI, retriedStatuses: Set<Int> = [429, 503]) async throws -> Data {
         let configuration = session.configuration
         configuration.timeoutIntervalForRequest = Self.callTimeout
         let url = target.baseURL
@@ -51,7 +64,8 @@ struct TonCenterTransport: TonTransport {
         let provider: MoyaProvider<TonCenterAPI> = RateGateRegistry.shared.makeProvider(
             origin: components.string ?? url.absoluteString,
             provider: .toncenter,
-            configuration: configuration
+            configuration: configuration,
+            retriedStatuses: retriedStatuses
         )
 
         do {

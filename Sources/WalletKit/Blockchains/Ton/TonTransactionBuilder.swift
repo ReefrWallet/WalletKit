@@ -101,7 +101,8 @@ public struct TonTransactionBuilder: BlockchainTransactionBuilderProtocol, Senda
             seqno: seqno,
             stateInit: needsDeployment ? TonBOC.serialize(deployment) : nil,
             validUntil: validUntil,
-            value: String(amount)
+            value: String(amount),
+            baselineLt: information.lastTransactionLt ?? 0
         )
 
         return try JSONEncoder().encode(transaction)
