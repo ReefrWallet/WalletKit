@@ -39,15 +39,18 @@ public extension TonClient {
         return try Self.address(in: try TonBOC.parse(data))
     }
 
-    /// The wallet's data, or `nil` if it is not deployed. Throws if it reports another owner or master than
-    /// expected, which a genuine wallet of this master never does.
+    /// The wallet's data, or `nil` if it is absent or uninitialized (it holds nothing). Throws if it is frozen, whose
+    /// balance can't be read though it may hold tokens, or if it reports another owner or master than expected,
+    /// which a genuine wallet of this master never does.
     func jettonWalletData(
         _ wallet: TonAddress,
         owner: TonAddress,
         master: TonAddress
     ) async throws -> TonJettonWalletData? {
-        guard try await accountState(wallet) == .active else {
-            return nil
+        switch try await accountState(wallet) {
+        case .active: break
+        case .nonexistent, .uninitialized: return nil
+        case .frozen: throw BlockchainClientError.invalidResponse(reason: "the Jetton wallet is frozen")
         }
 
         let result = try await runGetMethod(wallet, method: "get_wallet_data", stack: [])
@@ -66,7 +69,9 @@ public extension TonClient {
             owner: try Self.address(in: try TonBOC.parse(ownerData))
         )
 
-        guard data.owner.hash == owner.hash, data.master.hash == master.hash else {
+        guard data.owner.workchain == owner.workchain, data.owner.hash == owner.hash,
+              data.master.workchain == master.workchain, data.master.hash == master.hash
+        else {
             throw BlockchainClientError.invalidResponse(reason: "the Jetton wallet is not of this owner and master")
         }
 

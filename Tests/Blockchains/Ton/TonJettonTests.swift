@@ -84,6 +84,35 @@ struct TonJettonTests {
         #expect(try await client.jettonWalletData(master, owner: owner, master: master) == nil)
     }
 
+    @Test func aFrozenWalletIsNotReadAsEmpty() async throws {
+        let transport = FakeTonTransport()
+        transport.route("getAddressInformation", #"{"ok":true,"result":{"balance":"1","state":"frozen"}}"#)
+        let client = TonClient(network: .testnet, transport: transport)
+
+        // It may still hold tokens, so neither the data nor a zero balance is returned.
+        await #expect(throws: BlockchainClientError.self) {
+            _ = try await client.jettonWalletData(master, owner: owner, master: master)
+        }
+
+        transport.route("getAddressInformation", #"{"ok":true,"result":{"balance":"0","state":"uninitialized"}}"#)
+        #expect(try await client.jettonWalletData(master, owner: owner, master: master) == nil)
+    }
+
+    @Test func aWalletReportingTheSameHashInAnotherWorkchainIsRefused() async throws {
+        let transport = FakeTonTransport()
+        transport.route("getAddressInformation", #"{"ok":true,"result":{"balance":"1","state":"active"}}"#)
+        let otherChain = try TonAddress(workchain: -1, hash: owner.hash)
+        transport.route("runGetMethod", """
+        {"ok":true,"result":{"exit_code":0,"stack":[["num","0x16e360"],["cell",{"bytes":"\(try boc(of: otherChain))"}],
+        ["cell",{"bytes":"\(try boc(of: master))"}]]}}
+        """)
+
+        let client = TonClient(network: .testnet, transport: transport)
+        await #expect(throws: BlockchainClientError.self) {
+            _ = try await client.jettonWalletData(master, owner: owner, master: master)
+        }
+    }
+
     @Test func aWalletsDataIsDecodedAndCheckedAgainstItsOwnerAndMaster() async throws {
         let transport = FakeTonTransport()
         transport.route("getAddressInformation", #"{"ok":true,"result":{"balance":"1","state":"active"}}"#)
