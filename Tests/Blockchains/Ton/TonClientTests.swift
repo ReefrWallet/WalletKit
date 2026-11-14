@@ -8,6 +8,12 @@ final class FakeTonTransport: TonTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var routes: [String: Data] = [:]
     private var recorded: [(url: URL, body: Data?)] = []
+    private var submitted = 0
+
+    /// How many requests went through ``submit(_:body:)``, the path that is never retried.
+    var submissions: Int {
+        lock.withLock { submitted }
+    }
 
     var requests: [(url: URL, body: Data?)] {
         lock.withLock { recorded }
@@ -23,6 +29,11 @@ final class FakeTonTransport: TonTransport, @unchecked Sendable {
 
     func post(_ url: URL, body: Data) async throws -> Data {
         try respond(url, body: body)
+    }
+
+    func submit(_ url: URL, body: Data) async throws -> Data {
+        lock.withLock { submitted += 1 }
+        return try respond(url, body: body)
     }
 
     private func respond(_ url: URL, body: Data?) throws -> Data {
@@ -190,6 +201,9 @@ struct TonClientTests {
         #expect(transaction.identifier == Data(repeating: 2, count: 32).map { String(format: "%02x", $0) }.joined())
         #expect(transaction.status == .confirmed)
         #expect(transaction.effects.first?.amount == "7")
+        // The outgoing message is kept so its delivery can be tracked apart from this entry.
+        let reference = try JSONDecoder().decode(TonDeliveryReference.self, from: try #require(transaction.rawPayload))
+        #expect(reference.outMessageHash == hash)
         #expect(page.head == 500)
         #expect(!page.reachedBoundary)
 

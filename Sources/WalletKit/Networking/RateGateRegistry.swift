@@ -171,14 +171,19 @@ public final class RateGateRegistry: @unchecked Sendable {
     }
 
     /// A ready-to-attach interceptor for this origin/provider.
-    public func makeRetryPolicy(for origin: String, provider: ProviderKind) -> RateLimitRetryPolicy {
+    public func makeRetryPolicy(
+        for origin: String,
+        provider: ProviderKind,
+        retriedStatuses: Set<Int> = [429, 503]
+    ) -> RateLimitRetryPolicy {
         let resolved = policy(for: origin, provider: provider)
 
         return RateLimitRetryPolicy(
             gate: gate(for: origin, provider: provider),
             maxRetryCount: resolved.maxRetryCount,
             // These report success after classifying the body: quota arrives in-band.
-            countsHTTPSuccess: ![.etherscan, .jsonRPC].contains(provider)
+            countsHTTPSuccess: ![.etherscan, .jsonRPC].contains(provider),
+            retriedStatuses: retriedStatuses
         )
     }
 
@@ -187,9 +192,10 @@ public final class RateGateRegistry: @unchecked Sendable {
     public func makeProvider<Target: TargetType>(
         origin: String,
         provider: ProviderKind,
-        configuration: URLSessionConfiguration = .default
+        configuration: URLSessionConfiguration = .default,
+        retriedStatuses: Set<Int> = [429, 503]
     ) -> MoyaProvider<Target> {
-        let policy = makeRetryPolicy(for: origin, provider: provider)
+        let policy = makeRetryPolicy(for: origin, provider: provider, retriedStatuses: retriedStatuses)
 
         // Runs synchronously inside `MoyaProvider.request`, on the calling
         // task, so the task-local lane is still readable.

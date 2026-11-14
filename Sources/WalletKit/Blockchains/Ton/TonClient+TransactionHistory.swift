@@ -19,6 +19,25 @@ public enum TonDeliveryStatus: Equatable, Sendable {
     case pending
 }
 
+/// The payload of an outgoing history entry: the message whose delivery is tracked apart from the entry, and
+/// the recipient-side outcome once known. A stored outcome is final and survives the entry being re-imported.
+public struct TonDeliveryReference: Codable, Equatable, Sendable {
+    public enum Outcome: String, Codable, Sendable {
+        /// Bounced or aborted at the recipient.
+        case failed
+        case delivered
+    }
+
+    /// The first outgoing message's hash, as toncenter reports it (base64).
+    public let outMessageHash: String
+    public var outcome: Outcome?
+
+    public init(outMessageHash: String, outcome: Outcome? = nil) {
+        self.outMessageHash = outMessageHash
+        self.outcome = outcome
+    }
+}
+
 /// Account history from the toncenter v3 indexer.
 ///
 /// The coordinate is the account's logical time (`lt`), which strictly increases per account, so paging
@@ -81,6 +100,20 @@ extension TonClient {
         }
 
         return transaction.deliveryStatus
+    }
+
+    /// The wallet's transactions with a logical time above `lt`, oldest first.
+    func indexedTransactions(
+        of owner: TonAddress,
+        after lt: UInt64,
+        limit: UInt32
+    ) async throws -> [IndexedTransaction] {
+        let response: HistoryResponse = try await getIndexer(
+            "transactions",
+            query: ["account": owner.rawString, "limit": String(limit), "sort": "asc", "start_lt": String(lt + 1)]
+        )
+
+        return response.transactions
     }
 
     func transactionsProcessing(messageHash: String) async throws -> [IndexedTransaction] {
@@ -183,10 +216,13 @@ extension TonClient {
         let lt: String
         let now: Int?
         let outMessages: [IndexedMessage]
+        /// The logical time of the account's previous transaction (`0` for its first).
+        let prevTransLt: String?
         let totalFees: String?
 
         enum CodingKeys: String, CodingKey {
             case description, hash, lt, now
+            case prevTransLt = "prev_trans_lt"
             case inMessage = "in_msg"
             case outMessages = "out_msgs"
             case totalFees = "total_fees"
@@ -200,12 +236,18 @@ extension TonClient {
             lt = try container.decode(String.self, forKey: .lt)
             now = try container.decodeIfPresent(Int.self, forKey: .now)
             outMessages = try container.decodeIfPresent([IndexedMessage].self, forKey: .outMessages) ?? []
+            prevTransLt = try container.decodeIfPresent(String.self, forKey: .prevTransLt)
             totalFees = try container.decodeIfPresent(String.self, forKey: .totalFees)
         }
 
         /// `true` for a transaction a wallet runs for a signed request (the incoming message is external).
         var isExternalRequest: Bool {
             inMessage != nil && inMessage?.source == nil
+        }
+
+        /// The normalized hash (hex) of the signed request this transaction ran, if it ran one.
+        var requestHash: String? {
+            isExternalRequest ? inMessage?.hashNorm.map(Self.hex(base64:)) : nil
         }
 
         var deliveryStatus: TonDeliveryStatus {
@@ -261,6 +303,9 @@ extension TonClient {
                 sender: friendly(isOutgoing ? ownerRaw : inMessage?.source),
                 recipient: friendly(isOutgoing ? target?.destination : ownerRaw),
                 status: status,
+                rawPayload: isOutgoing ? outMessages.first.flatMap {
+                    try? JSONEncoder().encode(TonDeliveryReference(outMessageHash: $0.hash))
+                } : nil,
                 effects: effects,
                 fee: totalFees,
                 method: isOutgoing ? "Transfer" : "Receive"

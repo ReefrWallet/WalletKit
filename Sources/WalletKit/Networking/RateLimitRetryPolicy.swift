@@ -33,6 +33,8 @@ public final class RateLimitRetryPolicy: RequestInterceptor, EventMonitor, @unch
     let gate: RateGate<ContinuousClock>?
     let maxRetryCount: Int
     let countsHTTPSuccess: Bool
+    /// Statuses worth replaying. A 503 can follow an accepted request, so a non-idempotent call drops it.
+    let retriedStatuses: Set<Int>
     public let queue = DispatchQueue(label: "xyz.reefr.walletkit.rate-limit-monitor")
     private let jitterSource: @Sendable () -> Double
     private let maxRetryAfter: Duration
@@ -45,10 +47,12 @@ public final class RateLimitRetryPolicy: RequestInterceptor, EventMonitor, @unch
         gate: RateGate<ContinuousClock>?,
         maxRetryCount: Int,
         countsHTTPSuccess: Bool = true,
+        retriedStatuses: Set<Int> = [429, 503],
         maxRetryAfter: Duration = .seconds(60),
         jitterSource: @escaping @Sendable () -> Double = { Double.random(in: 0.85 ... 1.15) }
     ) {
         self.countsHTTPSuccess = countsHTTPSuccess
+        self.retriedStatuses = retriedStatuses
         self.gate = gate
         self.maxRetryAfter = maxRetryAfter
         self.maxRetryCount = maxRetryCount
@@ -135,7 +139,7 @@ public final class RateLimitRetryPolicy: RequestInterceptor, EventMonitor, @unch
     ) {
         guard
             let response = request.task?.response as? HTTPURLResponse,
-            [429, 503].contains(response.statusCode)
+            retriedStatuses.contains(response.statusCode)
         else {
             completion(.doNotRetryWithError(error))
             return

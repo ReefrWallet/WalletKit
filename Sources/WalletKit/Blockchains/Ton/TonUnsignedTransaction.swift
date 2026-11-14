@@ -13,6 +13,9 @@ import Foundation
 /// The signer signs the hash of `body`; ``TonClient/broadcast(transaction:signature:)`` appends the signature to
 /// the body and wraps it in an external message, adding `stateInit` when the wallet is not yet deployed.
 public struct TonUnsignedTransaction: Codable, Equatable, Sendable {
+    /// The logical time of the wallet's latest transaction when the request was built (`0` if it had none), the
+    /// start of the chain reconciliation walks to find the transaction that consumed `seqno`. `nil` if unknown.
+    public let baselineLt: UInt64?
     /// BoC of the request body, without the signature.
     public let body: Data
     public let network: TonNetwork
@@ -34,8 +37,10 @@ public struct TonUnsignedTransaction: Codable, Equatable, Sendable {
         seqno: UInt32,
         stateInit: Data?,
         validUntil: UInt32,
-        value: String
+        value: String,
+        baselineLt: UInt64? = nil
     ) {
+        self.baselineLt = baselineLt
         self.body = body
         self.network = network
         self.recipient = recipient

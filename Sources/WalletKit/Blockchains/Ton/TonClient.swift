@@ -147,7 +147,8 @@ public struct TonClient: BlockchainClientProtocol, Sendable {
         struct Accepted: Decodable {}
 
         let body = try JSONEncoder().encode(["boc": boc.base64EncodedString()])
-        let _: Accepted = try await post("sendBoc", body: body)
+        let data = try await transport.submit(network.rpcURL.appending(path: "sendBoc"), body: body)
+        let _: Accepted = try Self.unwrap(data)
     }
 
     /// The expected fee of `transaction`, estimated on the actual message including a `StateInit` when the
@@ -182,6 +183,8 @@ public struct TonClient: BlockchainClientProtocol, Sendable {
 extension TonClient {
     struct AccountInformation {
         let balance: BigUInt
+        /// The logical time of the account's latest transaction; `nil` if it has none.
+        var lastTransactionLt: UInt64?
         let state: TonAccountState
     }
 
@@ -261,8 +264,19 @@ extension TonClient {
 
     func accountInformation(_ owner: TonAddress) async throws -> AccountInformation {
         struct Result: Decodable {
+            struct TransactionId: Decodable {
+                let lt: String
+            }
+
             let balance: String
+            let lastTransactionId: TransactionId?
             let state: String
+
+            enum CodingKeys: String, CodingKey {
+                case balance
+                case lastTransactionId = "last_transaction_id"
+                case state
+            }
         }
 
         let result: Result = try await get("getAddressInformation", query: ["address": owner.rawString])
@@ -271,11 +285,18 @@ extension TonClient {
             throw BlockchainClientError.decodingFailed(reason: "invalid TON balance \(result.balance)")
         }
 
+        let lt = result.lastTransactionId.flatMap { UInt64($0.lt) }.flatMap { $0 == 0 ? nil : $0 }
+
         switch result.state {
-        case "active": return AccountInformation(balance: balance, state: .active)
-        case "frozen": return AccountInformation(balance: balance, state: .frozen)
+        case "active": return AccountInformation(balance: balance, lastTransactionLt: lt, state: .active)
+        case "frozen": return AccountInformation(balance: balance, lastTransactionLt: lt, state: .frozen)
         case "uninitialized":
-            return AccountInformation(balance: balance, state: balance == 0 ? .nonexistent : .uninitialized)
+            return AccountInformation(
+                balance: balance,
+                lastTransactionLt: lt,
+                state: balance == 0 ? .nonexistent : .uninitialized
+            )
+
         default: throw BlockchainClientError.decodingFailed(reason: "unknown TON account state \(result.state)")
         }
     }
