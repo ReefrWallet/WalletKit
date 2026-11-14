@@ -46,4 +46,12 @@ public enum TonNetwork: Equatable, Hashable, Codable, Sendable {
         case .testnet: URL(string: "https://testnet.toncenter.com/api/v3")!
         }
     }
+
+    /// The toncenter emulation endpoint.
+    public var emulationURL: URL {
+        switch self {
+        case .mainnet: URL(string: "https://toncenter.com/api/emulate/v1")!
+        case .testnet: URL(string: "https://testnet.toncenter.com/api/emulate/v1")!
+        }
+    }
 }

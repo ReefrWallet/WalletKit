@@ -20,6 +20,10 @@ public struct TonTransactionBuilder: BlockchainTransactionBuilderProtocol, Senda
     /// work including deploying the recipient's. What is unused returns to the sender.
     public static let defaultJettonAttachment = BigUInt(50_000_000)
 
+    /// Attachments tried in turn when sizing a Jetton transfer by emulation: a transfer that deploys the recipient's
+    /// Jetton wallet, or a Jetton with heavier contracts, may need more than the default.
+    public static let jettonAttachmentSteps: [BigUInt] = [50_000_000, 100_000_000, 250_000_000]
+
     /// Kept free beyond the attachment for the sender wallet's own fees.
     public static let jettonFeeReserve = BigUInt(10_000_000)
 
@@ -171,7 +175,7 @@ public struct TonTransactionBuilder: BlockchainTransactionBuilderProtocol, Senda
             throw BlockchainTransactionBuilderError.insufficientFunds(reason: "Not enough tokens to send.")
         }
 
-        guard balance >= attachment + Self.jettonFeeReserve else {
+        guard balance >= options.requiredGram ?? attachment + Self.jettonFeeReserve else {
             throw BlockchainTransactionBuilderError.insufficientFunds(reason: "Not enough Gram to pay the fees.")
         }
 
@@ -228,6 +232,14 @@ private extension [BlockchainTransactionBuilderOptions] {
 
     var comment: String? {
         for case let .tonComment(value) in self {
+            return value
+        }
+
+        return nil
+    }
+
+    var requiredGram: BigUInt? {
+        for case let .tonRequiredGram(value) in self {
             return value
         }
 

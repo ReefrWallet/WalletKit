@@ -14,6 +14,7 @@ enum TonJetton {
     static let transferOpcode: UInt64 = 0x0F8A_7EA5
     /// ``transferOpcode`` as toncenter reports a message's opcode.
     static let transferOpcodeText = "0x0f8a7ea5"
+    static let internalTransferOpcodeText = "0x178d4519"
 
     /// `transfer_notification#7362d09c`: what the recipient's wallet sends its owner on credit.
     static let transferNotificationOpcode: UInt64 = 0x7362_D09C

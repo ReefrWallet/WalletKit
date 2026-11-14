@@ -58,6 +58,10 @@ public enum BlockchainTransactionBuilderOptions: Sendable {
     /// the sender. Without it the builder attaches ``TonTransactionBuilder/defaultJettonAttachment``.
     case tonJettonAttachment(BigUInt)
 
+    /// The Gram, in nanograms, a TON wallet must hold to send a Jetton transfer, as quoted for the actual message.
+    /// Without it the builder requires the attachment plus ``TonTransactionBuilder/jettonFeeReserve``.
+    case tonRequiredGram(BigUInt)
+
     /// Overrides the compute-unit price (the priority fee, in
     /// µLamports per compute unit validators are paid on top of the
     /// base fee) and/or compute-unit limit for a Solana transaction.

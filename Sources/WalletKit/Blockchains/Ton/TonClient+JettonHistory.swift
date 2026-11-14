@@ -264,12 +264,14 @@ extension TonClient {
         let destination: String?
         let opcode: String?
         let queryId: String?
+        let receiverJettonWallet: String?
         let receiver: String?
         let sender: String?
 
         enum CodingKeys: String, CodingKey {
             case amount, asset, comment, destination, opcode, receiver, sender
             case queryId = "query_id"
+            case receiverJettonWallet = "receiver_jetton_wallet"
         }
     }
 

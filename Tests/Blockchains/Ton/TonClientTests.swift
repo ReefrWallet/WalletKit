@@ -8,6 +8,7 @@ final class FakeTonTransport: TonTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var routes: [String: Data] = [:]
     private var sequences: [String: [Data]] = [:]
+    private var getters: [String: Data] = [:]
     private var recorded: [(url: URL, body: Data?)] = []
     private var submitted = 0
 
@@ -22,6 +23,11 @@ final class FakeTonTransport: TonTransport, @unchecked Sendable {
 
     func route(_ path: String, _ json: String) {
         lock.withLock { routes[path] = Data(json.utf8) }
+    }
+
+    /// Answers `runGetMethod` calls of `method`, ahead of any `runGetMethod` route.
+    func route(getter method: String, _ json: String) {
+        lock.withLock { getters[method] = Data(json.utf8) }
     }
 
     /// Answers successive requests to `path` with `responses` in order, then repeats the last.
@@ -45,6 +51,12 @@ final class FakeTonTransport: TonTransport, @unchecked Sendable {
     private func respond(_ url: URL, body: Data?) throws -> Data {
         try lock.withLock {
             recorded.append((url, body))
+
+            if url.lastPathComponent == "runGetMethod", let body,
+               let method = (try? JSONSerialization.jsonObject(with: body) as? [String: Any])?["method"] as? String,
+               let data = getters[method] {
+                return data
+            }
 
             if let queue = sequences[url.lastPathComponent], let first = queue.first {
                 sequences[url.lastPathComponent] = queue.count > 1 ? Array(queue.dropFirst()) : queue
@@ -161,6 +173,45 @@ struct TonClientTests {
         transport.route("getAddressInformation", addressInformation(balance: "10", state: "active"))
         await #expect(throws: BlockchainTransactionBuilderError.self) {
             _ = try await builder(transport).buildTransfer(sender: wallet, recipient: recipient, amount: 11)
+        }
+    }
+
+    /// A Jetton send where the wallet holds `gram` and the Jetton wallet holds plenty of tokens.
+    private func jettonBuild(gram: String, options: [BlockchainTransactionBuilderOptions]) async throws {
+        func boc(_ address: TonAddress) throws -> String {
+            var builder = TonCellBuilder()
+            builder.storeAddress(address)
+            return TonBOC.serialize(try builder.build()).base64EncodedString()
+        }
+
+        let master = try TonAddress(workchain: 0, hash: Data(repeating: 0x22, count: 32))
+        let transport = FakeTonTransport()
+        transport.route("getAddressInformation", addressInformation(balance: gram, state: "active"))
+        transport.route(getter: "seqno", #"{"ok":true,"result":{"exit_code":0,"stack":[["num","0x1"]]}}"#)
+        transport.route(getter: "get_wallet_address", """
+        {"ok":true,"result":{"exit_code":0,"stack":[["cell",{"bytes":"\(try boc(recipient))"}]]}}
+        """)
+
+        transport.route(getter: "get_wallet_data", """
+        {"ok":true,"result":{"exit_code":0,"stack":[["num","0x16e360"],["cell",{"bytes":"\(try boc(wallet))"}],
+        ["cell",{"bytes":"\(try boc(master))"}]]}}
+        """)
+
+        _ = try await builder(transport).buildTransfer(
+            sender: wallet, recipient: recipient, amount: 1000, token: master.string, options: options
+        )
+    }
+
+    @Test func aJettonSendNeedsTheQuotedGramNotTheFixedReserve() async throws {
+        // 0.055 GRAM covers the 0.0506 the emulation quoted, but not the fixed 0.05 + 0.01.
+        await #expect(throws: BlockchainTransactionBuilderError.self) {
+            try await jettonBuild(gram: "55000000", options: [])
+        }
+
+        try await jettonBuild(gram: "55000000", options: [.tonRequiredGram(50_616_123)])
+
+        await #expect(throws: BlockchainTransactionBuilderError.self) {
+            try await jettonBuild(gram: "50000000", options: [.tonRequiredGram(50_616_123)])
         }
     }
 

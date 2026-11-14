@@ -63,6 +63,10 @@ public enum TonSendError: Error, Equatable {
     case staleRequest
     /// An earlier send from this wallet has no known outcome yet.
     case unresolvedPendingSend
+    /// Emulating the transfer shows its request or the sender's Jetton wallet refusing it.
+    case wouldFail
+    /// Sizing the attachment by emulation was interrupted after an attachment was refused, so no safe amount is known.
+    case attachmentUndetermined
 }
 
 extension TonSendError: LocalizedError {
@@ -70,6 +74,8 @@ extension TonSendError: LocalizedError {
         switch self {
         case .staleRequest: "The account sent another transfer meanwhile. Review and send again."
         case .unresolvedPendingSend: "An earlier TON transfer from this account is still being confirmed."
+        case .wouldFail: "This transfer would be refused."
+        case .attachmentUndetermined: "Couldn't work out how much Gram this transfer needs. Try again."
         }
     }
 }
