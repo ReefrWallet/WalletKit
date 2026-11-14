@@ -8,13 +8,20 @@
 import BigInt
 import Foundation
 
-/// Builds an unsigned V5R1 Gram transfer for one account.
+/// Builds an unsigned V5R1 Gram or Jetton transfer for one account.
 ///
 /// The builder reads the wallet's state and `seqno`; a wallet that is not deployed gets its `StateInit`
 /// attached, so the first send deploys it. The result is a ``TonUnsignedTransaction`` JSON envelope.
-/// Jettons are not supported yet.
+/// A Jetton token (its master address) moves through the sender's Jetton wallet instead.
 public struct TonTransactionBuilder: BlockchainTransactionBuilderProtocol, Sendable {
     public typealias Address = TonAddress
+
+    /// The Gram attached to a Jetton transfer unless an option says otherwise: enough for the Jetton wallets'
+    /// work including deploying the recipient's. What is unused returns to the sender.
+    public static let defaultJettonAttachment = BigUInt(50_000_000)
+
+    /// Kept free beyond the attachment for the sender wallet's own fees.
+    public static let jettonFeeReserve = BigUInt(10_000_000)
 
     /// How long a signed request stays valid.
     public static let requestLifetime: TimeInterval = 10 * 60
@@ -47,10 +54,6 @@ public struct TonTransactionBuilder: BlockchainTransactionBuilderProtocol, Senda
         token: String?,
         options: [BlockchainTransactionBuilderOptions]
     ) async throws -> Data {
-        guard token == nil else {
-            throw BlockchainTransactionBuilderError.invalidToken(reason: "TON Jettons are not supported yet")
-        }
-
         try sender.validate(for: client.network)
         try recipient.validate(for: client.network)
 
@@ -61,35 +64,35 @@ public struct TonTransactionBuilder: BlockchainTransactionBuilderProtocol, Senda
         }
 
         let information = try await client.accountInformation(sender)
+        let needsDeployment = try Self.needsDeployment(information.state)
 
-        guard information.balance >= amount else {
-            throw BlockchainTransactionBuilderError.insufficientFunds(reason: "Not enough Gram to send.")
-        }
+        let payment: Payment
 
-        let needsDeployment: Bool
-
-        switch information.state {
-        case .active: needsDeployment = false
-        case .nonexistent, .uninitialized: needsDeployment = true
-        // A frozen wallet can't be deployed again; sending is refused until it is unfrozen.
-        case .frozen: throw BlockchainTransactionBuilderError.insufficientFunds(reason: "The wallet is frozen.")
+        if let token {
+            payment = try await jettonPayment(
+                token: token,
+                sender: sender,
+                recipient: recipient,
+                amount: amount,
+                balance: information.balance,
+                options: options
+            )
+        } else {
+            payment = try await gramPayment(
+                to: recipient,
+                amount: amount,
+                balance: information.balance,
+                options: options
+            )
         }
 
         let seqno = try await client.seqno(sender)
-        let bounce = try await bounceFlag(for: recipient, options: options)
-        let message = try TonWalletV5R1.transferMessage(
-            to: recipient,
-            amount: amount,
-            bounce: bounce,
-            comment: options.comment
-        )
-
         let validUntil = UInt32(now().timeIntervalSince1970 + Self.requestLifetime)
         let body = try TonWalletV5R1.signingBody(
             network: client.network,
             validUntil: validUntil,
             seqno: seqno,
-            message: message
+            message: payment.message
         )
 
         let deployment = TonWalletV5R1.stateInit(publicKey: publicKey, network: client.network)
@@ -101,11 +104,98 @@ public struct TonTransactionBuilder: BlockchainTransactionBuilderProtocol, Senda
             seqno: seqno,
             stateInit: needsDeployment ? TonBOC.serialize(deployment) : nil,
             validUntil: validUntil,
-            value: String(amount),
-            baselineLt: information.lastTransactionLt ?? 0
+            value: String(payment.gram),
+            baselineLt: information.lastTransactionLt ?? 0,
+            jetton: payment.jetton
         )
 
         return try JSONEncoder().encode(transaction)
+    }
+
+    /// The wallet's one outgoing message and what it moves.
+    private struct Payment {
+        /// The Gram leaving the wallet: the transfer itself, or what a Jetton transfer carries.
+        let gram: BigUInt
+        let jetton: TonJettonTransfer?
+        let message: TonCell
+    }
+
+    private static func needsDeployment(_ state: TonAccountState) throws -> Bool {
+        switch state {
+        case .active: false
+        case .nonexistent, .uninitialized: true
+        // A frozen wallet can't be deployed again; sending is refused until it is unfrozen.
+        case .frozen: throw BlockchainTransactionBuilderError.insufficientFunds(reason: "The wallet is frozen.")
+        }
+    }
+
+    private func gramPayment(
+        to recipient: TonAddress,
+        amount: BigUInt,
+        balance: BigUInt,
+        options: [BlockchainTransactionBuilderOptions]
+    ) async throws -> Payment {
+        guard balance >= amount else {
+            throw BlockchainTransactionBuilderError.insufficientFunds(reason: "Not enough Gram to send.")
+        }
+
+        return Payment(
+            gram: amount,
+            jetton: nil,
+            message: try TonWalletV5R1.transferMessage(
+                to: recipient,
+                amount: amount,
+                bounce: try await bounceFlag(for: recipient, options: options),
+                comment: options.comment
+            )
+        )
+    }
+
+    /// A Jetton transfer to the sender's Jetton wallet, after checking on-chain that it holds enough tokens and
+    /// the wallet enough Gram to attach.
+    private func jettonPayment(
+        token: String,
+        sender: TonAddress,
+        recipient: TonAddress,
+        amount: BigUInt,
+        balance: BigUInt,
+        options: [BlockchainTransactionBuilderOptions]
+    ) async throws -> Payment {
+        let master = try client.makeAddress(token)
+        let senderWallet = try await client.jettonWalletAddress(owner: sender, master: master)
+        let attachment = options.jettonAttachment ?? Self.defaultJettonAttachment
+
+        guard let wallet = try await client.jettonWalletData(senderWallet, owner: sender, master: master),
+              wallet.balance >= amount
+        else {
+            throw BlockchainTransactionBuilderError.insufficientFunds(reason: "Not enough tokens to send.")
+        }
+
+        guard balance >= attachment + Self.jettonFeeReserve else {
+            throw BlockchainTransactionBuilderError.insufficientFunds(reason: "Not enough Gram to pay the fees.")
+        }
+
+        let queryId = UInt64.random(in: 1 ... UInt64.max)
+        let body = try TonJetton.transferBody(
+            queryId: queryId,
+            amount: amount,
+            destination: recipient,
+            responseDestination: sender,
+            forwardAmount: 1,
+            comment: options.comment
+        )
+
+        return Payment(
+            gram: attachment,
+            jetton: TonJettonTransfer(
+                amount: String(amount),
+                master: master.string,
+                queryId: queryId,
+                recipient: recipient.string,
+                senderWallet: senderWallet.string
+            ),
+            message: try TonWalletV5R1.internalMessage(to: senderWallet, amount: attachment, bounce: true, body: body)
+        )
     }
 
     /// An explicit option wins, then the friendly address's tag. A raw address is bounceable only when its
@@ -138,6 +228,14 @@ private extension [BlockchainTransactionBuilderOptions] {
 
     var comment: String? {
         for case let .tonComment(value) in self {
+            return value
+        }
+
+        return nil
+    }
+
+    var jettonAttachment: BigUInt? {
+        for case let .tonJettonAttachment(value) in self {
             return value
         }
 

@@ -54,6 +54,10 @@ public enum BlockchainTransactionBuilderOptions: Sendable {
     /// A text comment attached to a TON transfer.
     case tonComment(String)
 
+    /// The Gram, in nanograms, attached to a TON Jetton transfer to pay its downstream execution. Unused Gram returns to
+    /// the sender. Without it the builder attaches ``TonTransactionBuilder/defaultJettonAttachment``.
+    case tonJettonAttachment(BigUInt)
+
     /// Overrides the compute-unit price (the priority fee, in
     /// µLamports per compute unit validators are paid on top of the
     /// base fee) and/or compute-unit limit for a Solana transaction.

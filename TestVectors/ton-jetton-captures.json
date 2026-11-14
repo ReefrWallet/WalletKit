@@ -1,0 +1,126 @@
+{
+ "note": "Captured from the TON testnet (toncenter v3) for the Reefr Test Jetton fixture: a delivered transfer to an owner without a Jetton wallet, and an overspend that fails downstream.",
+ "okAction": {
+  "trace_id": "l/LmqRKj7g64yhJj6mMQFt+40vaK9QBwYXHZfLmkw80=",
+  "action_id": "YJt/lFMn7D3c9NKWZ23UJBmMQT2Lzmn2WWS0MWHyLDU=",
+  "start_lt": "109578099000002",
+  "end_lt": "109578099000008",
+  "start_utime": 1794615507,
+  "end_utime": 1794615507,
+  "trace_end_lt": "109578099000008",
+  "trace_end_utime": 1794615507,
+  "trace_mc_seqno_end": 97788079,
+  "transactions": [
+   "yzVjtmMQ9JE/MaQ0PFZ8bABKfd/S+SBOX5nBcG4JPpI=",
+   "l/LmqRKj7g64yhJj6mMQFt+40vaK9QBwYXHZfLmkw80=",
+   "OmG6mGn86LxEgN/5UE7j3IikTySS+kB5VJHTmJqWITk=",
+   "X/zHha52FL/lLLcnskcOlyDY51mF0NRDzDE4NfzQmEM=",
+   "MGjn/HbpvRLjCchxPK+VaXe0R6I9SD5lqaY8fU7jSLI="
+  ],
+  "success": true,
+  "type": "jetton_transfer",
+  "details": {
+   "asset": "0:C3A9F094C978A0274C416B99B8F3604165DE7A79B3274883B638B655B2AB698C",
+   "sender": "0:3E7CC68BE095F36DD8D293BCDB371390A6961D394905E1FE145EB203A46606B7",
+   "receiver": "0:18FA908E8F18DF9478CB9919479EBF7C54219242952AA204881D6C8619E54368",
+   "sender_jetton_wallet": "0:55BD205C366AE3C726B2A708957689AA273A6EE2EC6AC93161693DFE647D5F6D",
+   "receiver_jetton_wallet": "0:10159B672A3A999F66D60BB68C10CE94E44FBA7A2F2EF8021624AF03BFE887CD",
+   "amount": "1500000",
+   "comment": null,
+   "is_encrypted_comment": false,
+   "query_id": "6381162093002101806",
+   "response_destination": "0:3E7CC68BE095F36DD8D293BCDB371390A6961D394905E1FE145EB203A46606B7",
+   "custom_payload": null,
+   "forward_payload": null,
+   "forward_amount": "1"
+  },
+  "trace_external_hash": "ojNM4ISJkdJ+HLHcKuaOX3EZmpl5EF6JtNpMDbFvqtI=",
+  "trace_external_hash_norm": "+7EIHq8NyHjs1OX/uI/YaoU8A3LO+U/vlPHAF/m1UhE=",
+  "finality": "finalized"
+ },
+ "failedActions": [
+  {
+   "trace_id": "+pPzknudNlPCIPQ47tS0YK35o1lPT0w9DFoko/q8XQc=",
+   "action_id": "QFJyPQkP4fdg9RdiIzFOsfp6mxTSbMxOhg/g3zQXlL4=",
+   "start_lt": "109578220000004",
+   "end_lt": "109578220000005",
+   "start_utime": 1794615555,
+   "end_utime": 1794615555,
+   "trace_end_lt": "109578220000005",
+   "trace_end_utime": 1794615555,
+   "trace_mc_seqno_end": 97788200,
+   "transactions": [
+    "h/0X0BcWvY1wldUlnrjRL/muCISjQrw6z4muf+Avw0A=",
+    "vycNlvjILA7yJHghVX9fSPKcbnqRnBCuQ5mHIUxNQLE="
+   ],
+   "success": true,
+   "type": "call_contract",
+   "details": {
+    "opcode": "0xffffffff",
+    "source": "0:55BD205C366AE3C726B2A708957689AA273A6EE2EC6AC93161693DFE647D5F6D",
+    "destination": "0:3E7CC68BE095F36DD8D293BCDB371390A6961D394905E1FE145EB203A46606B7",
+    "value": "49745665",
+    "extra_currencies": {}
+   },
+   "trace_external_hash": "auEsUre2cvC1ggAVEIByjCoUU0EbQaGGVc0EnHA9jvA=",
+   "trace_external_hash_norm": "3BqNiEtd09d+4S24OeEPdl+GnMAg8Qu6Nx6uoz4P9gw=",
+   "finality": "finalized"
+  },
+  {
+   "trace_id": "+pPzknudNlPCIPQ47tS0YK35o1lPT0w9DFoko/q8XQc=",
+   "action_id": "bVEqAH2KWdr5QlYna2OTR/elKF9vy0sL7AkJA0yLIfs=",
+   "start_lt": "109578220000002",
+   "end_lt": "109578220000003",
+   "start_utime": 1794615555,
+   "end_utime": 1794615555,
+   "trace_end_lt": "109578220000005",
+   "trace_end_utime": 1794615555,
+   "trace_mc_seqno_end": 97788200,
+   "transactions": [
+    "+pPzknudNlPCIPQ47tS0YK35o1lPT0w9DFoko/q8XQc=",
+    "vycNlvjILA7yJHghVX9fSPKcbnqRnBCuQ5mHIUxNQLE="
+   ],
+   "success": false,
+   "type": "call_contract",
+   "details": {
+    "opcode": "0x0f8a7ea5",
+    "source": "0:3E7CC68BE095F36DD8D293BCDB371390A6961D394905E1FE145EB203A46606B7",
+    "destination": "0:55BD205C366AE3C726B2A708957689AA273A6EE2EC6AC93161693DFE647D5F6D",
+    "value": "50000000",
+    "extra_currencies": {}
+   },
+   "trace_external_hash": "auEsUre2cvC1ggAVEIByjCoUU0EbQaGGVc0EnHA9jvA=",
+   "trace_external_hash_norm": "3BqNiEtd09d+4S24OeEPdl+GnMAg8Qu6Nx6uoz4P9gw=",
+   "finality": "finalized"
+  }
+ ],
+ "failedTrace": {
+  "trace_id": "+pPzknudNlPCIPQ47tS0YK35o1lPT0w9DFoko/q8XQc=",
+  "external_hash": "auEsUre2cvC1ggAVEIByjCoUU0EbQaGGVc0EnHA9jvA=",
+  "trace_info": {
+   "trace_state": "complete",
+   "messages": 3,
+   "transactions": 3,
+   "pending_messages": 0,
+   "classification_state": "unclassified"
+  },
+  "is_incomplete": false,
+  "trace": {
+   "tx_hash": "+pPzknudNlPCIPQ47tS0YK35o1lPT0w9DFoko/q8XQc=",
+   "in_msg_hash": "auEsUre2cvC1ggAVEIByjCoUU0EbQaGGVc0EnHA9jvA=",
+   "children": [
+    {
+     "tx_hash": "vycNlvjILA7yJHghVX9fSPKcbnqRnBCuQ5mHIUxNQLE=",
+     "in_msg_hash": "m0obOYNqvNlVPJbD7Rsc7vZyn/YT0ZSboMjASabDB/I=",
+     "children": [
+      {
+       "tx_hash": "h/0X0BcWvY1wldUlnrjRL/muCISjQrw6z4muf+Avw0A=",
+       "in_msg_hash": "ZyWs9gS7eXanc6VQKbsfpCyhEmn7+w3uPVjiIG0Hf9A=",
+       "children": []
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

@@ -30,10 +30,14 @@ public struct TonDeliveryReference: Codable, Equatable, Sendable {
 
     /// The first outgoing message's hash, as toncenter reports it (base64).
     public let outMessageHash: String
+    /// Set when the request is a Jetton transfer: the outgoing message only reaches the sender's Jetton wallet, so
+    /// delivery is judged by the whole trace (``TonClient/jettonDelivery(ofRequest:transfer:)``).
+    public var isJettonRequest: Bool?
     public var outcome: Outcome?
 
-    public init(outMessageHash: String, outcome: Outcome? = nil) {
+    public init(outMessageHash: String, isJettonRequest: Bool? = nil, outcome: Outcome? = nil) {
         self.outMessageHash = outMessageHash
+        self.isJettonRequest = isJettonRequest
         self.outcome = outcome
     }
 }
@@ -125,6 +129,10 @@ extension TonClient {
         return response.transactions
     }
 
+    func getIndexerPage<Result: Decodable>(_ method: String, query: [String: String]) async throws -> Result {
+        try await getIndexer(method, query: query)
+    }
+
     private func getIndexer<Result: Decodable>(_ method: String, query: [String: String]) async throws -> Result {
         var components = URLComponents(url: network.indexerURL.appending(path: method), resolvingAgainstBaseURL: false)
         components?.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
@@ -176,11 +184,13 @@ extension TonClient {
         let destination: String?
         let hash: String
         let hashNorm: String?
+        /// The message body's opcode, as `0x…` hex.
+        let opcode: String?
         let source: String?
         let value: String?
 
         enum CodingKeys: String, CodingKey {
-            case destination, hash, source, value
+            case destination, hash, opcode, source, value
             case hashNorm = "hash_norm"
         }
     }
@@ -274,7 +284,10 @@ extension TonClient {
             let ownerRaw = owner.rawString
             let isOutgoing = isExternalRequest
             let target = isOutgoing ? outMessages.first : inMessage
-            let value = target?.value
+            // The Gram of a Jetton request only carries it to the sender's Jetton wallet: the token transfer comes
+            // from the Jetton history and merges by this identifier, so no Gram payment is shown here.
+            let isJettonRequest = isOutgoing && target?.opcode == TonJetton.transferOpcodeText
+            let value = isJettonRequest ? nil : target?.value
             let effects = value.map {
                 [
                     BlockchainTransactionEffect(
@@ -301,10 +314,12 @@ extension TonClient {
                 blockHash: Self.hex(base64: hash),
                 timestamp: now.map { Date(timeIntervalSince1970: TimeInterval($0)) },
                 sender: friendly(isOutgoing ? ownerRaw : inMessage?.source),
-                recipient: friendly(isOutgoing ? target?.destination : ownerRaw),
+                recipient: isJettonRequest ? nil : friendly(isOutgoing ? target?.destination : ownerRaw),
                 status: status,
                 rawPayload: isOutgoing ? outMessages.first.flatMap {
-                    try? JSONEncoder().encode(TonDeliveryReference(outMessageHash: $0.hash))
+                    try? JSONEncoder().encode(
+                        TonDeliveryReference(outMessageHash: $0.hash, isJettonRequest: isJettonRequest ? true : nil)
+                    )
                 } : nil,
                 effects: effects,
                 fee: totalFees,

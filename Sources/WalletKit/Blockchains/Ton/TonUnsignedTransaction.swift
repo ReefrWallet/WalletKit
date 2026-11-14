@@ -18,6 +18,8 @@ public struct TonUnsignedTransaction: Codable, Equatable, Sendable {
     public let baselineLt: UInt64?
     /// BoC of the request body, without the signature.
     public let body: Data
+    /// Set for a Jetton transfer, whose `value` is then the Gram attached to carry it.
+    public let jetton: TonJettonTransfer?
     public let network: TonNetwork
     public let recipient: String
     public let sender: String
@@ -38,9 +40,11 @@ public struct TonUnsignedTransaction: Codable, Equatable, Sendable {
         stateInit: Data?,
         validUntil: UInt32,
         value: String,
-        baselineLt: UInt64? = nil
+        baselineLt: UInt64? = nil,
+        jetton: TonJettonTransfer? = nil
     ) {
         self.baselineLt = baselineLt
+        self.jetton = jetton
         self.body = body
         self.network = network
         self.recipient = recipient

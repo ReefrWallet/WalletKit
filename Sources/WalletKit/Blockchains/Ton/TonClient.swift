@@ -59,20 +59,36 @@ public struct TonClient: BlockchainClientProtocol, Sendable {
         return address
     }
 
+    /// Gram under ``nativeTokenKey`` and every Jetton the indexer lists for `owner`, keyed by the master's
+    /// address. The indexer only discovers holdings; it throws if any page fails, so a partial scan is never
+    /// returned as complete.
     public func getAllBalances(_ owner: TonAddress) async throws -> [String: BigUInt] {
-        throw WalletKitError.unsupportedFeature
+        var balances = [Self.nativeTokenKey: try await getNativeBalance(owner)]
+
+        for wallet in try await indexedJettonWallets(owner: owner) {
+            balances[wallet.master.string] = wallet.balance
+        }
+
+        return balances
     }
 
     public func getBalances(_ owner: TonAddress, tokens: [String]) async throws -> [String: BigUInt] {
-        guard tokens.isEmpty else {
-            throw WalletKitError.unsupportedFeature
+        var balances: [String: BigUInt] = [:]
+
+        for token in tokens {
+            balances[token] = try await getBalance(owner, token: token)
         }
 
-        return [:]
+        return balances
     }
 
+    /// Gram for ``nativeTokenKey``; otherwise the balance the owner's Jetton wallet reports itself.
     public func getBalance(_ owner: TonAddress, token: String) async throws -> BigUInt {
-        throw WalletKitError.unsupportedFeature
+        guard token != Self.nativeTokenKey else {
+            return try await getNativeBalance(owner)
+        }
+
+        return try await jettonBalance(owner: owner, master: try makeAddress(token))
     }
 
     public func getNativeBalance(_ owner: TonAddress) async throws -> BigUInt {
@@ -80,11 +96,11 @@ public struct TonClient: BlockchainClientProtocol, Sendable {
     }
 
     public func getTokenInfo(_ token: String?) async throws -> TokenInfo {
-        guard token == nil else {
-            throw WalletKitError.unsupportedFeature
+        guard let token, token != Self.nativeTokenKey else {
+            return .gram
         }
 
-        return .gram
+        return try await jettonInfo(master: try makeAddress(token))
     }
 
     /// Whether the account has ever been active: deployed or frozen. Use ``accountState(_:)`` to tell
@@ -96,8 +112,8 @@ public struct TonClient: BlockchainClientProtocol, Sendable {
 
     public func isSupported(_ feature: BlockchainClientFeature) -> Bool {
         switch feature {
-        case .transactionHistory: true
-        case .allBalances, .multipleBalances, .transactionSubscription: false
+        case .allBalances, .multipleBalances, .transactionHistory: true
+        case .transactionSubscription: false
         }
     }
 
@@ -232,7 +248,7 @@ extension TonClient {
         }
     }
 
-    struct RunGetMethodRequest: Encodable {
+    struct RunGetMethodRequest: Codable {
         let address: String
         let method: String
         let stack: [[String]]
@@ -250,12 +266,20 @@ extension TonClient {
 
     /// A stack entry component: a type tag or a value.
     enum JSONScalar: Decodable {
+        /// A `cell` or `slice` entry: the BoC of its cell, base64.
+        case bytes(String)
         case other
         case string(String)
 
         init(from decoder: any Decoder) throws {
+            struct Cell: Decodable {
+                let bytes: String
+            }
+
             if let text = try? decoder.singleValueContainer().decode(String.self) {
                 self = .string(text)
+            } else if let cell = try? Cell(from: decoder) {
+                self = .bytes(cell.bytes)
             } else {
                 self = .other
             }

@@ -17,6 +17,8 @@ public struct TonPendingSend: Codable, Equatable, Sendable {
     public let baselineLt: UInt64?
     /// The TEP-467 normalized hash of the external message, hex encoded.
     public let normalizedHash: String
+    /// Set for a Jetton transfer.
+    public let jetton: TonJettonTransfer?
     public let sender: String
     public let seqno: UInt32
     /// BoC of the signed external message, resent unchanged while it can still be processed.
@@ -30,9 +32,11 @@ public struct TonPendingSend: Codable, Equatable, Sendable {
         seqno: UInt32,
         signedMessage: Data,
         validUntil: UInt32,
-        baselineLt: UInt64? = nil
+        baselineLt: UInt64? = nil,
+        jetton: TonJettonTransfer? = nil
     ) {
         self.baselineLt = baselineLt
+        self.jetton = jetton
         self.normalizedHash = normalizedHash
         self.sender = sender
         self.seqno = seqno
@@ -79,7 +83,8 @@ public extension TonUnsignedTransaction {
             seqno: seqno,
             signedMessage: signedMessage(signature: signature),
             validUntil: validUntil,
-            baselineLt: baselineLt
+            baselineLt: baselineLt,
+            jetton: jetton
         )
     }
 }

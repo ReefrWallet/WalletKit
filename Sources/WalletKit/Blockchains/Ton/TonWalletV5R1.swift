@@ -133,6 +133,45 @@ enum TonWalletV5R1 {
         return try builder.build()
     }
 
+    /// An internal message carrying `amount` nanograms to `destination` with an optional `StateInit` and body.
+    static func internalMessage(
+        to destination: TonAddress,
+        amount: BigUInt,
+        bounce: Bool,
+        stateInit: TonCell? = nil,
+        body: TonCell? = nil
+    ) throws -> TonCell {
+        var builder = TonCellBuilder()
+        builder.storeBit(false)
+        builder.storeBit(true)
+        builder.storeBit(bounce)
+        builder.storeBit(false)
+        builder.storeAddress(nil)
+        builder.storeAddress(destination)
+        builder.storeCoins(amount)
+        builder.storeBit(false)
+        builder.storeCoins(0)
+        builder.storeCoins(0)
+        builder.storeUInt(0, bits: 64)
+        builder.storeUInt(0, bits: 32)
+
+        if let stateInit {
+            builder.storeBit(true)
+            builder.storeBit(true)
+            builder.storeRef(stateInit)
+        } else {
+            builder.storeBit(false)
+        }
+
+        if let body {
+            builder.storeInlineOrRef(body)
+        } else {
+            builder.storeBit(false)
+        }
+
+        return try builder.build()
+    }
+
     /// The external-in message for `body`, with the wallet's `stateInit` when it is not yet deployed.
     static func externalMessage(
         to wallet: TonAddress,
