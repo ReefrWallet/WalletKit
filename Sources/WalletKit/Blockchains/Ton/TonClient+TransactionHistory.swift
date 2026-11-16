@@ -147,7 +147,7 @@ extension TonClient {
 
     private func getIndexer<Result: Decodable>(_ method: String, query: [String: String]) async throws -> Result {
         var components = URLComponents(url: network.indexerURL.appending(path: method), resolvingAgainstBaseURL: false)
-        components?.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
+        components?.percentEncodedQueryItems = Self.queryItems(query)
 
         guard let url = components?.url else {
             throw BlockchainClientError.invalidResponse(reason: "invalid toncenter URL")

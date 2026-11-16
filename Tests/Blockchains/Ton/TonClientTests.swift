@@ -290,6 +290,19 @@ struct TonClientTests {
         #expect(page.transactions.first?.status == .failed)
     }
 
+    @Test func base64HashesAndCursorsAreEscapedInIndexerQueries() async throws {
+        // A bare `+` reaches the indexer as a space, which it answers with HTTP 422.
+        let transport = FakeTonTransport()
+        let client = TonClient(network: .testnet, transport: transport)
+        transport.route("transactionsByMessage", #"{"transactions":[],"address_book":{}}"#)
+
+        _ = try await client.deliveryStatus(ofOutgoingMessage: "ab+c/d==")
+
+        let query = try #require(transport.requests.last?.url.query)
+        #expect(query.contains("msg_hash=ab%2Bc%2Fd%3D%3D"))
+        #expect(!query.contains("+"))
+    }
+
     @Test func deliveryToAnUndeployedRecipientWithSkippedComputeCountsAsDelivered() async throws {
         let transport = FakeTonTransport()
         let hash = Data(repeating: 1, count: 32).base64EncodedString()

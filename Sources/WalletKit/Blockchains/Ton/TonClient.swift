@@ -325,9 +325,19 @@ extension TonClient {
         }
     }
 
+    /// Query items with every reserved character escaped. Hashes and cursors are base64, and a bare `+` reaches
+    /// the server as a space, which it rejects.
+    static func queryItems(_ query: [String: String]) -> [URLQueryItem] {
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+
+        return query.sorted { $0.key < $1.key }.map {
+            URLQueryItem(name: $0.key, value: $0.value.addingPercentEncoding(withAllowedCharacters: allowed))
+        }
+    }
+
     func get<Result: Decodable>(_ method: String, query: [String: String]) async throws -> Result {
         var components = URLComponents(url: network.rpcURL.appending(path: method), resolvingAgainstBaseURL: false)
-        components?.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) }
+        components?.percentEncodedQueryItems = Self.queryItems(query)
 
         guard let url = components?.url else {
             throw BlockchainClientError.invalidResponse(reason: "invalid toncenter URL")
