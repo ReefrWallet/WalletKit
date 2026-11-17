@@ -29,7 +29,7 @@ EVM chains, Solana, and Tron.
 - **Ethereum and EVM chains** — ERC-20 tokens and approval events, contract calls, and EIP-191 and EIP-712 signing.
 - **Solana** — SPL Token, Token-2022, message signing, and native staking.
 - **Sui** — gRPC, programmable transactions, and native staking.
-- **TON** — Gram on V5R1 wallets via toncenter, deployment on first send, and a restart-safe send pipeline. Software signing only.
+- **TON** — Gram and Jettons on V5R1 wallets via toncenter, deployment on first send, emulation-sized Jetton fees, trace-based delivery tracking, and a restart-safe send pipeline. Software signing only.
 - **Tron** — TRC-20 via TronGrid, optional TronScan history, and Stake 2.0.
 
 ## Installation
