@@ -176,6 +176,29 @@ struct TonClientTests {
         }
     }
 
+    @Test func aGramTransferMustLeaveRoomForTheFees() async throws {
+        let transport = FakeTonTransport()
+        transport.route("getAddressInformation", addressInformation(balance: "1000000005", state: "active"))
+        transport.route("runGetMethod", #"{"ok":true,"result":{"exit_code":0,"stack":[["num","0x1"]]}}"#)
+
+        await #expect(throws: BlockchainTransactionBuilderError.self) {
+            _ = try await builder(transport).buildTransfer(
+                sender: wallet,
+                recipient: recipient,
+                amount: BigUInt(1_000_000_000)
+            )
+        }
+
+        // The quoted fee replaces the default reserve.
+        _ = try await builder(transport).buildTransfer(
+            sender: wallet,
+            recipient: recipient,
+            amount: BigUInt(1_000_000_000),
+            token: nil,
+            options: [.tonRequiredGram(5)]
+        )
+    }
+
     /// A Jetton send where the wallet holds `gram` and the Jetton wallet holds plenty of tokens.
     private func jettonBuild(gram: String, options: [BlockchainTransactionBuilderOptions]) async throws {
         func boc(_ address: TonAddress) throws -> String {
@@ -271,6 +294,26 @@ struct TonClientTests {
 
         let cursor = try #require(page.nextCursor)
         #expect(try JSONDecoder().decode(TonClient.HistoryCursor.self, from: cursor).next == 499)
+    }
+
+    @Test func addressBookKeysMatchMessageAddressesInAnyCase() async throws {
+        let transport = FakeTonTransport()
+        let hash = Data(repeating: 1, count: 32).base64EncodedString()
+        let raw = wallet.rawString
+        // The indexer keys its address book by uppercase raw addresses and writes messages in lowercase.
+        transport.route("transactions", """
+        {"transactions":[
+        {"hash":"\(hash)","lt":"9","now":1700000000,
+         "description":{"aborted":false,"compute_ph":{"success":true}},
+         "in_msg":{"hash":"\(hash)","source":null,"destination":"\(raw.lowercased())","value":null},
+         "out_msgs":[{"hash":"\(hash)","source":"\(raw.lowercased())","destination":"\(recipient.rawString.lowercased())","value":"7"}]}],
+         "address_book":{"\(raw.uppercased())":{"user_friendly":"\(wallet.string)"}}}
+        """)
+        let page = try await TonClient(network: .testnet, transport: transport).transactionHistory(
+            wallet,
+            request: BlockchainTransactionHistoryRequest(direction: .descending)
+        )
+        #expect(page.transactions.first?.effects.first?.from == wallet.string)
     }
 
     @Test func aRequestThatRanButSentNothingIsNotAPayment() async throws {

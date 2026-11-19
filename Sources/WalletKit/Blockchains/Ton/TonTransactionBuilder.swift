@@ -24,6 +24,9 @@ public struct TonTransactionBuilder: BlockchainTransactionBuilderProtocol, Senda
     /// Jetton wallet, or a Jetton with heavier contracts, may need more than the default.
     public static let jettonAttachmentSteps: [BigUInt] = [50_000_000, 100_000_000, 250_000_000]
 
+    /// Kept free beyond a Gram transfer's amount for the sender wallet's own fees.
+    public static let gramFeeReserve = BigUInt(10_000_000)
+
     /// Kept free beyond the attachment for the sender wallet's own fees.
     public static let jettonFeeReserve = BigUInt(10_000_000)
 
@@ -139,8 +142,9 @@ public struct TonTransactionBuilder: BlockchainTransactionBuilderProtocol, Senda
         balance: BigUInt,
         options: [BlockchainTransactionBuilderOptions]
     ) async throws -> Payment {
-        guard balance >= amount else {
-            throw BlockchainTransactionBuilderError.insufficientFunds(reason: "Not enough Gram to send.")
+        // The wallet pays for the request even when it can't afford the payment, and then skips the payment.
+        guard balance >= amount + (options.requiredGram ?? Self.gramFeeReserve) else {
+            throw BlockchainTransactionBuilderError.insufficientFunds(reason: "Not enough Gram to send and cover fees.")
         }
 
         return Payment(

@@ -46,12 +46,21 @@ struct TonPendingSendTests {
         indexed: Bool,
         submitted: Bool = true,
         chainLt: Int = 100,
+        chainTime: Int? = 1_700_000_000,
+        stateBlock: Int? = 100,
+        getterBlock: Int? = 100,
+        getterLt: Int? = nil,
         transactions: [String] = []
     ) -> FakeTonTransport {
+        func block(_ seqno: Int?) -> String {
+            seqno.map { #","block_id":{"workchain":-1,"shard":"-9223372036854775808","seqno":\#($0)}"# } ?? ""
+        }
+
+        let syncTime = (chainTime.map { #","sync_utime":\#($0)"# } ?? "") + block(stateBlock)
         let transport = FakeTonTransport()
         transport.route(
             "getAddressInformation",
-            #"{"ok":true,"result":{"balance":"1","state":"active","last_transaction_id":{"lt":"\#(chainLt)"}}}"#
+            #"{"ok":true,"result":{"balance":"1","state":"active","last_transaction_id":{"lt":"\#(chainLt)"}\#(syncTime)}}"#
         )
 
         transport.route(
@@ -59,7 +68,11 @@ struct TonPendingSendTests {
             #"{"transactions":[\#(transactions.joined(separator: ","))],"address_book":{}}"#
         )
 
-        transport.route("runGetMethod", #"{"ok":true,"result":{"exit_code":0,"stack":[["num","0x\#(String(seqno, radix: 16))"]]}}"#)
+        transport.route(
+            "runGetMethod",
+            #"{"ok":true,"result":{"exit_code":0\#(block(getterBlock)),"last_transaction_id":{"lt":"\#(getterLt ?? chainLt)"},"stack":[["num","0x\#(String(seqno, radix: 16))"]]}}"#
+        )
+
         transport.route("sendBoc", submitted ? #"{"ok":true,"result":{}}"# : #"{"ok":false,"error":"x","code":500}"#)
         let hash = Data(repeating: 1, count: 32).base64EncodedString()
         transport.route("transactionsByMessage", indexed
@@ -82,12 +95,45 @@ struct TonPendingSendTests {
         #expect(boc == Data([1, 2, 3]).base64EncodedString())
     }
 
-    @Test func anExpiredRequestWithTheSameSeqnoIsUnprocessedAndNotResent() async throws {
-        let transport = transport(seqno: 5, indexed: false)
+    @Test func aRequestExpiredByTheChainClockWithTheSameSeqnoIsUnprocessedAndNotResent() async throws {
+        let transport = transport(seqno: 5, indexed: false, chainTime: 1_700_000_601, stateBlock: 100, getterBlock: 101)
         let client = TonClient(network: .testnet, transport: transport)
         let late = now.addingTimeInterval(601)
         #expect(try await client.reconcile(pending(), now: late) == .unprocessed)
         #expect(sendBocCount(transport) == 0)
+    }
+
+    @Test func aDeviceClockPastExpiryDoesNotReleaseARequestTheChainHasNotExpired() async throws {
+        let transport = transport(seqno: 5, indexed: false, chainTime: 1_700_000_100)
+        let client = TonClient(network: .testnet, transport: transport)
+        let late = now.addingTimeInterval(601)
+        #expect(try await client.reconcile(pending(), now: late) == .pending)
+        #expect(sendBocCount(transport) == 0)
+    }
+
+    @Test func aSeqnoReadFromAnOlderBlockThanTheChainTimeNeverReleasesARequest() async throws {
+        // The timestamp is past expiry, but the getter answered from a block before it: the request may have run since.
+        let transport = transport(seqno: 5, indexed: false, chainTime: 1_700_000_601, stateBlock: 100, getterBlock: 99)
+        let client = TonClient(network: .testnet, transport: transport)
+        #expect(try await client.reconcile(pending(), now: now.addingTimeInterval(601)) == .pending)
+    }
+
+    @Test func theHistoryWalkEndsAtTheHeadOfTheStateTheAdvancedSeqnoWasReadFrom() async throws {
+        // The account read is older than the getter: it still shows the pre-send head, and the indexer lags.
+        let transport = transport(seqno: 6, indexed: false, chainLt: 50, getterLt: 100)
+        let client = TonClient(network: .testnet, transport: transport)
+        #expect(try await client.reconcile(pending(baselineLt: 50), now: now) == .unresolved)
+    }
+
+    @Test func aSeqnoWithoutItsBlockNeverReleasesARequest() async throws {
+        let transport = transport(seqno: 5, indexed: false, chainTime: 1_700_000_601, getterBlock: nil)
+        let client = TonClient(network: .testnet, transport: transport)
+        #expect(try await client.reconcile(pending(), now: now.addingTimeInterval(601)) == .pending)
+    }
+
+    @Test func aNodeWithoutAChainTimeNeverReleasesARequest() async throws {
+        let client = TonClient(network: .testnet, transport: transport(seqno: 5, indexed: false, chainTime: nil))
+        #expect(try await client.reconcile(pending(), now: now.addingTimeInterval(9_999)) == .pending)
     }
 
     @Test func anAdvancedSeqnoWithAnIndexedMessageIsConfirmed() async throws {

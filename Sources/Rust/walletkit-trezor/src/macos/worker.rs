@@ -2,7 +2,7 @@ use std::{
     panic::{catch_unwind, AssertUnwindSafe},
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc, Mutex,
+        mpsc, Arc, Mutex, PoisonError,
     },
 };
 
@@ -187,13 +187,14 @@ impl DeviceWorker {
 
                 let name = command.name();
                 hw_log!("worker: {name} started");
+                // Held while the command runs: a panic drops its reply sender during unwinding, which wakes the
+                // caller, and `worker_lost` then waits here until the reason is recorded.
+                let mut failure = failure_for_thread.lock().unwrap_or_else(PoisonError::into_inner);
                 let outcome = catch_unwind(AssertUnwindSafe(|| handle(command, &mut trezor, &delegate, &runtime)));
                 if let Err(payload) = outcome {
                     let reason = format!("{name} panicked: {}", panic_message(payload.as_ref()));
                     hw_log!("worker: {reason}");
-                    if let Ok(mut failure) = failure_for_thread.lock() {
-                        *failure = Some(reason);
-                    }
+                    *failure = Some(reason);
                     break;
                 }
             }
@@ -213,7 +214,7 @@ impl DeviceWorker {
     /// The error for a command whose reply never came: the worker thread
     /// panicked (reported as a failure, not a disconnect) or is gone.
     fn worker_lost(&self) -> HardwareError {
-        let reason = self.failure.lock().ok().and_then(|failure| failure.clone());
+        let reason = self.failure.lock().unwrap_or_else(PoisonError::into_inner).clone();
         hw_log!("worker: command lost, panic: {reason:?}");
         match reason {
             Some(reason) => HardwareError::SigningFailed { reason },

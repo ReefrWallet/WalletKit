@@ -132,8 +132,15 @@ public struct TonClient: BlockchainClientProtocol, Sendable {
 
     /// The wallet's next `seqno`; `0` for an account that is not deployed.
     public func seqno(_ owner: TonAddress) async throws -> UInt32 {
-        guard try await accountState(owner) == .active else {
-            return 0
+        try await seqnoRead(owner, after: accountInformation(owner)).value
+    }
+
+    /// The `seqno` read after `information`, with the masterchain block and the account's latest transaction of the
+    /// state it was read from (`nil` for an account that is not deployed, whose `0` comes from `information` itself).
+    func seqnoRead(_ owner: TonAddress, after information: AccountInformation) async throws
+        -> SeqnoRead {
+        guard information.state == .active else {
+            return SeqnoRead(value: 0)
         }
 
         let body = try JSONEncoder().encode(RunGetMethodRequest(address: owner.rawString, method: "seqno", stack: []))
@@ -146,7 +153,8 @@ public struct TonClient: BlockchainClientProtocol, Sendable {
             throw BlockchainClientError.decodingFailed(reason: "unexpected seqno result")
         }
 
-        return value
+        let lt = result.lastTransactionId.flatMap { UInt64($0.lt) }.flatMap { $0 == 0 ? nil : $0 }
+        return SeqnoRead(value: value, block: result.blockId?.masterchainSeqno, lastTransactionLt: lt)
     }
 
     // MARK: Submission
@@ -202,6 +210,10 @@ extension TonClient {
         /// The logical time of the account's latest transaction; `nil` if it has none.
         var lastTransactionLt: UInt64?
         let state: TonAccountState
+        /// Unix time of the chain state this was read from; `nil` if the node didn't say.
+        var chainTime: UInt32?
+        /// The masterchain block of that state; `nil` if the node didn't say.
+        var masterchainBlock: UInt32?
     }
 
     struct Envelope<Result: Decodable>: Decodable {
@@ -257,10 +269,37 @@ extension TonClient {
     struct RunGetMethodResult: Decodable {
         let exitCode: Int
         let stack: [[JSONScalar]]
+        /// The block whose state the getter ran against.
+        let blockId: BlockId?
+        /// The account's latest transaction in that state.
+        let lastTransactionId: TransactionId?
 
         enum CodingKeys: String, CodingKey {
+            case blockId = "block_id"
             case exitCode = "exit_code"
+            case lastTransactionId = "last_transaction_id"
             case stack
+        }
+    }
+
+    struct TransactionId: Decodable {
+        let lt: String
+    }
+
+    /// A `seqno` with the state it was read from.
+    struct SeqnoRead {
+        let value: UInt32
+        var block: UInt32?
+        var lastTransactionLt: UInt64?
+    }
+
+    struct BlockId: Decodable {
+        let seqno: UInt32
+        let workchain: Int
+
+        /// The block's `seqno` if it is a masterchain block, whose numbers are comparable across responses.
+        var masterchainSeqno: UInt32? {
+            workchain == -1 ? seqno : nil
         }
     }
 
@@ -288,18 +327,18 @@ extension TonClient {
 
     func accountInformation(_ owner: TonAddress) async throws -> AccountInformation {
         struct Result: Decodable {
-            struct TransactionId: Decodable {
-                let lt: String
-            }
-
             let balance: String
             let lastTransactionId: TransactionId?
             let state: String
+            let syncUtime: UInt32?
+            let blockId: BlockId?
 
             enum CodingKeys: String, CodingKey {
                 case balance
+                case blockId = "block_id"
                 case lastTransactionId = "last_transaction_id"
                 case state
+                case syncUtime = "sync_utime"
             }
         }
 
@@ -311,16 +350,20 @@ extension TonClient {
 
         let lt = result.lastTransactionId.flatMap { UInt64($0.lt) }.flatMap { $0 == 0 ? nil : $0 }
 
-        switch result.state {
-        case "active": return AccountInformation(balance: balance, lastTransactionLt: lt, state: .active)
-        case "frozen": return AccountInformation(balance: balance, lastTransactionLt: lt, state: .frozen)
-        case "uninitialized":
-            return AccountInformation(
+        func information(_ state: TonAccountState) -> AccountInformation {
+            AccountInformation(
                 balance: balance,
                 lastTransactionLt: lt,
-                state: balance == 0 ? .nonexistent : .uninitialized
+                state: state,
+                chainTime: result.syncUtime,
+                masterchainBlock: result.blockId?.masterchainSeqno
             )
+        }
 
+        switch result.state {
+        case "active": return information(.active)
+        case "frozen": return information(.frozen)
+        case "uninitialized": return information(balance == 0 ? .nonexistent : .uninitialized)
         default: throw BlockchainClientError.decodingFailed(reason: "unknown TON account state \(result.state)")
         }
     }

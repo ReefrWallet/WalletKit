@@ -289,8 +289,11 @@ extension TonClient {
         }
 
         func normalized(owner: TonAddress, book: [String: AddressBookEntry]) -> BlockchainTransaction {
+            // The indexer keys the book by uppercase raw addresses and writes message addresses in lowercase.
+            let entries = Dictionary(book.map { ($0.key.lowercased(), $0.value) }) { first, _ in first }
+
             func friendly(_ raw: String?) -> String? {
-                raw.map { book[$0]?.userFriendly ?? $0 }
+                raw.map { entries[$0.lowercased()]?.userFriendly ?? $0 }
             }
 
             let ownerRaw = owner.rawString

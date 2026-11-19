@@ -137,22 +137,36 @@ public extension TonClient {
     }
 
     /// Reads the wallet's state first, then acts on what it finds:
-    /// - `seqno` still the request's: resend the same message while unexpired, else it is ``TonSendOutcome/unprocessed``.
+    /// - `seqno` still the request's: resend the same message while unexpired by this clock. It is
+    ///   ``TonSendOutcome/unprocessed`` only once the chain's own time is past the request's expiry.
     /// - `seqno` moved on: ``TonSendOutcome/confirmed`` if a transaction for the message is indexed. Otherwise the
     ///   wallet's transactions after ``TonPendingSend/baselineLt`` are walked by `prev_trans_lt` up to the chain's
     ///   latest one. Only an unbroken chain with no transaction for the message proves it unprocessed
     ///   (``TonSendOutcome/unprocessed``); any gap or lag leaves it ``TonSendOutcome/unresolved``.
     func reconcile(_ pending: TonPendingSend, now: Date = Date()) async throws -> TonSendOutcome {
         let sender = try TonAddress(string: pending.sender)
-        let current = try await seqno(sender)
-        let expiry = Date(timeIntervalSince1970: TimeInterval(pending.validUntil))
+        let information = try await accountInformation(sender)
+        let read = try await seqnoRead(sender, after: information)
+        let current = read.value
+
+        // The chain time counts only if `seqno` describes that state or a later one: then a request processed before
+        // it expired shows in `seqno`. Responses of different blocks can arrive in either order, so compare blocks.
+        // A wallet that isn't deployed has `seqno` 0 by its state alone; a frozen one's `seqno` can't be read.
+        let seqnoIsCurrent = information.state == .nonexistent || information.state == .uninitialized
+            || read.block.flatMap { block in information.masterchainBlock.map { block >= $0 } } == true
+        let chainTime = seqnoIsCurrent ? information.chainTime : nil
 
         if current <= pending.seqno {
-            guard now < expiry else {
+            // The wallet checks expiry against chain time, not this device's clock: with no chain time past
+            // `validUntil` the request may still be processed, so it stays reserved.
+            if let chainTime, chainTime > pending.validUntil {
                 return .unprocessed
             }
 
-            try await submit(pending)
+            if now < Date(timeIntervalSince1970: TimeInterval(pending.validUntil)) {
+                try await submit(pending)
+            }
+
             return .pending
         }
 
@@ -160,8 +174,9 @@ public extension TonClient {
             return .confirmed
         }
 
-        // Read after the `seqno` moved, so the chain's latest transaction includes the one that consumed it.
-        guard let chainHead = try await accountInformation(sender).lastTransactionLt else {
+        // The head comes from the state the advanced `seqno` was read from, so it includes the transaction that
+        // consumed it; a separate, possibly older, account read could miss that transaction.
+        guard let chainHead = read.lastTransactionLt else {
             return .unresolved
         }
 
