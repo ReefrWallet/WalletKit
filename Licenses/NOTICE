@@ -1,0 +1,11 @@
+WalletKitFFI statically links libusb 1.0.27 (https://libusb.info), licensed
+under the GNU Lesser General Public License v2.1 (see libusb-COPYING).
+
+libusb is built, unmodified, from the sources bundled in the libusb1-sys 0.7.0
+crate (https://crates.io/crates/libusb1-sys), and only into the macOS slice.
+The corresponding source is attached to each WalletKit release as
+libusb-1.0.27-source.tar.gz; upstream it is
+https://github.com/libusb/libusb/releases/tag/v1.0.27.
+
+WalletKit is open source: https://github.com/ReefrWallet/WalletKit. To relink
+it with a modified libusb, see "Replacing libusb" in its README.

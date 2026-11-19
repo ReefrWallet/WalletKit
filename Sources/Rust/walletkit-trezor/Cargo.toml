@@ -1,6 +1,6 @@
 [package]
 name = "walletkit-trezor"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 publish = false
 description = "Trezor hardware wallet support for WalletKit, implementing walletkit-hardware's traits by wrapping the Trezor team's own trezor-client crate (USB/HID wire protocol) rather than reimplementing it. USB is only wired up on macOS (see Docs/Overview.md's \"Transport and platform constraints\" — Trezor devices aren't MFi-certified, so iOS has no generic USB HID access); other targets compile the same public API as a transport-unavailable stub so walletkit-ffi's exported surface never differs by platform."
@@ -27,5 +27,7 @@ hex = "0.4"
 protobuf = "=3.7.2"
 # Draining stale replies from the WebUSB endpoint before connecting
 # (`worker::drain_stale_replies`); same version `trezor-client` uses.
-rusb = "0.9"
+# `vendored` builds libusb from source and links it statically, so the
+# released xcframework doesn't depend on a Homebrew dylib.
+rusb = { version = "0.9", features = ["vendored"] }
 serde_json = "1"

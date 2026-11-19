@@ -148,6 +148,10 @@ public final class SuiNode {
     /// - Throws: ``SuiLaunchError`` if `mise`/`sui` can't be found/run, or
     ///   if the node never becomes ready within 30 seconds.
     public static func start(rpcPort: UInt16? = nil, faucetPort: UInt16? = nil) async throws -> SuiNode {
+        try await withNodeStartupLock { try await startUnlocked(rpcPort: rpcPort, faucetPort: faucetPort) }
+    }
+
+    private static func startUnlocked(rpcPort: UInt16?, faucetPort: UInt16?) async throws -> SuiNode {
         let allocatedPorts = try freeTCPPorts(2)
         let rpcPort = rpcPort ?? allocatedPorts[0]
         let faucetPort = faucetPort ?? allocatedPorts[1]

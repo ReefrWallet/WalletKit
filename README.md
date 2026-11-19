@@ -31,9 +31,20 @@ EVM chains, Solana, and Tron.
 - **Sui** — gRPC, programmable transactions, and native staking.
 - **Tron** — TRC-20 via TronGrid, optional TronScan history, and Stake 2.0.
 
-## Requirements
+## Installation
 
-- macOS with Xcode Command Line Tools for Apple-framework builds
+Add WalletKit with Swift Package Manager. The Rust core comes prebuilt as `WalletKitFFI.xcframework`, attached to each
+[GitHub release](https://github.com/ReefrWallet/WalletKit/releases), so no Rust toolchain or Homebrew packages are needed:
+
+```swift
+.package(url: "https://github.com/ReefrWallet/WalletKit", from: "0.7.0")
+```
+
+## Development
+
+Requirements:
+
+- macOS with Xcode and [rustup](https://rustup.rs)
 - `protoc`, `protoc-gen-swift`, and `protoc-gen-grpc-swift` v2:
 
   ```shell
@@ -46,25 +57,40 @@ EVM chains, Solana, and Tron.
   curl -fsSL https://mise.run | sh
   ```
 
-## Getting started
-
-Install mise dependencies:
+Install mise dependencies and build:
 
 ```shell
 mise install
-```
-
-Build:
-
-```shell
 make spm
 ```
 
-Use as a local SPM dependency while developing with WalletKit:
- 
+`make spm` builds `Frameworks/WalletKitFFI.xcframework` and the generated sources in `Sources/Generated`, which are
+committed. When the local XCFramework exists, `Package.swift` uses it instead of the release, so a dependent app can use
+a local checkout:
+
 ```swift
 .package(path: "../WalletKit")
 ```
+
+Set `WALLETKIT_REMOTE_FFI=1` to use the released binary despite a local build.
+
+### Releasing
+
+Run the **Release** workflow on `main` with a version, or locally with the `gh` CLI:
+
+```shell
+make release VERSION=0.7.0            # dry run: build all slices, test, package, check the ZIP
+make release VERSION=0.7.0 PUBLISH=1  # also commit the version, tag, push, publish
+```
+
+The release sets the Rust crates' shared `[workspace.package]` version, builds every slice, runs `make test` and `make
+docs`, and zips the XCFramework with `Licenses/`. Then it writes the version and checksum into `Package.swift` and
+builds a throwaway consumer against the ZIP for macOS and the iOS Simulator. With `PUBLISH=1` it commits and tags the
+version, pushes `main` and the tag atomically, and uploads the ZIP and the libusb source. Finally it builds the consumer
+against the published release. If that fails, the release is reverted to a draft. Tags are never reused: fix forward
+with the next patch version.
+
+## Usage
 
 ### Example: Ethereum
 
@@ -116,3 +142,24 @@ print("WETH deposit tx hash:", txHash)
 ## License
 
 WalletKit is licensed under the BSD 3-Clause License.
+
+### libusb
+
+On macOS, `WalletKitFFI` statically links [libusb](https://libusb.info) 1.0.27 for Trezor USB access. libusb is licensed
+under the GNU LGPL v2.1. It is built unmodified from the sources bundled in the `libusb1-sys` crate, through rusb's
+`vendored` feature. The release ZIP carries the license and a notice in `Licenses/`. Each release also attaches the
+corresponding libusb source as `libusb-1.0.27-source.tar.gz`.
+
+#### Replacing libusb
+
+WalletKit and its dependents build from source, so a modified libusb can be linked in:
+
+1. Check out the `libusb1-sys` crate version from `Sources/Rust/Cargo.lock` and change its bundled `libusb/` sources.
+2. Point Cargo at it in `Sources/Rust/Cargo.toml`:
+
+   ```toml
+   [patch.crates-io]
+   libusb1-sys = { path = "/path/to/libusb1-sys" }
+   ```
+
+3. Rebuild with `make spm` (or `make -B walletkit-ffi`) and build the app against this checkout.

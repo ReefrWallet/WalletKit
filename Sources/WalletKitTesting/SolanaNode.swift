@@ -106,8 +106,13 @@ public final class SolanaNode {
     ///   healthy within 30 seconds (a fresh validator's first slot can
     ///   take a few seconds longer to produce than an already-warm one).
     public static func start(slotsPerEpoch: UInt64? = nil) async throws -> SolanaNode {
-        let ports = try freeTCPPorts(2)
-        let (rpcPort, faucetPort) = (ports[0], ports[1])
+        try await withNodeStartupLock { try await startUnlocked(slotsPerEpoch: slotsPerEpoch) }
+    }
+
+    private static func startUnlocked(slotsPerEpoch: UInt64?) async throws -> SolanaNode {
+        // Gossip defaults to 8000, which collides when suites start validators in parallel.
+        let ports = try freeTCPPorts(3)
+        let (faucetPort, gossipPort, rpcPort) = (ports[0], ports[1], ports[2])
 
         let binDirectory = try resolveProvisionedBinaries()
         // A working directory holding the ledger and, beside it, the log:
@@ -124,6 +129,7 @@ public final class SolanaNode {
             "--ledger", ledgerDirectory.appendingPathComponent("ledger").path,
             "--rpc-port", "\(rpcPort)",
             "--faucet-port", "\(faucetPort)",
+            "--gossip-port", "\(gossipPort)",
             "--quiet",
             "--reset"
         ] + (slotsPerEpoch.map { ["--slots-per-epoch", "\($0)"] } ?? [])

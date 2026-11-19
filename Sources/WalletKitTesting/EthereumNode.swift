@@ -106,6 +106,10 @@ public final class EthereumNode {
         port: UInt16? = nil,
         workingDirectory: URL? = nil
     ) async throws -> EthereumNode {
+        try await withNodeStartupLock { try await startUnlocked(port: port, workingDirectory: workingDirectory) }
+    }
+
+    private static func startUnlocked(port: UInt16?, workingDirectory: URL?) async throws -> EthereumNode {
         let port = try port ?? freeTCPPort()
         guard let misePath = MiseTool.path else {
             throw EthereumLaunchError(

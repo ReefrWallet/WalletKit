@@ -18,30 +18,7 @@ public struct AptosLaunchError: LocalizedError, CustomStringConvertible {
 
 /// Admits one localnet per test process for its whole lifetime: the node
 /// binds fixed network ports, so a second concurrent one fails to start.
-private actor AptosNodeGate {
-    static let shared = AptosNodeGate()
-
-    private var isBusy = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    func acquire() async {
-        guard isBusy else {
-            isBusy = true
-            return
-        }
-
-        await withCheckedContinuation { waiters.append($0) }
-    }
-
-    func release() {
-        guard waiters.isEmpty else {
-            waiters.removeFirst().resume()
-            return
-        }
-
-        isBusy = false
-    }
-}
+private let aptosNodeGate = AsyncGate()
 
 /// A local `aptos node run-localnet` (validator, REST API, and faucet; no
 /// indexer, which needs Docker).
@@ -89,24 +66,27 @@ public final class AptosNode {
     public static func start() async throws -> AptosNode {
         let binary = try resolveProvisionedBinary()
 
-        await AptosNodeGate.shared.acquire()
+        await aptosNodeGate.acquire()
 
-        let node: AptosNode
-        do {
-            node = try launch(binary: binary)
-        } catch {
-            await AptosNodeGate.shared.release()
-            throw error
+        // Taken after the lifetime gate, so a waiting localnet doesn't block other startups.
+        return try await withNodeStartupLock {
+            let node: AptosNode
+            do {
+                node = try launch(binary: binary)
+            } catch {
+                await aptosNodeGate.release()
+                throw error
+            }
+
+            do {
+                try await node.waitUntilReady()
+            } catch {
+                node.stop()
+                throw error
+            }
+
+            return node
         }
-
-        do {
-            try await node.waitUntilReady()
-        } catch {
-            node.stop()
-            throw error
-        }
-
-        return node
     }
 
     private static func launch(binary: URL) throws -> AptosNode {
@@ -185,7 +165,7 @@ public final class AptosNode {
         process.terminateAndWait()
         try? logHandle.close()
         try? FileManager.default.removeItem(at: workingDirectory)
-        Task { await AptosNodeGate.shared.release() }
+        Task { await aptosNodeGate.release() }
     }
 
     deinit {
@@ -198,7 +178,7 @@ public final class AptosNode {
         }
 
         try? FileManager.default.removeItem(at: workingDirectory)
-        Task { await AptosNodeGate.shared.release() }
+        Task { await aptosNodeGate.release() }
     }
 
     /// Mints `octas` of APT to `address` and waits for the mint to commit.

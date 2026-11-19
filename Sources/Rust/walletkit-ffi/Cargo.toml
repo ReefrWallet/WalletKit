@@ -1,6 +1,6 @@
 [package]
 name = "walletkit-ffi"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 publish = false
 description = "UniFFI export layer for WalletKit."

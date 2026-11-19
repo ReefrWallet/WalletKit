@@ -232,6 +232,10 @@ public final class BitcoinNode {
     ///   been run yet, either process fails to launch, or `electrs` never
     ///   finishes its initial sync within 15 seconds.
     public static func start() async throws -> BitcoinNode {
+        try await withNodeStartupLock { try await startUnlocked() }
+    }
+
+    private static func startUnlocked() async throws -> BitcoinNode {
         // Ports are released before the daemons bind them, so another
         // process (e.g. a concurrent localnet suite) can steal one in
         // between; `bitcoind` then exits at startup. Retry on fresh ports.

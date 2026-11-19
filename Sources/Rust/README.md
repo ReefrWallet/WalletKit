@@ -27,7 +27,7 @@ make walletkit-ffi
 ```
 
 The [Makefile](../../Makefile) builds the macOS, iOS device, and iOS simulator
-slices into `Frameworks/WalletKit.xcframework` and generates the Swift bindings
+slices into `Frameworks/WalletKitFFI.xcframework` and generates the Swift bindings
 in `Sources/Generated/Bindings/`.
 
 ## Build and test WalletKit

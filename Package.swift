@@ -1,6 +1,40 @@
 // swift-tools-version: 6.0
 
+import Foundation
 import PackageDescription
+
+// Rust FFI binary: `WALLETKIT_FFI_ZIP` (release checks), then a local build
+// (`make walletkit-ffi`), then the GitHub release. `Scripts/release.sh`
+// rewrites the two lines below.
+let ffiVersion = "0.6.0"
+let ffiChecksum = "0000000000000000000000000000000000000000000000000000000000000000"
+
+let ffiTarget: Target = {
+    let environment = Context.environment
+    let localPath = "Frameworks/WalletKitFFI.xcframework"
+
+    if let zipPath = environment["WALLETKIT_FFI_ZIP"], !zipPath.isEmpty {
+        return .binaryTarget(name: "WalletKitFFI", path: zipPath)
+    }
+
+    if environment["WALLETKIT_REMOTE_FFI"] == nil,
+       FileManager.default.fileExists(atPath: "\(Context.packageDirectory)/\(localPath)") {
+        return .binaryTarget(name: "WalletKitFFI", path: localPath)
+    }
+
+    return .binaryTarget(
+        name: "WalletKitFFI",
+        url: "https://github.com/ReefrWallet/WalletKit/releases/download/\(ffiVersion)/WalletKitFFI.xcframework.zip",
+        checksum: ffiChecksum
+    )
+}()
+
+// The test target is rooted at "." for TestVectors; skip the rest that exists.
+let testExcludes = [
+    ".build", ".DS_Store", ".git", ".github", ".gitignore", ".gitmodules", ".swiftpm", "Derived", "docs",
+    "Frameworks", "LICENSE", "Licenses", "Makefile", "mise.toml", "Package.resolved", "Package.swift",
+    "README.md", "Scripts", "Site", "Sources", "WalletKit.xcodeproj"
+].filter { FileManager.default.fileExists(atPath: "\(Context.packageDirectory)/\($0)") }
 
 let package = Package(
     name: "WalletKit",
@@ -12,6 +46,10 @@ let package = Package(
         .library(
             name: "WalletKit",
             targets: ["WalletKit"]
+        ),
+        .library(
+            name: "WalletKitTesting",
+            targets: ["WalletKitTesting"]
         )
     ],
     dependencies: [
@@ -25,15 +63,7 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.5.0")
     ],
     targets: [
-        .systemLibrary(
-            name: "CLibUSB",
-            pkgConfig: "libusb-1.0",
-            providers: [.brew(["libusb"])]
-        ),
-        .binaryTarget(
-            name: "WalletKitFFI",
-            path: "Frameworks/WalletKit.xcframework"
-        ),
+        ffiTarget,
         .target(
             name: "WalletKitGRPC",
             dependencies: [
@@ -46,7 +76,15 @@ let package = Package(
         .target(
             name: "WalletKitRust",
             dependencies: ["WalletKitFFI"],
-            path: "Sources/Generated/Bindings"
+            path: "Sources/Generated/Bindings",
+            linkerSettings: [
+                .linkedLibrary("c++"),
+                // Statically linked libusb (rusb's `vendored` feature).
+                .linkedFramework("CoreFoundation", .when(platforms: [.macOS])),
+                .linkedFramework("IOKit", .when(platforms: [.macOS])),
+                .linkedFramework("Security", .when(platforms: [.macOS])),
+                .linkedLibrary("objc", .when(platforms: [.macOS]))
+            ]
         ),
         .target(
             name: "WalletKit",
@@ -58,8 +96,7 @@ let package = Package(
                 .product(name: "Moya", package: "Moya"),
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
                 "WalletKitGRPC",
-                "WalletKitRust",
-                .target(name: "CLibUSB", condition: .when(platforms: [.macOS]))
+                "WalletKitRust"
             ],
             path: "Sources/WalletKit"
         ),
@@ -85,27 +122,7 @@ let package = Package(
                 "WalletKitTesting"
             ],
             path: ".",
-            exclude: [
-                ".build",
-                ".DS_Store",
-                ".git",
-                ".github",
-                ".gitignore",
-                ".gitmodules",
-                "Derived",
-                "docs",
-                "Frameworks",
-                "LICENSE",
-                "Makefile",
-                "mise.toml",
-                "Package.swift",
-                "Project.swift",
-                "README.md",
-                "Scripts",
-                "Site",
-                "Sources",
-                "WalletKit.xcodeproj"
-            ],
+            exclude: testExcludes,
             sources: ["Tests"],
             resources: [.process("TestVectors")]
         )

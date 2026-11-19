@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (major.minor.patch)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    runs-on: macos-27
+    timeout-minutes: 120
+    steps:
+      - name: Require main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Releases are cut from main, not ${{ github.ref }}"
+          exit 1
+
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install macOS build dependencies
+        run: |
+          brew install grpc-swift protobuf swift-protobuf
+          protoc --version
+
+      - name: Setup mise
+        uses: jdx/mise-action@v2
+        env:
+          MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install tools
+        run: mise install
+        env:
+          MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Builds every slice, runs `make test` and `make docs`, and checks the ZIP
+      # before anything is pushed. Pushes made with GITHUB_TOKEN don't trigger
+      # ci.yml, so this is the release gate.
+      - name: Release
+        run: make release VERSION="$VERSION" PUBLISH=1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}

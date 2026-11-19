@@ -1,6 +1,6 @@
 [package]
 name = "walletkit-hardware"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 publish = false
 description = "Vendor-agnostic hardware wallet plumbing for WalletKit: the HardwareDevice/HardwareDeviceManager/HardwareDeviceDelegate traits and their supporting types. Carries no vendor protocol code itself — walletkit-trezor implements these traits for Trezor devices."

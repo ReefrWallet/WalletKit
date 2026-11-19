@@ -36,7 +36,7 @@ docs_redirect = printf '%s\n' '<!doctype html>' '<meta charset="utf-8">' \
 PANDOC ?= $(if $(shell command -v mise 2>/dev/null),mise x -- pandoc,pandoc)
 FRAMEWORKS_DIR := Frameworks
 GENERATED_SOURCES_DIR := $(SOURCES_DIR)/Generated/Bindings
-XCFRAMEWORK := $(FRAMEWORKS_DIR)/WalletKit.xcframework
+XCFRAMEWORK := $(FRAMEWORKS_DIR)/WalletKitFFI.xcframework
 
 # Sui gRPC API
 SUI_PROTO_SUBMODULE := $(SOURCES_DIR)/gRPC/sui-rpc-api-v2
@@ -87,8 +87,10 @@ APTOS_TESTING_DIR := $(BUILD_DIR)/aptos-testing
 APTOS_TESTING_BIN_DIR := $(APTOS_TESTING_DIR)/bin
 APTOS_CLI_STAMP := $(APTOS_TESTING_DIR)/.aptos-cli-$(APTOS_CLI_VERSION)-stamp
 
-ifneq ($(GITHUB_ACTIONS),)
-# CI only runs tests: build the macOS arm64 slice alone.
+# CI only runs tests: build the macOS arm64 slice alone. `RELEASE=1` builds all.
+ALL_SLICES := $(if $(RELEASE),1,$(if $(GITHUB_ACTIONS),,1))
+
+ifeq ($(ALL_SLICES),)
 MACOS_TARGETS := aarch64-apple-darwin
 ALL_TARGETS := $(MACOS_TARGETS)
 else
@@ -107,7 +109,7 @@ IOS_SIM_LIB := $(BUILD_DIR)/ios-simulator/$(LIB_NAME)
 IOS_DEVICE_LIB := $(TARGET_DIR)/$(IOS_DEVICE_TARGET)/release/$(LIB_NAME)
 
 XCFRAMEWORK_LIBS := -library $(MACOS_LIB) -headers $(HEADERS_DIR)
-ifeq ($(GITHUB_ACTIONS),)
+ifneq ($(ALL_SLICES),)
 XCFRAMEWORK_LIBS += \
 	-library $(IOS_DEVICE_LIB) -headers $(HEADERS_DIR) \
 	-library $(IOS_SIM_LIB) -headers $(HEADERS_DIR)
@@ -125,7 +127,7 @@ GRPC_STAMP := $(GENERATED_GRPC_SOURCES_DIR)/.stamp
 GRPC_INPUTS := $(shell find $(SUI_PROTO_SUBMODULE) -name '*.proto' 2>/dev/null) $(MAKEFILE_LIST)
 
 .DEFAULT_GOAL := spm
-.PHONY: all aptos-testing bitcoin-testing clean distclean docs docs-index docs-preview rust-targets solana-testing sui-grpc test walletkit-ffi
+.PHONY: all aptos-testing bitcoin-testing clean distclean docs docs-index docs-preview release rust-targets solana-testing sui-grpc test walletkit-ffi xcframework-zip
 
 all: $(XCFRAMEWORK) test docs docs-index
 
@@ -199,7 +201,7 @@ $(XCFRAMEWORK): $(RUST_INPUTS) $(MAKEFILE_LIST) | rust-targets
 	@echo "==> Fusing per-platform slices with lipo"
 	@mkdir -p $(BUILD_DIR)/macos $(BUILD_DIR)/ios-simulator
 	@lipo -create $(foreach t,$(MACOS_TARGETS),$(TARGET_DIR)/$(t)/release/$(LIB_NAME)) -output $(MACOS_LIB)
-ifeq ($(GITHUB_ACTIONS),)
+ifneq ($(ALL_SLICES),)
 	@lipo -create $(foreach t,$(IOS_SIM_TARGETS),$(TARGET_DIR)/$(t)/release/$(LIB_NAME)) -output $(IOS_SIM_LIB)
 endif
 
@@ -215,6 +217,16 @@ endif
 	@xcodebuild -create-xcframework \
 		$(XCFRAMEWORK_LIBS) \
 		-output $(XCFRAMEWORK)
+
+# Release ZIP (XCFramework + Licenses/), its SwiftPM checksum, and libusb source.
+xcframework-zip: $(XCFRAMEWORK)
+	@Scripts/package-ffi.sh $(XCFRAMEWORK) $(RUST_DIR) $(BUILD_DIR)/release
+
+# `make release VERSION=x.y.z` is a dry run; add PUBLISH=1 to commit, tag,
+# push and publish the GitHub release (see Scripts/release.sh).
+release:
+	@test -n "$(VERSION)" || { echo "usage: make release VERSION=x.y.z [PUBLISH=1]"; exit 64; }
+	@PUBLISH="$(PUBLISH)" Scripts/release.sh $(VERSION)
 
 sui-grpc: $(GRPC_STAMP)
 
@@ -326,6 +338,6 @@ clean:
 	@rm -rf $(BINDINGS_DIR) $(HEADERS_DIR) $(BUILD_DIR)/macos $(BUILD_DIR)/ios-simulator $(DOCS_BUILD_DIR)
 	@cd $(CRATE_DIR) && $(CARGO) clean
 
-# Everything `clean` keeps too: XCFramework, generated sources, docs, tooling.
+# Everything `clean` keeps too, except the committed generated sources.
 distclean: clean
-	@rm -rf $(BUILD_DIR) $(DOCS_DIR) $(FRAMEWORKS_DIR) $(GENERATED_SOURCES_DIR) $(GENERATED_GRPC_SOURCES_DIR)
+	@rm -rf $(BUILD_DIR) $(DOCS_DIR) $(FRAMEWORKS_DIR) $(GRPC_STAMP)

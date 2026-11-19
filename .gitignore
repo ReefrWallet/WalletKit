@@ -6,7 +6,7 @@ Sources/Generated/.DS_Store
 *.xcodeproj
 *.xcworkspace
 /Frameworks/
-/Sources/Generated/
+/Sources/Generated/gRPC/.stamp
 /.build/
 .swiftpm/
 /docs/
