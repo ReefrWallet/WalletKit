@@ -3,21 +3,15 @@
 import Foundation
 import PackageDescription
 
-// Rust FFI binary: `WALLETKIT_FFI_ZIP` (release checks), then a local build
-// (`make walletkit-ffi`), then the GitHub release. `Scripts/release.sh`
-// rewrites the two lines below.
+// Rust FFI binary: a local build (`make walletkit-ffi`), then the GitHub
+// release. `Scripts/release.sh` rewrites the two lines below.
 let ffiVersion = "0.7.0"
 let ffiChecksum = "e8e51453fc5ac6d1b7d305d1fc7d4519fa9c0b2358e1fa81fa4078fc4afb2006"
 
 let ffiTarget: Target = {
-    let environment = Context.environment
     let localPath = "Frameworks/WalletKitFFI.xcframework"
 
-    if let zipPath = environment["WALLETKIT_FFI_ZIP"], !zipPath.isEmpty {
-        return .binaryTarget(name: "WalletKitFFI", path: zipPath)
-    }
-
-    if environment["WALLETKIT_REMOTE_FFI"] == nil,
+    if Context.environment["WALLETKIT_REMOTE_FFI"] == nil,
        FileManager.default.fileExists(atPath: "\(Context.packageDirectory)/\(localPath)") {
         return .binaryTarget(name: "WalletKitFFI", path: localPath)
     }

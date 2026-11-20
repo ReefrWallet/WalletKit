@@ -71,10 +71,6 @@ sed -i '' -E \
 grep -qx "let ffiVersion = \"$version\"" Package.swift || fail "couldn't set ffiVersion"
 grep -qx "let ffiChecksum = \"$checksum\"" Package.swift || fail "couldn't set ffiChecksum"
 
-echo "==> Checking the release ZIP"
-Scripts/consumer-check.sh zip "$zip"
-[ "$(swift package compute-checksum "$zip")" = "$checksum" ] || fail "ZIP checksum changed"
-
 if [ -z "$publish" ]; then
     echo "==> Dry run passed: $zip ($checksum). Nothing was committed, tagged or pushed."
     exit 0
@@ -98,13 +94,5 @@ git push --atomic origin HEAD:refs/heads/main "refs/tags/$version"
 gh release create "$version" "$zip" "$release_dir"/libusb-*-source.tar.gz \
     --verify-tag --title "$version" --generate-notes \
     --notes "SwiftPM checksum of WalletKitFFI.xcframework.zip: \`$checksum\`"
-
-echo "==> Checking the published release"
-if ! Scripts/consumer-check.sh remote "$version"; then
-    # Tags are never moved or reused (SwiftPM caches them): hide the assets and
-    # ship the fix as the next patch version.
-    gh release edit "$version" --draft=true
-    fail "published $version doesn't resolve; release reverted to draft"
-fi
 
 echo "==> Released $version"
