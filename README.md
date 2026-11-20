@@ -68,20 +68,6 @@ a local checkout:
 
 Set `WALLETKIT_REMOTE_FFI=1` to use the released binary despite a local build.
 
-### Releasing
-
-Run the **Release** workflow on `main` with a version, or locally with the `gh` CLI:
-
-```shell
-make release VERSION=0.7.0            # dry run: build all slices, test, package
-make release VERSION=0.7.0 PUBLISH=1  # also commit the version, tag, push, publish
-```
-
-The release sets the Rust crates' shared `[workspace.package]` version, builds every slice, runs `make test` and `make
-docs`, and zips the XCFramework with `Licenses/`. Then it writes the version and checksum into `Package.swift`. With
-`PUBLISH=1` it commits and tags the version, pushes `main` and the tag atomically, and uploads the ZIP and the libusb
-source. Tags are never reused: fix forward with the next patch version.
-
 ## Usage
 
 ### Example: Ethereum
