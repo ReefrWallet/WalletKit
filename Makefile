@@ -127,11 +127,15 @@ GRPC_STAMP := $(GENERATED_GRPC_SOURCES_DIR)/.stamp
 GRPC_INPUTS := $(shell find $(SUI_PROTO_SUBMODULE) -name '*.proto' 2>/dev/null) $(MAKEFILE_LIST)
 
 .DEFAULT_GOAL := spm
-.PHONY: all aptos-testing bitcoin-testing clean distclean docs docs-index docs-preview release rust-targets solana-testing sui-grpc test walletkit-ffi xcframework-zip
+.PHONY: all aptos-testing bitcoin-testing clean distclean docs docs-index docs-preview release rust-targets solana-testing sui-grpc test trust walletkit-ffi xcframework-zip
 
 all: $(XCFRAMEWORK) test docs docs-index
 
-docs: $(XCFRAMEWORK) $(GRPC_STAMP)
+# A new worktree has untrusted mise configs, so every `mise x` fails there.
+trust:
+	@command -v mise >/dev/null 2>&1 && mise trust --all --quiet || true
+
+docs: $(XCFRAMEWORK) $(GRPC_STAMP) | trust
 	@echo "==> Building DocC documentation into $(DOCS_DIR)/"
 	@rm -rf $(DOCS_BUILD_DIR)
 	@mkdir -p $(DOCS_BUILD_DIR)
@@ -159,13 +163,13 @@ docs-preview:
 
 # Landing page at the docs site root, linking WalletKit and WalletKitTesting.
 # Rebuild it alone (without regenerating DocC) after editing $(DOCS_SITE_DIR)/index.md.
-docs-index:
+docs-index: | trust
 	@echo "==> Building docs landing page from $(DOCS_SITE_DIR)/index.md"
 	@mkdir -p $(DOCS_DIR)
 	@$(PANDOC) $(DOCS_SITE_DIR)/index.md --standalone \
 		--template $(DOCS_SITE_DIR)/template.html --output $(DOCS_DIR)/index.html
 
-spm: walletkit-ffi sui-grpc
+spm: walletkit-ffi sui-grpc | trust
 	@swift build
 
 # Internal helper, not one of the four requested targets: makes sure the
@@ -176,10 +180,10 @@ rust-targets:
 		$(RUSTUP) target add $$target >/dev/null 2>&1 || true; \
 	done
 
-test: rust-tests swift-tests
+test: rust-tests swift-tests | trust
 
 # Rebuilt only when Rust inputs change; `make -B walletkit-ffi` forces it.
-walletkit-ffi: $(XCFRAMEWORK)
+walletkit-ffi: $(XCFRAMEWORK) | trust
 
 $(XCFRAMEWORK): $(RUST_INPUTS) $(MAKEFILE_LIST) | rust-targets
 	@echo "==> Building walletkit-ffi (release): $(ALL_TARGETS)"
@@ -228,7 +232,7 @@ release:
 	@test -n "$(VERSION)" || { echo "usage: make release VERSION=x.y.z [PUBLISH=1]"; exit 64; }
 	@PUBLISH="$(PUBLISH)" Scripts/release.sh $(VERSION)
 
-sui-grpc: $(GRPC_STAMP)
+sui-grpc: $(GRPC_STAMP) | trust
 
 $(GRPC_STAMP): $(GRPC_INPUTS)
 	@test -d $(SUI_PROTO_DIR)/sui/rpc/v2 || { \
