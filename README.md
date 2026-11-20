@@ -45,13 +45,7 @@ Add WalletKit with Swift Package Manager. The Rust core comes prebuilt as `Walle
 Requirements:
 
 - macOS with Xcode and [rustup](https://rustup.rs)
-- `protoc`, `protoc-gen-swift`, and `protoc-gen-grpc-swift` v2:
-
-  ```shell
-  brew install protobuf swift-protobuf protoc-gen-grpc-swift
-  ```
-
-- `mise`:
+- `mise`, which provides the pinned tools in `mise.toml`, including `protoc` and its Swift plugins:
 
   ```shell
   curl -fsSL https://mise.run | sh

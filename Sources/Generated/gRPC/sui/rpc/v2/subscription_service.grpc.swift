@@ -132,9 +132,9 @@ extension Sui_Rpc_V2_SubscriptionService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_SubscribeCheckpointsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_SubscribeCheckpointsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func subscribeCheckpoints<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_SubscribeCheckpointsRequest>,
@@ -158,9 +158,9 @@ extension Sui_Rpc_V2_SubscriptionService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_SubscribeTransactionsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_SubscribeTransactionsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func subscribeTransactions<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_SubscribeTransactionsRequest>,
@@ -184,9 +184,9 @@ extension Sui_Rpc_V2_SubscriptionService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_SubscribeEventsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_SubscribeEventsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func subscribeEvents<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_SubscribeEventsRequest>,
@@ -259,9 +259,9 @@ extension Sui_Rpc_V2_SubscriptionService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_SubscribeCheckpointsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_SubscribeCheckpointsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func subscribeCheckpoints<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_SubscribeCheckpointsRequest>,
@@ -294,9 +294,9 @@ extension Sui_Rpc_V2_SubscriptionService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_SubscribeTransactionsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_SubscribeTransactionsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func subscribeTransactions<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_SubscribeTransactionsRequest>,
@@ -329,9 +329,9 @@ extension Sui_Rpc_V2_SubscriptionService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_SubscribeEventsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_SubscribeEventsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func subscribeEvents<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_SubscribeEventsRequest>,
@@ -369,9 +369,9 @@ extension Sui_Rpc_V2_SubscriptionService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_SubscribeCheckpointsRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func subscribeCheckpoints<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_SubscribeCheckpointsRequest>,
@@ -399,9 +399,9 @@ extension Sui_Rpc_V2_SubscriptionService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_SubscribeTransactionsRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func subscribeTransactions<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_SubscribeTransactionsRequest>,
@@ -429,9 +429,9 @@ extension Sui_Rpc_V2_SubscriptionService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_SubscribeEventsRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func subscribeEvents<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_SubscribeEventsRequest>,
@@ -466,9 +466,9 @@ extension Sui_Rpc_V2_SubscriptionService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func subscribeCheckpoints<Result>(
         _ message: Sui_Rpc_V2_SubscribeCheckpointsRequest,
@@ -500,9 +500,9 @@ extension Sui_Rpc_V2_SubscriptionService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func subscribeTransactions<Result>(
         _ message: Sui_Rpc_V2_SubscribeTransactionsRequest,
@@ -534,9 +534,9 @@ extension Sui_Rpc_V2_SubscriptionService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func subscribeEvents<Result>(
         _ message: Sui_Rpc_V2_SubscribeEventsRequest,

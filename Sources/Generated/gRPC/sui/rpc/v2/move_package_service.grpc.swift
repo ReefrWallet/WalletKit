@@ -107,9 +107,9 @@ extension Sui_Rpc_V2_MovePackageService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetPackageRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetPackageResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func getPackage<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetPackageRequest>,
@@ -126,9 +126,9 @@ extension Sui_Rpc_V2_MovePackageService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetDatatypeRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetDatatypeResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func getDatatype<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetDatatypeRequest>,
@@ -145,9 +145,9 @@ extension Sui_Rpc_V2_MovePackageService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetFunctionRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetFunctionResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func getFunction<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetFunctionRequest>,
@@ -164,9 +164,9 @@ extension Sui_Rpc_V2_MovePackageService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ListPackageVersionsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ListPackageVersionsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func listPackageVersions<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListPackageVersionsRequest>,
@@ -200,9 +200,9 @@ extension Sui_Rpc_V2_MovePackageService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetPackageRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetPackageResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func getPackage<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetPackageRequest>,
@@ -230,9 +230,9 @@ extension Sui_Rpc_V2_MovePackageService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetDatatypeRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetDatatypeResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func getDatatype<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetDatatypeRequest>,
@@ -260,9 +260,9 @@ extension Sui_Rpc_V2_MovePackageService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetFunctionRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetFunctionResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func getFunction<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetFunctionRequest>,
@@ -290,9 +290,9 @@ extension Sui_Rpc_V2_MovePackageService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ListPackageVersionsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ListPackageVersionsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func listPackageVersions<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListPackageVersionsRequest>,
@@ -323,9 +323,9 @@ extension Sui_Rpc_V2_MovePackageService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_GetPackageRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getPackage<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetPackageRequest>,
@@ -348,9 +348,9 @@ extension Sui_Rpc_V2_MovePackageService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_GetDatatypeRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getDatatype<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetDatatypeRequest>,
@@ -373,9 +373,9 @@ extension Sui_Rpc_V2_MovePackageService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_GetFunctionRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getFunction<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetFunctionRequest>,
@@ -398,9 +398,9 @@ extension Sui_Rpc_V2_MovePackageService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_ListPackageVersionsRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func listPackageVersions<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListPackageVersionsRequest>,
@@ -428,9 +428,9 @@ extension Sui_Rpc_V2_MovePackageService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getPackage<Result>(
         _ message: Sui_Rpc_V2_GetPackageRequest,
@@ -457,9 +457,9 @@ extension Sui_Rpc_V2_MovePackageService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getDatatype<Result>(
         _ message: Sui_Rpc_V2_GetDatatypeRequest,
@@ -486,9 +486,9 @@ extension Sui_Rpc_V2_MovePackageService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getFunction<Result>(
         _ message: Sui_Rpc_V2_GetFunctionRequest,
@@ -515,9 +515,9 @@ extension Sui_Rpc_V2_MovePackageService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func listPackageVersions<Result>(
         _ message: Sui_Rpc_V2_ListPackageVersionsRequest,

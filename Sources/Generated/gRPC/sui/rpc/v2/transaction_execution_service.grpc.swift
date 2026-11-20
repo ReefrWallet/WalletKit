@@ -79,9 +79,9 @@ extension Sui_Rpc_V2_TransactionExecutionService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ExecuteTransactionRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ExecuteTransactionResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func executeTransaction<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ExecuteTransactionRequest>,
@@ -98,9 +98,9 @@ extension Sui_Rpc_V2_TransactionExecutionService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_SimulateTransactionRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_SimulateTransactionResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func simulateTransaction<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_SimulateTransactionRequest>,
@@ -134,9 +134,9 @@ extension Sui_Rpc_V2_TransactionExecutionService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ExecuteTransactionRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ExecuteTransactionResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func executeTransaction<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ExecuteTransactionRequest>,
@@ -164,9 +164,9 @@ extension Sui_Rpc_V2_TransactionExecutionService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_SimulateTransactionRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_SimulateTransactionResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func simulateTransaction<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_SimulateTransactionRequest>,
@@ -197,9 +197,9 @@ extension Sui_Rpc_V2_TransactionExecutionService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_ExecuteTransactionRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func executeTransaction<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_ExecuteTransactionRequest>,
@@ -222,9 +222,9 @@ extension Sui_Rpc_V2_TransactionExecutionService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_SimulateTransactionRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func simulateTransaction<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_SimulateTransactionRequest>,
@@ -252,9 +252,9 @@ extension Sui_Rpc_V2_TransactionExecutionService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func executeTransaction<Result>(
         _ message: Sui_Rpc_V2_ExecuteTransactionRequest,
@@ -281,9 +281,9 @@ extension Sui_Rpc_V2_TransactionExecutionService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func simulateTransaction<Result>(
         _ message: Sui_Rpc_V2_SimulateTransactionRequest,

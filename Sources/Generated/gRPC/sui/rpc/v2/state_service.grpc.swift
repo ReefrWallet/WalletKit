@@ -121,9 +121,9 @@ extension Sui_Rpc_V2_StateService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ListDynamicFieldsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ListDynamicFieldsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func listDynamicFields<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListDynamicFieldsRequest>,
@@ -140,9 +140,9 @@ extension Sui_Rpc_V2_StateService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ListOwnedObjectsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ListOwnedObjectsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func listOwnedObjects<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListOwnedObjectsRequest>,
@@ -159,9 +159,9 @@ extension Sui_Rpc_V2_StateService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetCoinInfoRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetCoinInfoResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func getCoinInfo<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetCoinInfoRequest>,
@@ -178,9 +178,9 @@ extension Sui_Rpc_V2_StateService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetBalanceRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetBalanceResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func getBalance<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetBalanceRequest>,
@@ -197,9 +197,9 @@ extension Sui_Rpc_V2_StateService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ListBalancesRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ListBalancesResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func listBalances<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListBalancesRequest>,
@@ -233,9 +233,9 @@ extension Sui_Rpc_V2_StateService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ListDynamicFieldsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ListDynamicFieldsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func listDynamicFields<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListDynamicFieldsRequest>,
@@ -263,9 +263,9 @@ extension Sui_Rpc_V2_StateService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ListOwnedObjectsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ListOwnedObjectsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func listOwnedObjects<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListOwnedObjectsRequest>,
@@ -293,9 +293,9 @@ extension Sui_Rpc_V2_StateService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetCoinInfoRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetCoinInfoResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func getCoinInfo<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetCoinInfoRequest>,
@@ -323,9 +323,9 @@ extension Sui_Rpc_V2_StateService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetBalanceRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetBalanceResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func getBalance<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetBalanceRequest>,
@@ -353,9 +353,9 @@ extension Sui_Rpc_V2_StateService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ListBalancesRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ListBalancesResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func listBalances<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListBalancesRequest>,
@@ -386,9 +386,9 @@ extension Sui_Rpc_V2_StateService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_ListDynamicFieldsRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func listDynamicFields<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListDynamicFieldsRequest>,
@@ -411,9 +411,9 @@ extension Sui_Rpc_V2_StateService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_ListOwnedObjectsRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func listOwnedObjects<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListOwnedObjectsRequest>,
@@ -436,9 +436,9 @@ extension Sui_Rpc_V2_StateService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_GetCoinInfoRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getCoinInfo<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetCoinInfoRequest>,
@@ -461,9 +461,9 @@ extension Sui_Rpc_V2_StateService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_GetBalanceRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getBalance<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetBalanceRequest>,
@@ -486,9 +486,9 @@ extension Sui_Rpc_V2_StateService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_ListBalancesRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func listBalances<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListBalancesRequest>,
@@ -516,9 +516,9 @@ extension Sui_Rpc_V2_StateService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func listDynamicFields<Result>(
         _ message: Sui_Rpc_V2_ListDynamicFieldsRequest,
@@ -545,9 +545,9 @@ extension Sui_Rpc_V2_StateService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func listOwnedObjects<Result>(
         _ message: Sui_Rpc_V2_ListOwnedObjectsRequest,
@@ -574,9 +574,9 @@ extension Sui_Rpc_V2_StateService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getCoinInfo<Result>(
         _ message: Sui_Rpc_V2_GetCoinInfoRequest,
@@ -603,9 +603,9 @@ extension Sui_Rpc_V2_StateService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getBalance<Result>(
         _ message: Sui_Rpc_V2_GetBalanceRequest,
@@ -632,9 +632,9 @@ extension Sui_Rpc_V2_StateService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func listBalances<Result>(
         _ message: Sui_Rpc_V2_ListBalancesRequest,

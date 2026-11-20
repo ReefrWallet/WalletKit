@@ -1,9 +1,8 @@
 # Requires on the host machine:
 #   - Rust via rustup (this drives `rustup target add` for you)
 #   - Xcode command line tools (xcodebuild, lipo)
-#   - protoc, protoc-gen-swift, and protoc-gen-grpc-swift (v2, binary name
-#     `protoc-gen-grpc-swift-2`) for `make sui-grpc` — e.g.
-#     `brew install protobuf swift-protobuf protoc-gen-grpc-swift`
+#   - mise, for the tools pinned in mise.toml (protoc and its Swift plugins
+#     for `make sui-grpc`, pandoc for the docs)
 
 export MACOSX_DEPLOYMENT_TARGET := 15.0
 export IPHONEOS_DEPLOYMENT_TARGET := 18.0
@@ -32,8 +31,9 @@ DOCS_BASE_PATH ?= WalletKit
 docs_redirect = printf '%s\n' '<!doctype html>' '<meta charset="utf-8">' \
 	'<meta http-equiv="refresh" content="0; url=$(2)">' '<link rel="canonical" href="$(2)">' \
 	'<title>Redirecting…</title>' '<a href="$(2)">Continue to the documentation</a>' > $(1)
-# pandoc is pinned in mise.toml, which only a shell inside this directory activates.
+# pandoc and protoc (with its plugins) are pinned in mise.toml, which only a shell inside this directory activates.
 PANDOC ?= $(if $(shell command -v mise 2>/dev/null),mise x -- pandoc,pandoc)
+PROTOC ?= $(if $(shell command -v mise 2>/dev/null),mise x -- protoc,protoc)
 FRAMEWORKS_DIR := Frameworks
 GENERATED_SOURCES_DIR := $(SOURCES_DIR)/Generated/Bindings
 XCFRAMEWORK := $(FRAMEWORKS_DIR)/WalletKitFFI.xcframework
@@ -239,7 +239,7 @@ $(GRPC_STAMP): $(GRPC_INPUTS)
 	@echo "==> Generating Swift bindings for Sui's gRPC API"
 	@rm -rf $(GENERATED_GRPC_SOURCES_DIR)
 	@mkdir -p $(GENERATED_GRPC_SOURCES_DIR)
-	@protoc -I $(SUI_PROTO_DIR) \
+	@$(PROTOC) -I $(SUI_PROTO_DIR) \
 		--swift_opt=Visibility=Public \
 		--swift_out=$(GENERATED_GRPC_SOURCES_DIR) \
 		--grpc-swift-2_opt=Visibility=Public,Server=false,Client=true \

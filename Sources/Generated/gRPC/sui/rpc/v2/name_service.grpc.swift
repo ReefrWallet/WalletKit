@@ -79,9 +79,9 @@ extension Sui_Rpc_V2_NameService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_LookupNameRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_LookupNameResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func lookupName<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_LookupNameRequest>,
@@ -98,9 +98,9 @@ extension Sui_Rpc_V2_NameService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ReverseLookupNameRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ReverseLookupNameResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func reverseLookupName<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ReverseLookupNameRequest>,
@@ -134,9 +134,9 @@ extension Sui_Rpc_V2_NameService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_LookupNameRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_LookupNameResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func lookupName<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_LookupNameRequest>,
@@ -164,9 +164,9 @@ extension Sui_Rpc_V2_NameService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ReverseLookupNameRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ReverseLookupNameResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func reverseLookupName<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ReverseLookupNameRequest>,
@@ -197,9 +197,9 @@ extension Sui_Rpc_V2_NameService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_LookupNameRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func lookupName<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_LookupNameRequest>,
@@ -222,9 +222,9 @@ extension Sui_Rpc_V2_NameService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_ReverseLookupNameRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func reverseLookupName<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_ReverseLookupNameRequest>,
@@ -252,9 +252,9 @@ extension Sui_Rpc_V2_NameService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func lookupName<Result>(
         _ message: Sui_Rpc_V2_LookupNameRequest,
@@ -281,9 +281,9 @@ extension Sui_Rpc_V2_NameService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func reverseLookupName<Result>(
         _ message: Sui_Rpc_V2_ReverseLookupNameRequest,

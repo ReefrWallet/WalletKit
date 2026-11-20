@@ -195,9 +195,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetServiceInfoRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetServiceInfoResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func getServiceInfo<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetServiceInfoRequest>,
@@ -214,9 +214,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetObjectRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetObjectResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func getObject<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetObjectRequest>,
@@ -233,9 +233,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_BatchGetObjectsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_BatchGetObjectsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func batchGetObjects<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_BatchGetObjectsRequest>,
@@ -252,9 +252,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetTransactionRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetTransactionResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func getTransaction<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetTransactionRequest>,
@@ -271,9 +271,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_BatchGetTransactionsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_BatchGetTransactionsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func batchGetTransactions<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_BatchGetTransactionsRequest>,
@@ -290,9 +290,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetCheckpointRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetCheckpointResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func getCheckpoint<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetCheckpointRequest>,
@@ -309,9 +309,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetEpochRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetEpochResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func getEpoch<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetEpochRequest>,
@@ -336,9 +336,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ListCheckpointsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ListCheckpointsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func listCheckpoints<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListCheckpointsRequest>,
@@ -362,9 +362,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ListTransactionsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ListTransactionsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func listTransactions<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListTransactionsRequest>,
@@ -388,9 +388,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ListEventsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ListEventsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         func listEvents<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListEventsRequest>,
@@ -428,9 +428,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetServiceInfoRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetServiceInfoResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func getServiceInfo<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetServiceInfoRequest>,
@@ -458,9 +458,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetObjectRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetObjectResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func getObject<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetObjectRequest>,
@@ -488,9 +488,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_BatchGetObjectsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_BatchGetObjectsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func batchGetObjects<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_BatchGetObjectsRequest>,
@@ -518,9 +518,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetTransactionRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetTransactionResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func getTransaction<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetTransactionRequest>,
@@ -548,9 +548,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_BatchGetTransactionsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_BatchGetTransactionsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func batchGetTransactions<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_BatchGetTransactionsRequest>,
@@ -578,9 +578,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetCheckpointRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetCheckpointResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func getCheckpoint<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetCheckpointRequest>,
@@ -608,9 +608,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_GetEpochRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_GetEpochResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func getEpoch<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetEpochRequest>,
@@ -646,9 +646,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ListCheckpointsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ListCheckpointsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func listCheckpoints<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListCheckpointsRequest>,
@@ -681,9 +681,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ListTransactionsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ListTransactionsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func listTransactions<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListTransactionsRequest>,
@@ -716,9 +716,9 @@ extension Sui_Rpc_V2_LedgerService {
         ///   - serializer: A serializer for `Sui_Rpc_V2_ListEventsRequest` messages.
         ///   - deserializer: A deserializer for `Sui_Rpc_V2_ListEventsResponse` messages.
         ///   - options: Options to apply to this RPC.
-        ///   - handleResponse: A closure which handles the response, the result of which is
-        ///       returned to the caller. Returning from the closure will cancel the RPC if it
-        ///       hasn't already finished.
+        ///   - handleResponse: A closure which handles the response and returns its result to
+        ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+        ///       already finished.
         /// - Returns: The result of `handleResponse`.
         public func listEvents<Result>(
             request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListEventsRequest>,
@@ -751,9 +751,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_GetServiceInfoRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getServiceInfo<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetServiceInfoRequest>,
@@ -776,9 +776,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_GetObjectRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getObject<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetObjectRequest>,
@@ -801,9 +801,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_BatchGetObjectsRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func batchGetObjects<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_BatchGetObjectsRequest>,
@@ -826,9 +826,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_GetTransactionRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getTransaction<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetTransactionRequest>,
@@ -851,9 +851,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_BatchGetTransactionsRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func batchGetTransactions<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_BatchGetTransactionsRequest>,
@@ -876,9 +876,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_GetCheckpointRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getCheckpoint<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetCheckpointRequest>,
@@ -901,9 +901,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_GetEpochRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getEpoch<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_GetEpochRequest>,
@@ -934,9 +934,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_ListCheckpointsRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func listCheckpoints<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListCheckpointsRequest>,
@@ -964,9 +964,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_ListTransactionsRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func listTransactions<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListTransactionsRequest>,
@@ -994,9 +994,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     /// - Parameters:
     ///   - request: A request containing a single `Sui_Rpc_V2_ListEventsRequest` message.
     ///   - options: Options to apply to this RPC.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func listEvents<Result>(
         request: GRPCCore.ClientRequest<Sui_Rpc_V2_ListEventsRequest>,
@@ -1026,9 +1026,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getServiceInfo<Result>(
         _ message: Sui_Rpc_V2_GetServiceInfoRequest,
@@ -1055,9 +1055,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getObject<Result>(
         _ message: Sui_Rpc_V2_GetObjectRequest,
@@ -1084,9 +1084,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func batchGetObjects<Result>(
         _ message: Sui_Rpc_V2_BatchGetObjectsRequest,
@@ -1113,9 +1113,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getTransaction<Result>(
         _ message: Sui_Rpc_V2_GetTransactionRequest,
@@ -1142,9 +1142,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func batchGetTransactions<Result>(
         _ message: Sui_Rpc_V2_BatchGetTransactionsRequest,
@@ -1171,9 +1171,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getCheckpoint<Result>(
         _ message: Sui_Rpc_V2_GetCheckpointRequest,
@@ -1200,9 +1200,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func getEpoch<Result>(
         _ message: Sui_Rpc_V2_GetEpochRequest,
@@ -1237,9 +1237,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func listCheckpoints<Result>(
         _ message: Sui_Rpc_V2_ListCheckpointsRequest,
@@ -1271,9 +1271,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func listTransactions<Result>(
         _ message: Sui_Rpc_V2_ListTransactionsRequest,
@@ -1305,9 +1305,9 @@ extension Sui_Rpc_V2_LedgerService.ClientProtocol {
     ///   - message: request message to send.
     ///   - metadata: Additional metadata to send, defaults to empty.
     ///   - options: Options to apply to this RPC, defaults to `.defaults`.
-    ///   - handleResponse: A closure which handles the response, the result of which is
-    ///       returned to the caller. Returning from the closure will cancel the RPC if it
-    ///       hasn't already finished.
+    ///   - handleResponse: A closure which handles the response and returns its result to
+    ///       the caller. Returning from the closure will cancel the RPC if it hasn't
+    ///       already finished.
     /// - Returns: The result of `handleResponse`.
     public func listEvents<Result>(
         _ message: Sui_Rpc_V2_ListEventsRequest,

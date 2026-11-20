@@ -27,11 +27,6 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Install macOS build dependencies
-        run: |
-          brew install grpc-swift protobuf swift-protobuf
-          protoc --version
-
       - name: Setup mise
         uses: jdx/mise-action@v2
         env:
