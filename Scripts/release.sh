@@ -48,7 +48,7 @@ fi
 echo "==> Setting the Rust crates to $version"
 sed -i '' -E '/^\[workspace\.package\]$/,/^\[/ s/^version = ".*"$/version = "'"$version"'"/' "$rust_dir/Cargo.toml"
 grep -qx "version = \"$version\"" "$rust_dir/Cargo.toml" || fail "couldn't set the workspace version"
-cargo update --workspace --offline --manifest-path "$rust_dir/Cargo.toml"
+cargo update --workspace --manifest-path "$rust_dir/Cargo.toml"
 
 echo "==> Building all slices"
 make -B walletkit-ffi RELEASE=1
