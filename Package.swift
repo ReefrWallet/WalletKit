@@ -6,8 +6,8 @@ import PackageDescription
 // Rust FFI binary: `WALLETKIT_FFI_ZIP` (release checks), then a local build
 // (`make walletkit-ffi`), then the GitHub release. `Scripts/release.sh`
 // rewrites the two lines below.
-let ffiVersion = "0.6.0"
-let ffiChecksum = "0000000000000000000000000000000000000000000000000000000000000000"
+let ffiVersion = "0.7.0"
+let ffiChecksum = "e8e51453fc5ac6d1b7d305d1fc7d4519fa9c0b2358e1fa81fa4078fc4afb2006"
 
 let ffiTarget: Target = {
     let environment = Context.environment
