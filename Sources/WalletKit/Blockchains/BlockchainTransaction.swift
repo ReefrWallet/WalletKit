@@ -34,6 +34,8 @@ public struct BlockchainTransactionEffect: Codable, Hashable, Sendable {
     public let from: String?
     public let to: String?
     public let rawPayload: Data?
+    /// Tells apart effects of one transaction that share `index` and `kind` (the provider's full action id).
+    public let key: String?
 
     public init(
         index: UInt64,
@@ -42,9 +44,11 @@ public struct BlockchainTransactionEffect: Codable, Hashable, Sendable {
         amount: String? = nil,
         from: String? = nil,
         to: String? = nil,
-        rawPayload: Data? = nil
+        rawPayload: Data? = nil,
+        key: String? = nil
     ) {
         self.index = index
+        self.key = key
         self.kind = kind
         self.assetIdentifier = assetIdentifier
         self.amount = amount

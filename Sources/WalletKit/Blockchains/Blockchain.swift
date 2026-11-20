@@ -19,6 +19,7 @@ public enum Blockchain: Equatable, Hashable, Codable, Sendable {
     case solana(SolanaNetwork)
     case cardano(CardanoNetwork)
     case sui(SuiNetwork)
+    case ton(TonNetwork)
 
     init(raw: BlockchainFfi) {
         switch raw {
@@ -29,6 +30,7 @@ public enum Blockchain: Equatable, Hashable, Codable, Sendable {
         case .solana: self = .solana(.mainnet)
         case .cardano: self = .cardano(.mainnet)
         case .sui: self = .sui(.mainnet)
+        case .ton: self = .ton(.mainnet)
         }
     }
 }
@@ -41,6 +43,7 @@ public extension Blockchain {
             .cardano(.mainnet),
             .solana(.mainnet),
             .sui(.mainnet),
+            .ton(.mainnet),
             .tron(.mainnet)
         ] + EVMBlockchain.allMainnets
         return mainnets.sorted { $0 < $1 }
@@ -62,6 +65,8 @@ public extension Blockchain {
             CardanoNetwork.allNetworks
         case .sui:
             SuiNetwork.allNetworks
+        case .ton:
+            TonNetwork.allNetworks
         }
     }
 
@@ -94,6 +99,8 @@ public extension Blockchain {
             network == .mainnet
         case let .sui(network):
             network == .mainnet
+        case let .ton(network):
+            network == .mainnet
         }
     }
 
@@ -106,6 +113,7 @@ public extension Blockchain {
         case .solana: "Solana"
         case .cardano: "Cardano"
         case .sui: "Sui"
+        case .ton: "TON"
         }
     }
 
@@ -119,6 +127,7 @@ public extension Blockchain {
         case let .solana(network): network.name
         case let .cardano(network): network.name
         case let .sui(network): network.name
+        case let .ton(network): network.name
         }
     }
 
@@ -130,6 +139,7 @@ public extension Blockchain {
         case let .evm(chain): chain.nativeToken
         case .solana: .solana
         case .sui: .sui
+        case .ton: .gram
         case .tron: .tron
         }
     }
@@ -143,6 +153,7 @@ public extension Blockchain {
         case .solana: .solana
         case .cardano: .cardano
         case .sui: .sui
+        case .ton: .ton
         }
     }
 
@@ -161,6 +172,8 @@ public extension Blockchain {
         case let .cardano(network):
             network.rpcURL
         case let .sui(network):
+            network.rpcURL
+        case let .ton(network):
             network.rpcURL
         }
     }

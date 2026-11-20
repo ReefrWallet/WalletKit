@@ -1,0 +1,370 @@
+import BigInt
+import Foundation
+import Testing
+@testable import WalletKit
+
+/// Serves canned toncenter responses by URL path and records every request.
+final class FakeTonTransport: TonTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private var routes: [String: Data] = [:]
+    private var sequences: [String: [Data]] = [:]
+    private var getters: [String: Data] = [:]
+    private var recorded: [(url: URL, body: Data?)] = []
+    private var submitted = 0
+
+    /// How many requests went through ``submit(_:body:)``, the path that is never retried.
+    var submissions: Int {
+        lock.withLock { submitted }
+    }
+
+    var requests: [(url: URL, body: Data?)] {
+        lock.withLock { recorded }
+    }
+
+    func route(_ path: String, _ json: String) {
+        lock.withLock { routes[path] = Data(json.utf8) }
+    }
+
+    /// Answers `runGetMethod` calls of `method`, ahead of any `runGetMethod` route.
+    func route(getter method: String, _ json: String) {
+        lock.withLock { getters[method] = Data(json.utf8) }
+    }
+
+    /// Answers successive requests to `path` with `responses` in order, then repeats the last.
+    func route(_ path: String, sequence responses: [String]) {
+        lock.withLock { sequences[path] = responses.map { Data($0.utf8) } }
+    }
+
+    func get(_ url: URL) async throws -> Data {
+        try respond(url, body: nil)
+    }
+
+    func post(_ url: URL, body: Data) async throws -> Data {
+        try respond(url, body: body)
+    }
+
+    func submit(_ url: URL, body: Data) async throws -> Data {
+        lock.withLock { submitted += 1 }
+        return try respond(url, body: body)
+    }
+
+    private func respond(_ url: URL, body: Data?) throws -> Data {
+        try lock.withLock {
+            recorded.append((url, body))
+
+            if url.lastPathComponent == "runGetMethod", let body,
+               let method = (try? JSONSerialization.jsonObject(with: body) as? [String: Any])?["method"] as? String,
+               let data = getters[method] {
+                return data
+            }
+
+            if let queue = sequences[url.lastPathComponent], let first = queue.first {
+                sequences[url.lastPathComponent] = queue.count > 1 ? Array(queue.dropFirst()) : queue
+                return first
+            }
+
+            guard let data = routes[url.lastPathComponent] else {
+                throw BlockchainClientError.transportError(reason: "no route for \(url.lastPathComponent)")
+            }
+
+            return data
+        }
+    }
+}
+
+struct TonClientTests {
+    private let privateKey: PrivateKey
+    private let signer: TonPKeySigner
+    private let wallet: TonAddress
+    private let recipient: TonAddress
+
+    init() throws {
+        privateKey = try Mnemonic.generate().toSeed().masterKey(curve: .ed25519).privateKey()
+        signer = try TonPKeySigner(
+            network: .testnet,
+            privateKey: privateKey,
+            derivationPath: DerivationPath(.ton(.testnet), accountIndex: 0, curve: .ed25519)
+        )
+
+        wallet = try signer.address()
+        recipient = try TonAddress(string: "EQCD39VS5jcptHL8vMjEXrzGaRcCVYto7HUn4bpAOg8xqB2N")
+    }
+
+    private func builder(_ transport: FakeTonTransport) -> TonTransactionBuilder {
+        TonTransactionBuilder(
+            client: TonClient(network: .testnet, transport: transport),
+            publicKey: privateKey.publicKey.rawBytes,
+            now: { Date(timeIntervalSince1970: 1_700_000_000) }
+        )
+    }
+
+    private func addressInformation(balance: String, state: String) -> String {
+        #"{"ok":true,"result":{"balance":"\#(balance)","state":"\#(state)"}}"#
+    }
+
+    @Test func firstSendOfAnUndeployedWalletCarriesTheStateInit() async throws {
+        let transport = FakeTonTransport()
+        transport.route("getAddressInformation", addressInformation(balance: "5000000000", state: "uninitialized"))
+        let data = try await builder(transport).buildTransfer(
+            sender: wallet,
+            recipient: recipient,
+            amount: BigUInt(1_000_000_000)
+        )
+
+        let transaction = try JSONDecoder().decode(TonUnsignedTransaction.self, from: data)
+
+        #expect(transaction.seqno == 0)
+        #expect(transaction.stateInit != nil)
+        #expect(transaction.validUntil == 1_700_000_600)
+        let stateInit = try #require(transaction.stateInit)
+        #expect(try TonBOC.parse(stateInit).hash == wallet.hash)
+    }
+
+    @Test func aDeployedWalletReadsItsSeqnoAndSendsNoStateInit() async throws {
+        let transport = FakeTonTransport()
+        transport.route("getAddressInformation", addressInformation(balance: "5000000000", state: "active"))
+        transport.route("runGetMethod", #"{"ok":true,"result":{"exit_code":0,"stack":[["num","0x2a"]]}}"#)
+        let data = try await builder(transport).buildTransfer(
+            sender: wallet,
+            recipient: recipient,
+            amount: BigUInt(1)
+        )
+
+        let transaction = try JSONDecoder().decode(TonUnsignedTransaction.self, from: data)
+
+        #expect(transaction.seqno == 42)
+        #expect(transaction.stateInit == nil)
+    }
+
+    @Test func signsTheBodyHashAndBroadcastsOneExternalMessage() async throws {
+        let transport = FakeTonTransport()
+        transport.route("getAddressInformation", addressInformation(balance: "5000000000", state: "uninitialized"))
+        transport.route("sendBoc", #"{"ok":true,"result":{"@type":"ok"}}"#)
+        let client = TonClient(network: .testnet, transport: transport)
+        let data = try await builder(transport).buildTransfer(sender: wallet, recipient: recipient, amount: 1)
+        let transaction = try JSONDecoder().decode(TonUnsignedTransaction.self, from: data)
+
+        let signature = try await signer.sign(transaction: data)
+        #expect(privateKey.publicKey.verify(signature: signature, message: try transaction.signingHash()))
+
+        let identifier = try await client.broadcast(transaction: data, signature: signature)
+        #expect(identifier == (try transaction.normalizedHash(signature: signature)))
+        #expect(identifier.count == 64)
+
+        let sent = try #require(transport.requests.last)
+        #expect(sent.url.lastPathComponent == "sendBoc")
+        let sentBody = try #require(sent.body)
+        let boc = try #require(JSONDecoder().decode([String: String].self, from: sentBody)["boc"])
+        let bocData = try #require(Data(base64Encoded: boc))
+        let message = try TonBOC.parse(bocData)
+        // The state init and the body are inline: the two code and data cells, then the action list.
+        #expect(message.refs.count == 3)
+    }
+
+    @Test func rejectsASenderThatIsNotTheKeysWallet() async throws {
+        let transport = FakeTonTransport()
+        await #expect(throws: WalletKitError.self) {
+            _ = try await builder(transport).buildTransfer(sender: recipient, recipient: wallet, amount: 1)
+        }
+    }
+
+    @Test func refusesWhenTheBalanceIsTooLow() async throws {
+        let transport = FakeTonTransport()
+        transport.route("getAddressInformation", addressInformation(balance: "10", state: "active"))
+        await #expect(throws: BlockchainTransactionBuilderError.self) {
+            _ = try await builder(transport).buildTransfer(sender: wallet, recipient: recipient, amount: 11)
+        }
+    }
+
+    @Test func aGramTransferMustLeaveRoomForTheFees() async throws {
+        let transport = FakeTonTransport()
+        transport.route("getAddressInformation", addressInformation(balance: "1000000005", state: "active"))
+        transport.route("runGetMethod", #"{"ok":true,"result":{"exit_code":0,"stack":[["num","0x1"]]}}"#)
+
+        await #expect(throws: BlockchainTransactionBuilderError.self) {
+            _ = try await builder(transport).buildTransfer(
+                sender: wallet,
+                recipient: recipient,
+                amount: BigUInt(1_000_000_000)
+            )
+        }
+
+        // The quoted fee replaces the default reserve.
+        _ = try await builder(transport).buildTransfer(
+            sender: wallet,
+            recipient: recipient,
+            amount: BigUInt(1_000_000_000),
+            token: nil,
+            options: [.tonRequiredGram(5)]
+        )
+    }
+
+    /// A Jetton send where the wallet holds `gram` and the Jetton wallet holds plenty of tokens.
+    private func jettonBuild(gram: String, options: [BlockchainTransactionBuilderOptions]) async throws {
+        func boc(_ address: TonAddress) throws -> String {
+            var builder = TonCellBuilder()
+            builder.storeAddress(address)
+            return TonBOC.serialize(try builder.build()).base64EncodedString()
+        }
+
+        let master = try TonAddress(workchain: 0, hash: Data(repeating: 0x22, count: 32))
+        let transport = FakeTonTransport()
+        transport.route("getAddressInformation", addressInformation(balance: gram, state: "active"))
+        transport.route(getter: "seqno", #"{"ok":true,"result":{"exit_code":0,"stack":[["num","0x1"]]}}"#)
+        transport.route(getter: "get_wallet_address", """
+        {"ok":true,"result":{"exit_code":0,"stack":[["cell",{"bytes":"\(try boc(recipient))"}]]}}
+        """)
+
+        transport.route(getter: "get_wallet_data", """
+        {"ok":true,"result":{"exit_code":0,"stack":[["num","0x16e360"],["cell",{"bytes":"\(try boc(wallet))"}],
+        ["cell",{"bytes":"\(try boc(master))"}]]}}
+        """)
+
+        _ = try await builder(transport).buildTransfer(
+            sender: wallet, recipient: recipient, amount: 1000, token: master.string, options: options
+        )
+    }
+
+    @Test func aJettonSendNeedsTheQuotedGramNotTheFixedReserve() async throws {
+        // 0.055 GRAM covers the 0.0506 the emulation quoted, but not the fixed 0.05 + 0.01.
+        await #expect(throws: BlockchainTransactionBuilderError.self) {
+            try await jettonBuild(gram: "55000000", options: [])
+        }
+
+        try await jettonBuild(gram: "55000000", options: [.tonRequiredGram(50_616_123)])
+
+        await #expect(throws: BlockchainTransactionBuilderError.self) {
+            try await jettonBuild(gram: "50000000", options: [.tonRequiredGram(50_616_123)])
+        }
+    }
+
+    @Test func aRawRecipientIsBouncedOnlyWhenVerifiedDeployed() async throws {
+        let transport = FakeTonTransport()
+        let raw = try TonAddress(string: recipient.rawString)
+        transport.route("getAddressInformation", addressInformation(balance: "5000000000", state: "uninitialized"))
+        let data = try await builder(transport).buildTransfer(sender: wallet, recipient: raw, amount: 1)
+        let transaction = try JSONDecoder().decode(TonUnsignedTransaction.self, from: data)
+        let action = try TonBOC.parse(transaction.body).refs[0]
+        let message = action.refs[1]
+        // int_msg_info$0 ihr_disabled bounce bounced: the bounce bit is the third bit.
+        #expect(message.bits[0] & 0b0010_0000 == 0)
+    }
+
+    @Test func aFailedRecipientLookupIsNotDefaultedForRawAddresses() async throws {
+        let transport = FakeTonTransport()
+        let raw = try TonAddress(string: recipient.rawString)
+        transport.route("getAddressInformation", #"{"ok":false,"error":"timeout","code":500}"#)
+        await #expect(throws: BlockchainClientError.self) {
+            _ = try await builder(transport).buildTransfer(sender: wallet, recipient: raw, amount: 1)
+        }
+    }
+
+    @Test func rejectsAMainnetOnlyUseOfATestnetTag() throws {
+        let client = TonClient(network: .mainnet, transport: FakeTonTransport())
+        #expect(throws: WalletKitError.self) { _ = try client.makeAddress(wallet.string) }
+    }
+
+    @Test func historyPagesByLogicalTimeAndIdentifiesExternalRequestsByNormalizedHash() async throws {
+        let transport = FakeTonTransport()
+        let hash = Data(repeating: 1, count: 32).base64EncodedString()
+        let normalized = Data(repeating: 2, count: 32).base64EncodedString()
+        transport.route("transactions", """
+        {"transactions":[
+        {"hash":"\(hash)","lt":"500","now":1700000000,"total_fees":"100",
+         "description":{"aborted":false,"compute_ph":{"success":true}},
+         "in_msg":{"hash":"\(hash)","hash_norm":"\(normalized)","source":null,"destination":"\(wallet.rawString)","value":null},
+         "out_msgs":[{"hash":"\(hash)","source":"\(wallet.rawString)","destination":"\(recipient.rawString)","value":"7"}]}
+        ],"address_book":{}}
+        """)
+        let client = TonClient(network: .testnet, transport: transport)
+        let page = try await client.transactionHistory(
+            wallet,
+            request: BlockchainTransactionHistoryRequest(direction: .descending, limit: 1)
+        )
+
+        let transaction = try #require(page.transactions.first)
+        #expect(transaction.identifier == Data(repeating: 2, count: 32).map { String(format: "%02x", $0) }.joined())
+        #expect(transaction.status == .confirmed)
+        #expect(transaction.effects.first?.amount == "7")
+        // The outgoing message is kept so its delivery can be tracked apart from this entry.
+        let reference = try JSONDecoder().decode(TonDeliveryReference.self, from: try #require(transaction.rawPayload))
+        #expect(reference.outMessageHash == hash)
+        #expect(page.head == 500)
+        #expect(!page.reachedBoundary)
+
+        let cursor = try #require(page.nextCursor)
+        #expect(try JSONDecoder().decode(TonClient.HistoryCursor.self, from: cursor).next == 499)
+    }
+
+    @Test func addressBookKeysMatchMessageAddressesInAnyCase() async throws {
+        let transport = FakeTonTransport()
+        let hash = Data(repeating: 1, count: 32).base64EncodedString()
+        let raw = wallet.rawString
+        // The indexer keys its address book by uppercase raw addresses and writes messages in lowercase.
+        transport.route("transactions", """
+        {"transactions":[
+        {"hash":"\(hash)","lt":"9","now":1700000000,
+         "description":{"aborted":false,"compute_ph":{"success":true}},
+         "in_msg":{"hash":"\(hash)","source":null,"destination":"\(raw.lowercased())","value":null},
+         "out_msgs":[{"hash":"\(hash)","source":"\(raw.lowercased())","destination":"\(recipient.rawString.lowercased())","value":"7"}]}],
+         "address_book":{"\(raw.uppercased())":{"user_friendly":"\(wallet.string)"}}}
+        """)
+        let page = try await TonClient(network: .testnet, transport: transport).transactionHistory(
+            wallet,
+            request: BlockchainTransactionHistoryRequest(direction: .descending)
+        )
+        #expect(page.transactions.first?.effects.first?.from == wallet.string)
+    }
+
+    @Test func aRequestThatRanButSentNothingIsNotAPayment() async throws {
+        let transport = FakeTonTransport()
+        let hash = Data(repeating: 1, count: 32).base64EncodedString()
+        transport.route("transactions", """
+        {"transactions":[
+        {"hash":"\(hash)","lt":"9","now":1700000000,
+         "description":{"aborted":false,"compute_ph":{"success":true}},
+         "in_msg":{"hash":"\(hash)","source":null,"destination":"\(wallet.rawString)","value":null},
+         "out_msgs":[]}],"address_book":{}}
+        """)
+        let page = try await TonClient(network: .testnet, transport: transport).transactionHistory(
+            wallet,
+            request: BlockchainTransactionHistoryRequest(direction: .descending)
+        )
+        #expect(page.transactions.first?.status == .failed)
+    }
+
+    @Test func base64HashesAndCursorsAreEscapedInIndexerQueries() async throws {
+        // A bare `+` reaches the indexer as a space, which it answers with HTTP 422.
+        let transport = FakeTonTransport()
+        let client = TonClient(network: .testnet, transport: transport)
+        transport.route("transactionsByMessage", #"{"transactions":[],"address_book":{}}"#)
+
+        _ = try await client.deliveryStatus(ofOutgoingMessage: "ab+c/d==")
+
+        let query = try #require(transport.requests.last?.url.query)
+        #expect(query.contains("msg_hash=ab%2Bc%2Fd%3D%3D"))
+        #expect(!query.contains("+"))
+    }
+
+    @Test func deliveryToAnUndeployedRecipientWithSkippedComputeCountsAsDelivered() async throws {
+        let transport = FakeTonTransport()
+        let hash = Data(repeating: 1, count: 32).base64EncodedString()
+        let client = TonClient(network: .testnet, transport: transport)
+
+        transport.route("transactionsByMessage", #"{"transactions":[],"address_book":{}}"#)
+        #expect(try await client.deliveryStatus(ofOutgoingMessage: hash) == .pending)
+
+        transport.route("transactionsByMessage", """
+        {"transactions":[{"hash":"\(hash)","lt":"1","description":{"aborted":true,
+        "compute_ph":{"skipped":true,"reason":"no_state"}},"in_msg":{"hash":"\(hash)"},"out_msgs":[]}],
+        "address_book":{}}
+        """)
+        #expect(try await client.deliveryStatus(ofOutgoingMessage: hash) == .delivered)
+
+        transport.route("transactionsByMessage", """
+        {"transactions":[{"hash":"\(hash)","lt":"1","description":{"aborted":true,"bounce":{"type":"ok"}},
+        "in_msg":{"hash":"\(hash)"},"out_msgs":[]}],"address_book":{}}
+        """)
+        #expect(try await client.deliveryStatus(ofOutgoingMessage: hash) == .bounced)
+    }
+}

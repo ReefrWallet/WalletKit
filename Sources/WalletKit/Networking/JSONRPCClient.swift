@@ -269,16 +269,23 @@ struct JSONRPCClient {
         return components.string ?? endpoint.absoluteString
     }
 
+    /// A server error keeps its status and stays apart from a definite rejection.
+    private static func httpError(_ status: Int) -> BlockchainClientError {
+        status >= 500
+            ? .serverError(status: status)
+            : .invalidResponse(reason: "unexpected HTTP status \(status)")
+    }
+
     private static func mapError(_ error: MoyaError) -> BlockchainClientError {
         switch error {
         case let .statusCode(response):
-            return .invalidResponse(reason: "unexpected HTTP status \(response.statusCode)")
+            return httpError(response.statusCode)
         case let .underlying(underlying, response):
             guard let response else {
                 return .transportError(reason: underlying.localizedDescription)
             }
 
-            return .invalidResponse(reason: "unexpected HTTP status \(response.statusCode)")
+            return httpError(response.statusCode)
         default:
             return .transportError(reason: error.localizedDescription)
         }

@@ -96,6 +96,22 @@ struct RateLimitRetryPolicyTests {
         #expect(String(data: data, encoding: .utf8) == "ok")
     }
 
+    @Test func aStatusOutsideTheRetriedSetIsNotReplayed() async throws {
+        let stub = StubURLProtocol.makeSession(
+            responseSequence: [.success(statusCode: 503, body: Data()), .success(body: Data("ok".utf8))]
+        )
+
+        let policy = RateLimitRetryPolicy(
+            gate: nil, maxRetryCount: 3, retriedStatuses: [429], maxRetryAfter: .milliseconds(10), jitterSource: { 1 }
+        )
+
+        let session = Session(configuration: stub.urlSession.configuration, interceptor: policy)
+
+        await #expect(throws: (any Error).self) {
+            _ = try await Self.performRequest(session)
+        }
+    }
+
     @Test func givesUpAfterMaxRetryCount() async throws {
         let stub = StubURLProtocol.makeSession(responseSequence: [.success(statusCode: 429, body: Data())])
 

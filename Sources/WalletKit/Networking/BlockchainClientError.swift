@@ -29,6 +29,10 @@ public enum BlockchainClientError: Error, Equatable {
     /// status code's raw value; `message` is the node's message.
     case rpcError(code: Int, message: String)
 
+    /// The node answered with an HTTP 5xx, so whether it processed the call is unknown. Unlike
+    /// ``rpcError(code:message:)`` it is never a definite rejection.
+    case serverError(status: Int)
+
     /// The call succeeded and returned a result, but it couldn't be
     /// parsed into the shape the caller expected (bad hex, wrong ABI word
     /// count, ...). `reason` describes what went wrong.
@@ -47,6 +51,7 @@ extension BlockchainClientError: LocalizedError {
         case let .decodingFailed(reason): "Unexpected node result: \(reason)"
         case let .invalidResponse(reason): "Invalid node response: \(reason)"
         case let .quotaExceeded(code, message, _): "Node rate limit exceeded (\(code)): \(message)"
+        case let .serverError(status): "The node failed to answer (HTTP \(status))"
         case let .rpcError(code, message): "Node rejected the request (\(code)): \(message)"
         case let .transportError(reason): "Couldn't reach the node: \(reason)"
         }

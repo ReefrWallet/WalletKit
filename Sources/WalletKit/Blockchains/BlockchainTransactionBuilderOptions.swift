@@ -47,6 +47,22 @@ public enum BlockchainTransactionBuilderOptions: Sendable {
     /// Bandwidth. This is a spending limit, not a validator priority fee.
     case tronFeeLimit(UInt64?)
 
+    /// Forces the bounce flag of a TON transfer. Without it the recipient's friendly-address
+    /// tag decides; a raw address is resolved from the recipient's on-chain state.
+    case tonBounce(Bool)
+
+    /// A text comment attached to a TON transfer.
+    case tonComment(String)
+
+    /// The Gram, in nanograms, attached to a TON Jetton transfer to pay its downstream execution. Unused Gram returns to
+    /// the sender. Without it the builder attaches ``TonTransactionBuilder/defaultJettonAttachment``.
+    case tonJettonAttachment(BigUInt)
+
+    /// The Gram, in nanograms, a TON wallet must hold to send, as quoted for the actual message. For a Jetton transfer
+    /// that is the attachment plus fees (default: ``TonTransactionBuilder/jettonFeeReserve`` beyond the attachment);
+    /// for Gram it is the fees beyond the amount (default: ``TonTransactionBuilder/gramFeeReserve``).
+    case tonRequiredGram(BigUInt)
+
     /// Overrides the compute-unit price (the priority fee, in
     /// µLamports per compute unit validators are paid on top of the
     /// base fee) and/or compute-unit limit for a Solana transaction.
