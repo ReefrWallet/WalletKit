@@ -46,11 +46,26 @@ jobs:
         env:
           MISE_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # main only takes pull requests; the deploy key bypasses that rule, so the
+      # release commit and tag are pushed over SSH. Fetches stay on HTTPS.
+      - name: Configure release push
+        run: |
+          mkdir -p "$SSH_DIR"
+          install -m 600 /dev/null "$SSH_DIR/deploy_key"
+          printf '%s\n' "$DEPLOY_KEY" > "$SSH_DIR/deploy_key"
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$SSH_DIR/known_hosts"
+          git remote set-url --push origin git@github.com:ReefrWallet/WalletKit.git
+        env:
+          DEPLOY_KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
+          SSH_DIR: ${{ runner.temp }}/release-ssh
+
       # Builds every slice, runs `make test` and `make docs`, and checks the ZIP
-      # before anything is pushed. Pushes made with GITHUB_TOKEN don't trigger
-      # ci.yml, so this is the release gate.
+      # before anything is pushed.
       - name: Release
         run: make release VERSION="$VERSION" PUBLISH=1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_SSH_COMMAND: >-
+            ssh -i ${{ runner.temp }}/release-ssh/deploy_key -o IdentitiesOnly=yes
+            -o UserKnownHostsFile=${{ runner.temp }}/release-ssh/known_hosts -o StrictHostKeyChecking=yes
           VERSION: ${{ inputs.version }}
