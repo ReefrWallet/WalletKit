@@ -143,7 +143,7 @@ struct RequestLaneHTTPTests {
     }
 
     @Test func cancellingAQueuedRequestFreesItsSlotForTheNextOne() async throws {
-        let gate = RateGate(clock: ContinuousClock(), maxCallsPerSecond: 2) // 500 ms apart
+        let gate = RateGate(clock: ContinuousClock(), maxCallsPerSecond: 0.5) // 2 s apart, so a slow runner cancels well inside the wait
         let policy = RateLimitRetryPolicy(gate: gate, maxRetryCount: 3, jitterSource: { 1 })
         let stub = StubURLProtocol.makeSession(response: .success(body: Data("ok".utf8)))
         let provider = MoyaProvider<PingTarget>(
@@ -165,8 +165,8 @@ struct RequestLaneHTTPTests {
         let started = ContinuousClock.now
         _ = try await live.value
 
-        // The live request takes the slot ~500 ms after the first, not a second one later.
-        #expect(ContinuousClock.now - started < .milliseconds(700))
+        // The live request takes the slot ~2 s after the first, not a second one later.
+        #expect(ContinuousClock.now - started < .milliseconds(2_900))
         #expect(stub.capturedRequests.count == 2)
     }
 }
