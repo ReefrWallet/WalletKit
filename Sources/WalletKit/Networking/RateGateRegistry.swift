@@ -189,11 +189,21 @@ public final class RateGateRegistry: @unchecked Sendable {
 
     /// A Moya provider whose requests are paced by this origin's gate, in the
     /// ``RequestLane`` of the task that issues each request.
+    ///
+    /// - Parameters:
+    ///   - origin: The endpoint's scheme, host and port, which selects its gate.
+    ///   - provider: The API kind, which selects the default policy.
+    ///   - configuration: The URL session configuration.
+    ///   - retriedStatuses: HTTP statuses that are retried after a delay.
+    ///   - adapters: Run after the gate on every attempt, retries included.
+    ///   - eventMonitors: Attached after the retry policy's own monitor.
     public func makeProvider<Target: TargetType>(
         origin: String,
         provider: ProviderKind,
         configuration: URLSessionConfiguration = .default,
-        retriedStatuses: Set<Int> = [429, 503]
+        retriedStatuses: Set<Int> = [429, 503],
+        adapters: [any RequestAdapter] = [],
+        eventMonitors: [any EventMonitor] = []
     ) -> MoyaProvider<Target> {
         let policy = makeRetryPolicy(for: origin, provider: provider, retriedStatuses: retriedStatuses)
 
@@ -216,7 +226,11 @@ public final class RateGateRegistry: @unchecked Sendable {
 
         return MoyaProvider<Target>(
             requestClosure: requestClosure,
-            session: Session(configuration: configuration, interceptor: policy, eventMonitors: [policy])
+            session: Session(
+                configuration: configuration,
+                interceptor: adapters.isEmpty ? policy : Interceptor(adapters: [policy] + adapters, retriers: [policy]),
+                eventMonitors: [policy] + eventMonitors
+            )
         )
     }
 
