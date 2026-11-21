@@ -198,6 +198,7 @@ public extension AptosClient {
         )
     }
 
+    /// The transaction with `hash`, pending or committed, or `nil` if the node doesn't know it.
     func transaction(byHash hash: String) async throws -> AptosTransactionStatus? {
         do {
             let response: UserTransactionResponse = try await get("transactions/by_hash/\(hash)")

@@ -17,7 +17,7 @@ extension Data {
     /// - Throws: `BlockchainClientError.decodingFailed(reason:)` if
     ///   `hexString` has an odd number of hex digits or contains
     ///   non-hex characters.
-    init(hexString: String) throws {
+    public init(hexString: String) throws {
         let hex = hexString.hasPrefix("0x") ? String(hexString.dropFirst(2)) : hexString
         guard hex.count.isMultiple(of: 2) else {
             throw BlockchainClientError.decodingFailed(reason: "odd number of hex digits: \(hexString)")

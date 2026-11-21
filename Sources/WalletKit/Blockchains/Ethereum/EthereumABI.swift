@@ -10,24 +10,50 @@ import BigInt
 import Foundation
 import WalletKitRust
 
-/// A parameter value for an ABI-encoded contract call. Covers the static
-/// (fixed-width) Solidity types this client needs — `address`, `uintN`,
-/// `bool` — each encoding to exactly one 32-byte ABI word.
+/// A parameter value for an ABI-encoded contract call: the static Solidity
+/// types `address`, `uintN`, `bool` and `bytes32`, each one 32-byte word, plus
+/// dynamic `bytes`.
 ///
-/// - Note: Dynamic types (`string`, `bytes`, arrays, tuples) aren't
-///   covered — the ERC-20 calls this client makes only need static words.
+/// - Note: `string`, arrays and tuples aren't covered.
 public enum EthereumABIValue {
     case address(EthereumAddress)
     case bool(Bool)
+    /// Dynamic `bytes`, encoded as an offset in the head and length plus
+    /// zero-padded data in the tail.
+    case bytes(Data)
     case bytes32(Data)
     case uint256(BigUInt)
 
+    var isDynamic: Bool {
+        if case .bytes = self {
+            return true
+        }
+
+        return false
+    }
+
+    /// The tail encoding of a dynamic value; empty for static values.
+    var tail: Data {
+        guard case .bytes(let value) = self else {
+            return Data()
+        }
+
+        let paddedLength = ((value.count + 31) / 32) * 32
+        return EthereumABIValue.uint256(BigUInt(value.count)).word
+            + value
+            + Data(repeating: 0, count: paddedLength - value.count)
+    }
+
+    /// The head word of a static value. Dynamic values have their offset
+    /// written by ``EthereumABI/encodeCall(selector:parameters:)`` instead.
     var word: Data {
         switch self {
         case .address(let address):
             return Data(repeating: 0, count: 12) + address.rawBytes
         case .bool(let value):
             return Data(repeating: 0, count: 31) + Data([value ? 1 : 0])
+        case .bytes:
+            return Data()
         case .bytes32(let value):
             // Precondition: value is exactly 32 bytes — the caller's
             // responsibility, e.g. an already-32-byte ENS namehash.
@@ -143,13 +169,27 @@ public enum EthereumABI {
         ethereumFunctionSelector(signature: signature)
     }
 
-    /// Encodes a contract call's data: `selector` followed by each of
-    /// `parameters`' 32-byte ABI words, in order.
+    /// Encodes a contract call's data: `selector`, then the head (one word
+    /// per parameter: the value, or the tail offset of a dynamic value), then
+    /// the tails of dynamic parameters, in order.
     public static func encodeCall(
         selector: Data,
         parameters: [EthereumABIValue] = []
     ) -> Data {
-        selector + parameters.map(\.word).reduce(Data(), +)
+        var head = Data()
+        var tails = Data()
+        let headSize = parameters.count * 32
+
+        for parameter in parameters {
+            if parameter.isDynamic {
+                head += word(BigUInt(headSize + tails.count))
+                tails += parameter.tail
+            } else {
+                head += parameter.word
+            }
+        }
+
+        return selector + head + tails
     }
 
     /// Splits ABI return data into 32-byte words.

@@ -38,10 +38,14 @@ public struct SolanaTokenAccountInfo: Codable, Equatable, Sendable {
 /// ``SolanaRPCClient`` — decodes this envelope rather than treating the builder's
 /// output as a raw message.
 public struct SolanaUnsignedTransaction: Codable, Equatable, Sendable {
+    /// The last block height at which the message's blockhash is valid, when
+    /// the builder knows it. After it the transaction can no longer land.
+    public let lastValidBlockHeight: UInt64?
     public let message: Data
     public let tokenAccounts: [SolanaTokenAccountInfo]
 
-    public init(message: Data, tokenAccounts: [SolanaTokenAccountInfo] = []) {
+    public init(message: Data, tokenAccounts: [SolanaTokenAccountInfo] = [], lastValidBlockHeight: UInt64? = nil) {
+        self.lastValidBlockHeight = lastValidBlockHeight
         self.message = message
         self.tokenAccounts = tokenAccounts
     }

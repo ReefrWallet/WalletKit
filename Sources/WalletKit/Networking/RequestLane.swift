@@ -31,6 +31,7 @@ public enum RequestLane: String, CaseIterable, Sendable {
     case backfill
     case balances
     case interactive
+    case nfts
     case polling
 
     /// The lane of the calling task.
@@ -43,6 +44,7 @@ public enum RequestLane: String, CaseIterable, Sendable {
         case .backfill: 1
         case .balances: 8
         case .interactive: 16
+        case .nfts: 2
         case .polling: 8
         }
     }

@@ -784,13 +784,13 @@ private struct Config: Encodable {
     let commitment: String
 }
 
-private struct RawAccount {
+struct RawAccount {
     let data: Data
     let lamports: UInt64
     let owner: String
 }
 
-private struct RawAccountEntry: Decodable {
+struct RawAccountEntry: Decodable {
     let account: RawAccount
 
     private enum CodingKeys: String, CodingKey {
@@ -813,7 +813,7 @@ private struct RawAccountEntry: Decodable {
     }
 }
 
-private struct MultipleAccountsParams: Encodable {
+struct MultipleAccountsParams: Encodable {
     let addresses: [String]
 
     private struct Options: Encodable {
@@ -917,7 +917,7 @@ private struct VoteAccounts: Decodable {
     let delinquent: [Entry]
 }
 
-private struct ContextValue<Value: Decodable>: Decodable {
+struct ContextValue<Value: Decodable>: Decodable {
     struct Context: Decodable {
         let slot: UInt64
     }
@@ -967,7 +967,7 @@ private struct SimulationResult: Decodable {
     }
 }
 
-private struct SignatureStatusParams: Encodable {
+struct SignatureStatusParams: Encodable {
     let signature: String
     let searchHistory: Bool
 
@@ -982,18 +982,20 @@ private struct SignatureStatusParams: Encodable {
     }
 }
 
-private struct SignatureStatusEntry: Decodable {
+struct SignatureStatusEntry: Decodable {
     let confirmationStatus: String?
     let hasError: Bool
+    let slot: UInt64?
 
     private enum CodingKeys: String, CodingKey {
-        case confirmationStatus, err
+        case confirmationStatus, err, slot
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         confirmationStatus = try container.decodeIfPresent(String.self, forKey: .confirmationStatus)
         hasError = try container.contains(.err) && !container.decodeNil(forKey: .err)
+        slot = try container.decodeIfPresent(UInt64.self, forKey: .slot)
     }
 }
 
