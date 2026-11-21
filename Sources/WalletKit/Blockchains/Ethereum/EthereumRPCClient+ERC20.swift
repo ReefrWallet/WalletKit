@@ -207,7 +207,7 @@ public extension EthereumRPCClient {
     }
 }
 
-private extension EthereumRPCClient {
+extension EthereumRPCClient {
     /// Runs `eth_call`s in Multicall3 chunks, falling back to a JSON-RPC batch per chunk. A call
     /// that fails or returns no data is `nil`.
     func batchedCalls(

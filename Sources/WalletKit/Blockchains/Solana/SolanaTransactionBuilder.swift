@@ -112,9 +112,13 @@ public struct SolanaTransactionBuilder: BlockchainTransactionBuilderProtocol {
             ]
         }
 
-        let (blockhash, _) = try await client.latestBlockhash()
+        let (blockhash, lastValidBlockHeight) = try await client.latestBlockhash()
         let message = try SolanaMessage.compile(payer: sender, instructions: instructions, recentBlockhash: blockhash)
-        let envelope = SolanaUnsignedTransaction(message: message.serialize(), tokenAccounts: tokenAccounts)
+        let envelope = SolanaUnsignedTransaction(
+            message: message.serialize(),
+            tokenAccounts: tokenAccounts,
+            lastValidBlockHeight: lastValidBlockHeight
+        )
         return try JSONEncoder().encode(envelope)
     }
 }

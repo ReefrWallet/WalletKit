@@ -96,18 +96,18 @@ extension SolanaRPCClient {
         }
     }
 
-    private struct TokenAmount: Decodable {
+    struct TokenAmount: Decodable {
         let amount: String
         let decimals: UInt8
     }
 
-    private struct ParsedTokenInfo: Decodable {
+    struct ParsedTokenInfo: Decodable {
         let mint: String
         let owner: String
         let tokenAmount: TokenAmount
     }
 
-    private struct ParsedTokenAccountData: Decodable {
+    struct ParsedTokenAccountData: Decodable {
         let parsed: ParsedTokenAccount
 
         struct ParsedTokenAccount: Decodable {
@@ -115,7 +115,7 @@ extension SolanaRPCClient {
         }
     }
 
-    private struct TokenAccountEntry: Decodable {
+    struct TokenAccountEntry: Decodable {
         let pubkey: String
         let account: Account
 

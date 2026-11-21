@@ -27,7 +27,7 @@ public struct AptosTransactionBuilder: BlockchainTransactionBuilderProtocol {
     /// Seconds a built transaction stays valid, from the node's ledger time.
     static let expiration: UInt64 = 600
 
-    private let client: AptosClient
+    let client: AptosClient
 
     public init(client: AptosClient) {
         self.client = client
@@ -46,6 +46,32 @@ public struct AptosTransactionBuilder: BlockchainTransactionBuilderProtocol {
 
         let payload = try Self.payload(recipient: recipient, amount: amount, token: token)
         let isNative = token.map(AptosClient.isNativeAsset) ?? true
+
+        return try await buildEntryFunction(
+            sender: sender,
+            payload: payload,
+            nativeSpend: isNative ? amount : 0,
+            options: options
+        )
+    }
+
+    /// Builds BCS `RawTransaction` bytes calling `payload`, sizing gas by
+    /// simulation unless overridden.
+    ///
+    /// - Parameters:
+    ///   - sender: The account that signs and pays gas.
+    ///   - payload: The entry function to call.
+    ///   - nativeSpend: Octas the call moves out of the sender's APT balance
+    ///     besides gas.
+    ///   - options: Builder flags, including an Aptos gas override.
+    public func buildEntryFunction(
+        sender: AptosAddress,
+        payload: AptosEntryFunction,
+        nativeSpend: UInt64 = 0,
+        options: [BlockchainTransactionBuilderOptions] = []
+    ) async throws -> Data {
+        let amount = nativeSpend
+        let isNative = nativeSpend > 0
         let override = options.aptosGasOverride
 
         async let ledger = client.ledgerInfo()

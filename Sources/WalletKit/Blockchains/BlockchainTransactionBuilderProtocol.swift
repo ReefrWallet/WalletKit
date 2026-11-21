@@ -25,6 +25,9 @@ public enum BlockchainTransactionBuilderError: Error, LocalizedError {
     /// Gas coin selection did not converge within the allowed number of
     /// re-simulation iterations. The transaction cannot be built safely.
     case gasSelectionFailed(reason: String)
+    /// The NFT isn't transferable, or its standard isn't supported by this
+    /// builder.
+    case unsupportedNFT(reason: String)
 
     public var errorDescription: String? {
         switch self {
@@ -36,6 +39,8 @@ public enum BlockchainTransactionBuilderError: Error, LocalizedError {
             return "Invalid token: \(reason)"
         case .gasSelectionFailed(let reason):
             return "Gas selection failed: \(reason)"
+        case .unsupportedNFT(let reason):
+            return "Unsupported NFT: \(reason)"
         }
     }
 }

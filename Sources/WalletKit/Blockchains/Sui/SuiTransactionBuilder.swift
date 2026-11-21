@@ -18,7 +18,7 @@ import Foundation
 public struct SuiTransactionBuilder: BlockchainTransactionBuilderProtocol {
     public typealias Address = SuiAddress
 
-    private let client: SuiGRPCClient
+    let client: SuiGRPCClient
 
     /// The target gas budget used for simulation — large enough to cover
     /// any realistic Sui transaction. The actual simulation budget is capped
@@ -88,7 +88,7 @@ public struct SuiTransactionBuilder: BlockchainTransactionBuilderProtocol {
 
 // MARK: - Private helpers
 
-private extension SuiTransactionBuilder {
+extension SuiTransactionBuilder {
     typealias SuiGasOverride = (budget: UInt64?, price: UInt64?)
 
     func buildNativeSuiTransfer(
@@ -389,7 +389,7 @@ private extension SuiTransactionBuilder {
     }
 }
 
-private extension Array where Element == BlockchainTransactionBuilderOptions {
+extension Array where Element == BlockchainTransactionBuilderOptions {
     /// Extracts the first `.suiGasOverride` from the options array, or `nil`
     /// if none was supplied.
     var suiGasOverride: (budget: UInt64?, price: UInt64?)? {
