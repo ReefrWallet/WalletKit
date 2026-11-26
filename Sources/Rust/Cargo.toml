@@ -8,7 +8,7 @@ members = [
 
 # WalletKit's release version; `make release` sets it.
 [workspace.package]
-version = "0.9.1"
+version = "0.10.0"
 
 # Xcode 27 ld emits proc-macro dylibs dyld rejects ("mis-aligned LINKEDIT")
 # when stripping at a deployment target below the host's.

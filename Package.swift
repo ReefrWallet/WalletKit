@@ -5,8 +5,8 @@ import PackageDescription
 
 // Rust FFI binary: a local build (`make walletkit-ffi`), then the GitHub
 // release. `Scripts/release.sh` rewrites the two lines below.
-let ffiVersion = "0.9.1"
-let ffiChecksum = "222c00cf99fb3cd59e122c84f4cc20bf7014daac655a2cc96b086cd7e552c810"
+let ffiVersion = "0.10.0"
+let ffiChecksum = "a6c91e1d028579350e51588e62aeeb7d3a04ab9538da892b5b5a23b5da30bcfa"
 
 let ffiTarget: Target = {
     let localPath = "Frameworks/WalletKitFFI.xcframework"
