@@ -177,7 +177,11 @@ extension SolanaRPCClient: NFTListing {
         for program in [SolanaProgram.token, SolanaProgram.token2022] {
             let response: ContextValue<[TokenAccountEntry]> = try await rpc.call(
                 method: "getTokenAccountsByOwner",
-                params: NFTTokenAccountsParams(minContextSlot: minContextSlot, owner: owner.string, programId: program.string)
+                params: NFTTokenAccountsParams(
+                    minContextSlot: minContextSlot,
+                    owner: owner.string,
+                    programId: program.string
+                )
             )
 
             slot = min(slot, response.context.slot)
@@ -187,7 +191,10 @@ extension SolanaRPCClient: NFTListing {
             }
         }
 
-        let metadataAddresses = try mints.map { try SolanaProgram.metadataAddress(mint: SolanaAddress(string: $0)).string }
+        let metadataAddresses = try mints.map {
+            try SolanaProgram.metadataAddress(mint: SolanaAddress(string: $0)).string
+        }
+
         let accounts = try await metadataAccounts(metadataAddresses)
 
         let items = zip(mints, accounts).compactMap { mint, data -> OwnedNFT? in

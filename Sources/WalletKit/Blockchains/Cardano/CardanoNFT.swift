@@ -300,7 +300,9 @@ extension CardanoClient: NFTListing {
 
     private func nft(unit: String, quantity: BigUInt) async throws -> OwnedNFT? {
         let name = unit.dropFirst(56)
-        guard unit.count >= 56, !name.hasPrefix(CardanoAssetLabel.reference), !name.hasPrefix(CardanoAssetLabel.fungible) else {
+        guard unit.count >= 56,
+              !name.hasPrefix(CardanoAssetLabel.reference),
+              !name.hasPrefix(CardanoAssetLabel.fungible) else {
             return nil
         }
 

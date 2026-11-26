@@ -136,7 +136,7 @@ extension SuiTransactionBuilder: NFTTransactionBuilding {
     /// Transfers a whole object with `TransferObjects([object], recipient)`,
     /// paying gas from the sender's SUI coins. Gas is set by simulation
     /// unless both budget and price are overridden.
-    public func buildNFTTransfer(
+    public func buildNFTTransfer( // swiftlint:disable:this function_body_length
         sender: String,
         recipient: String,
         nft: NFTReference,

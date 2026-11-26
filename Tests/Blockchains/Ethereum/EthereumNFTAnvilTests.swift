@@ -33,7 +33,6 @@ struct EthereumNFTAnvilTests {
         EthereumABI.decodeUInt256(data.prefix(32))
     }
 
-    // swiftlint:disable:next function_body_length
     @Test func sendsERC721AndERC1155AndReadsMetadataURIs() async throws {
         let node = try await EthereumNode.start()
         defer { node.stop() }
@@ -65,6 +64,7 @@ struct EthereumNFTAnvilTests {
                 quantity: quantity,
                 options: []
             )
+
             let signature = try await owner.sign(transaction: transaction)
             let hash = try await client.broadcast(transaction: transaction, signature: signature)
             _ = try await node.waitForReceipt(hash)
@@ -88,7 +88,12 @@ struct EthereumNFTAnvilTests {
 
     @Test func nonTransferableNFTIsRejected() async throws {
         let client = EthereumRPCClient(endpoint: URL(string: "http://127.0.0.1:1")!, chainId: 1)
-        let nft = NFTReference(collection: "0x" + String(repeating: "11", count: 20), isTransferable: false, standard: .erc721, tokenId: "1")
+        let nft = NFTReference(
+            collection: "0x" + String(repeating: "11", count: 20),
+            isTransferable: false,
+            standard: .erc721,
+            tokenId: "1"
+        )
 
         await #expect(throws: BlockchainTransactionBuilderError.self) {
             try await EthereumTransactionBuilder(client: client).buildNFTTransfer(
