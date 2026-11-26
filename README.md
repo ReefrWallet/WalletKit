@@ -14,21 +14,26 @@ WalletKit is a Swift toolkit for building non-custodial multi-chain crypto walle
   BIP-32 secp256k1 and SLIP-0010 Ed25519 key derivation, extended-key serialization, raw private-key import, and address derivation and validation.
 - **Blockchain clients** — Balance and token metadata queries, paginated account history, fee estimation, and transaction construction and broadcast.
   Batch balance queries and live transaction or block streams on supported backends.
-- **Hardware wallets** — Trezor discovery, connection, public-key retrieval, and on-device signing for supported transactions and messages over USB on macOS.
+  Account activity checks for discovering used accounts, batched per request where the backend allows it.
+- **NFTs** — Paged NFT listings with a snapshot position, and NFT transfers, on Aptos, Cardano, EVM chains, Solana, and Sui.
+- **Networking** — Request lanes, per-host rate gates, and retry policies for HTTP providers; `makeProvider` also takes
+  your own request adapters and event monitors.
+- **Hardware wallets** — Trezor discovery, connection, public-key retrieval, batched key and xpub reads that can be
+  cancelled between items, and on-device signing for supported transactions and messages over USB on macOS.
 - **Integration testing** — WalletKitTesting helpers for local Aptos, Bitcoin, Ethereum, Solana, and Sui nodes on macOS,
-  including node lifecycle, test account funding, and transaction confirmation.
+  including node lifecycle, test account funding, transaction confirmation, and mock ERC-721 and ERC-1155 contracts.
 
 ## Supported blockchains
 
 All eight chains support local transaction signing. Trezor transaction signing is available for Bitcoin, Cardano,
 EVM chains, Solana, and Tron.
 
-- **Aptos** — APT, Coin, and Fungible Assets via REST and GraphQL, plus Wallet Standard account authenticators.
-- **Bitcoin** — Electrum and Esplora backends, SegWit and Taproot descriptors, watch-only accounts, and PSBTs.
-- **Cardano** — ADA and native assets via Blockfrost, BIP-39 and SLIP-39 account derivation, CIP-30 dapp primitives, and native staking.
-- **Ethereum and EVM chains** — ERC-20 tokens and approval events, contract calls, and EIP-191 and EIP-712 signing.
-- **Solana** — SPL Token, Token-2022, message signing, and native staking.
-- **Sui** — gRPC, programmable transactions, and native staking.
+- **Aptos** — APT, Coin, and Fungible Assets via REST and GraphQL, Wallet Standard account authenticators, and Token V2 NFTs (V1 tokens are listed only).
+- **Bitcoin** — Electrum and Esplora backends, SegWit and Taproot descriptors, watch-only accounts, PSBTs, and BIP-44 receive-chain usage checks.
+- **Cardano** — ADA and native assets via Blockfrost, BIP-39 and SLIP-39 account derivation, CIP-30 dapp primitives, native staking, and CIP-25 and CIP-68 NFTs.
+- **Ethereum and EVM chains** — ERC-20 tokens and approval events, ERC-721 and ERC-1155 NFTs, contract calls, and EIP-191 and EIP-712 signing.
+- **Solana** — SPL Token, Token-2022, Metaplex NFTs, message signing, and native staking.
+- **Sui** — gRPC, programmable transactions, native staking, and objects with Display metadata as NFTs.
 - **TON** — Gram and Jettons on V5R1 wallets via toncenter, deployment on first send, emulation-sized Jetton fees, trace-based delivery tracking, and a restart-safe send pipeline. Software signing only.
 - **Tron** — TRC-20 via TronGrid, optional TronScan history, and Stake 2.0.
 
@@ -38,7 +43,7 @@ Add WalletKit with Swift Package Manager. The Rust core comes prebuilt as `Walle
 [GitHub release](https://github.com/ReefrWallet/WalletKit/releases), so no Rust toolchain or Homebrew packages are needed:
 
 ```swift
-.package(url: "https://github.com/ReefrWallet/WalletKit", from: "0.7.0")
+.package(url: "https://github.com/ReefrWallet/WalletKit", from: "0.9.1")
 ```
 
 ## Development
@@ -86,7 +91,7 @@ let privateKey = try mnemonic.toSeed()
     .derive(derivationPath)
     .privateKey()
 
-let signer = try EthereumPKeySigner(chainId: 1, privateKey: privateKey, derivationPath: path)
+let signer = try EthereumPKeySigner(chainId: 1, privateKey: privateKey, derivationPath: derivationPath)
 let myAddress = try signer.address()
 print("My address:", myAddress.checksummed)
 
