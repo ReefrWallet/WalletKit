@@ -334,11 +334,13 @@ impl HardwareDeviceFfi {
     /// Reads `requests` back to back as one device command, answering in
     /// order; a PIN or passphrase prompt happens at most once.
     ///
-    /// Throws `.userCancelled` if `cancel_pending` ran first, or the cases
-    /// the single reads throw.
+    /// Throws `.userCancelled` once `token` is cancelled (even before the
+    /// batch starts) or after `cancel_pending`, or the cases the single
+    /// reads throw.
     pub async fn read_keys(
         &self,
         requests: Vec<HardwareKeyRequestFfi>,
+        token: Arc<HardwareBatchTokenFfi>,
     ) -> Result<Vec<HardwareKeyResponseFfi>, WalletKitErrorFfi> {
         let curves: Vec<Option<CurveFfi>> = requests
             .iter()
@@ -347,7 +349,8 @@ impl HardwareDeviceFfi {
                 _ => None,
             })
             .collect();
-        let responses = self.inner.read_keys(requests.iter().map(to_hardware_key_request).collect()).await?;
+        let responses =
+            self.inner.read_keys(requests.iter().map(to_hardware_key_request).collect(), token.inner.clone()).await?;
 
         responses
             .into_iter()
@@ -373,6 +376,25 @@ impl HardwareDeviceFfi {
     /// read, without waiting for them.
     pub fn cancel_pending(&self) {
         self.inner.cancel_pending();
+    }
+}
+
+/// Cancels one `HardwareDeviceFfi::read_keys` batch, queued or running.
+#[derive(Debug, Default, uniffi::Object)]
+pub struct HardwareBatchTokenFfi {
+    inner: Arc<hw::BatchToken>,
+}
+
+#[uniffi::export]
+impl HardwareBatchTokenFfi {
+    #[uniffi::constructor]
+    pub fn new() -> HardwareBatchTokenFfi {
+        HardwareBatchTokenFfi::default()
+    }
+
+    /// Cancels the batch given this token at its next read.
+    pub fn cancel(&self) {
+        self.inner.cancel();
     }
 }
 

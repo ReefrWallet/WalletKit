@@ -15,7 +15,7 @@ mod log;
 mod manager;
 mod path;
 
-pub use batch::{read_key_batch, BatchCancellation, HardwareKeyRequest, HardwareKeyResponse};
+pub use batch::{read_key_batch, BatchCancellation, BatchToken, HardwareKeyRequest, HardwareKeyResponse};
 pub use delegate::{HardwareButtonRequest, HardwareDeviceDelegate, HardwareInputRequest};
 pub use device::{
     CardanoAsset, CardanoCertificate, CardanoCertificateKind, CardanoCredential, CardanoDRep, CardanoDappOutput,

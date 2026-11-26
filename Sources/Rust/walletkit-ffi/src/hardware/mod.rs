@@ -15,8 +15,8 @@ mod types;
 
 pub use delegate::HardwareDeviceDelegateFfi;
 pub use device::{
-    tron_raw_data, CardanoInputFfi, CardanoOutputFfi, CardanoSignTxFfi, HardwareCardanoAssetFfi, HardwareDeviceFfi,
-    HardwareKeyRequestFfi, HardwareKeyResponseFfi,
+    tron_raw_data, CardanoInputFfi, CardanoOutputFfi, CardanoSignTxFfi, HardwareBatchTokenFfi, HardwareCardanoAssetFfi,
+    HardwareDeviceFfi, HardwareKeyRequestFfi, HardwareKeyResponseFfi,
 };
 pub use logger::{set_hardware_logger, HardwareLoggerFfi};
 pub use manager::HardwareDeviceManagerFfi;

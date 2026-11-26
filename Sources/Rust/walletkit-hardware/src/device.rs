@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 
 use crate::{
-    batch::{HardwareKeyRequest, HardwareKeyResponse},
+    batch::{BatchToken, HardwareKeyRequest, HardwareKeyResponse},
     error::HardwareError,
     info::HardwareDeviceInfo,
     path::HardwarePathSegment,
@@ -749,9 +751,13 @@ pub trait HardwareDevice: Send + Sync {
 
     /// Reads `requests` back to back as one device command, answering in
     /// order. PIN and passphrase prompts happen at most once, before the
-    /// first read. Ends with `UserCancelled` between reads after
-    /// `cancel_pending`.
-    async fn read_keys(&self, requests: Vec<HardwareKeyRequest>) -> Result<Vec<HardwareKeyResponse>, HardwareError>;
+    /// first read. Ends with `UserCancelled` between reads once `token` is
+    /// cancelled (also before the first read) or after `cancel_pending`.
+    async fn read_keys(
+        &self,
+        requests: Vec<HardwareKeyRequest>,
+        token: Arc<BatchToken>,
+    ) -> Result<Vec<HardwareKeyResponse>, HardwareError>;
 
     /// Cancels `read_keys` batches issued before this call, queued or
     /// running, at their next read. Returns at once.

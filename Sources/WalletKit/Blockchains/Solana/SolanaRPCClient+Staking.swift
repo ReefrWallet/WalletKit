@@ -1051,7 +1051,8 @@ private struct LandedTransaction: Decodable {
 }
 
 extension SolanaRPCClient {
-    /// `getMultipleAccounts` in pages of its limit; `nil` for each missing account.
+    /// `getMultipleAccounts` in pages of its limit; `nil` for each missing account. A page answering a
+    /// different number of accounts than it asked for throws, so results never shift onto other addresses.
     func multipleAccounts(_ addresses: [String]) async throws -> [RawAccount?] {
         var result: [RawAccount?] = []
         var index = 0
@@ -1062,6 +1063,12 @@ extension SolanaRPCClient {
                 method: "getMultipleAccounts",
                 params: MultipleAccountsParams(addresses: page)
             )
+
+            guard response.value.count == page.count else {
+                throw BlockchainClientError.invalidResponse(
+                    reason: "getMultipleAccounts answered \(response.value.count) of \(page.count) accounts"
+                )
+            }
 
             result += response.value.map { $0?.account }
             index += page.count

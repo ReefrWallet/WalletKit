@@ -88,6 +88,18 @@ struct AccountActivityTests {
         #expect(try await client.activity(of: [owner]) == [false])
     }
 
+    @Test func aShortSolanaAccountsPageIsRejected() async throws {
+        let owners = try (5...6).map { try SolanaAddress(rawBytes: Data(repeating: UInt8($0), count: 32)) }
+        let oneAccount = #"{"jsonrpc":"2.0","id":1,"result":{"context":{"slot":1},"value":[null]}}"#
+        let stub = StubURLProtocol.makeSession(response: .success(body: Data(oneAccount.utf8)))
+
+        let client = SolanaRPCClient(endpoint: URL(string: "https://example.com/rpc")!, session: stub.urlSession)
+
+        await #expect(throws: BlockchainClientError.self) {
+            try await client.activity(of: owners)
+        }
+    }
+
     private static func solanaTokenAccounts(owner: SolanaAddress) -> String {
         let mint = SolanaProgram.token.string
         return #"{"context":{"slot":1},"value":[{"pubkey":"\#(owner.string)","account":{"data":{"parsed":{"info":"#
@@ -95,6 +107,8 @@ struct AccountActivityTests {
     }
 
     // MARK: TON
+
+    private static let noTonTransactions = #"{"transactions":[],"address_book":{}}"#
 
     private func tonWallet() throws -> TonAddress {
         try TonAddress(workchain: 0, hash: Data(repeating: 0x11, count: 32))
@@ -112,9 +126,22 @@ struct AccountActivityTests {
         #expect(try await TonClient(network: .mainnet, transport: transport).isActiveAccount(tonWallet()))
     }
 
+    @Test func tonDeletedWalletWithHistoryIsUsed() async throws {
+        let transport = FakeTonTransport()
+        let hash = Data(repeating: 1, count: 32).base64EncodedString()
+        transport.route("getAddressInformation", tonInformation(balance: "0", state: "uninitialized"))
+        transport.route("transactions", #"{"transactions":["#
+            + #"{"hash":"\#(hash)","lt":"500","now":1700000000,"total_fees":"1","#
+            + #""description":{"aborted":false,"compute_ph":{"success":true}},"in_msg":null,"out_msgs":[]}"#
+            + #"],"address_book":{}}"#)
+
+        #expect(try await TonClient(network: .mainnet, transport: transport).isActiveAccount(tonWallet()))
+    }
+
     @Test func tonJettonOnlyWalletIsUsed() async throws {
         let transport = FakeTonTransport()
         transport.route("getAddressInformation", tonInformation(balance: "0", state: "uninitialized"))
+        transport.route("transactions", Self.noTonTransactions)
         transport.route("wallets", #"{"jetton_wallets":[{"balance":"7","jetton":"\#(try tonWallet().rawString)"}]}"#)
 
         #expect(try await TonClient(network: .mainnet, transport: transport).isActiveAccount(tonWallet()))
@@ -123,6 +150,7 @@ struct AccountActivityTests {
     @Test func tonNeverUsedWalletIsUnused() async throws {
         let transport = FakeTonTransport()
         transport.route("getAddressInformation", tonInformation(balance: "0", state: "uninitialized"))
+        transport.route("transactions", Self.noTonTransactions)
         transport.route("wallets", #"{"jetton_wallets":[]}"#)
 
         #expect(try await !TonClient(network: .mainnet, transport: transport).isActiveAccount(tonWallet()))

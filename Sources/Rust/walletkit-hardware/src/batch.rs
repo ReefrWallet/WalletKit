@@ -1,6 +1,6 @@
 //! Batched key reads: several public keys from one device command.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use crate::{HardwareCurve, HardwareError, HardwarePathSegment};
 
@@ -47,6 +47,24 @@ impl BatchCancellation {
     /// The ticket for a batch issued now.
     pub fn ticket(&self) -> u64 {
         self.epoch.load(Ordering::SeqCst)
+    }
+}
+
+/// Cancels one `read_keys` batch, whether or not it has started.
+#[derive(Debug, Default)]
+pub struct BatchToken {
+    cancelled: AtomicBool,
+}
+
+impl BatchToken {
+    /// Cancels the batch holding this token at its next read.
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+    }
+
+    /// Whether `cancel` has run.
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::SeqCst)
     }
 }
 
@@ -139,5 +157,31 @@ mod tests {
             Ok(HardwareKeyResponse::PublicKey(vec![]))
         });
         assert_eq!(result.map(|r| r.len()), Ok(2));
+    }
+
+    #[test]
+    fn a_token_cancelled_before_the_batch_starts_reads_nothing() {
+        let token = BatchToken::default();
+        token.cancel();
+        let reads = Cell::new(0);
+        let requests: Vec<_> = (0..2).map(request).collect();
+        let result = read_key_batch(&requests, || token.is_cancelled(), |_| {
+            reads.set(reads.get() + 1);
+            Ok(HardwareKeyResponse::PublicKey(vec![]))
+        });
+        assert_eq!(result, Err(HardwareError::UserCancelled));
+        assert_eq!(reads.get(), 0);
+    }
+
+    #[test]
+    fn cancelling_one_token_leaves_other_batches_running() {
+        let (cancelled, running) = (BatchToken::default(), BatchToken::default());
+        let requests: Vec<_> = (0..3).map(request).collect();
+        let result = read_key_batch(&requests, || running.is_cancelled(), |_| {
+            cancelled.cancel();
+            Ok(HardwareKeyResponse::PublicKey(vec![]))
+        });
+        assert_eq!(result.map(|r| r.len()), Ok(3));
+        assert!(cancelled.is_cancelled());
     }
 }

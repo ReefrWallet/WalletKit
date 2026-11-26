@@ -9,7 +9,7 @@ use walletkit_hardware::{
     CardanoRequiredSigner, CardanoSigningMode, CardanoTxFields, CardanoWitness, EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     EthereumTypedDataFields, HardwareBitcoinNetwork, HardwareButtonRequest, HardwareCurve,
     HardwareDevice as HardwareDeviceTrait, HardwareDeviceDelegate, HardwareDeviceInfo, HardwareError, HardwareInputRequest,
-    HardwareKeyRequest, HardwareKeyResponse, HardwarePathSegment, SolanaTxFields, TronTxFields,
+    BatchToken, HardwareKeyRequest, HardwareKeyResponse, HardwarePathSegment, SolanaTxFields, TronTxFields,
 };
 
 use super::{
@@ -162,8 +162,12 @@ impl HardwareDeviceTrait for TrezorDevice {
         self.worker.bitcoin_sign_psbt(psbt, network).await
     }
 
-    async fn read_keys(&self, requests: Vec<HardwareKeyRequest>) -> Result<Vec<HardwareKeyResponse>, HardwareError> {
-        self.worker.read_keys(requests).await
+    async fn read_keys(
+        &self,
+        requests: Vec<HardwareKeyRequest>,
+        token: Arc<BatchToken>,
+    ) -> Result<Vec<HardwareKeyResponse>, HardwareError> {
+        self.worker.read_keys(requests, token).await
     }
 
     fn cancel_pending(&self) {

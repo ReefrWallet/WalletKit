@@ -9,7 +9,7 @@ use std::{
 use tokio::sync::oneshot;
 use trezor_client::{protos, AvailableDevice, Trezor};
 use walletkit_hardware::{
-    read_key_batch, BatchCancellation, CardanoDappTxRequest, CardanoDappTxSignature, CardanoMessageRequest, CardanoMessageSignature,
+    read_key_batch, BatchCancellation, BatchToken, CardanoDappTxRequest, CardanoDappTxSignature, CardanoMessageRequest, CardanoMessageSignature,
     CardanoTxFields, CardanoWitness, EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     EthereumTypedDataFields, HardwareBitcoinNetwork, HardwareButtonRequest, HardwareDeviceDelegate, HardwareError,
     HardwareKeyRequest, HardwareKeyResponse, HardwarePathSegment, SolanaTxFields, TronTxFields, hw_log,
@@ -82,6 +82,7 @@ enum Command {
         requests: Vec<HardwareKeyRequest>,
         cancellation: Arc<BatchCancellation>,
         ticket: u64,
+        token: Arc<BatchToken>,
         reply: oneshot::Sender<Result<Vec<HardwareKeyResponse>, HardwareError>>,
     },
     Disconnect,
@@ -379,12 +380,13 @@ impl DeviceWorker {
     pub(super) async fn read_keys(
         &self,
         requests: Vec<HardwareKeyRequest>,
+        token: Arc<BatchToken>,
     ) -> Result<Vec<HardwareKeyResponse>, HardwareError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         let cancellation = self.cancellation.clone();
         let ticket = cancellation.ticket();
         self.command_tx
-            .send(Command::ReadKeys { requests, cancellation, ticket, reply: reply_tx })
+            .send(Command::ReadKeys { requests, cancellation, ticket, token, reply: reply_tx })
             .map_err(|_| self.worker_lost())?;
         reply_rx.await.map_err(|_| self.worker_lost())?
     }
@@ -483,8 +485,9 @@ fn handle(
             let result = super::device::bitcoin_xpub(trezor, &path, delegate, runtime);
             reply_with(reply, result);
         }
-        Command::ReadKeys { requests, cancellation, ticket, reply } => {
-            let result = read_key_batch(&requests, || cancellation.is_cancelled(ticket), |request| {
+        Command::ReadKeys { requests, cancellation, ticket, token, reply } => {
+            let is_cancelled = || token.is_cancelled() || cancellation.is_cancelled(ticket);
+            let result = read_key_batch(&requests, is_cancelled, |request| {
                 super::device::read_key(trezor, request, delegate, runtime)
             });
             reply_with(reply, result);

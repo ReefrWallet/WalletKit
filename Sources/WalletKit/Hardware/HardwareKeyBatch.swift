@@ -6,6 +6,7 @@
 //  Copyright © 2026 Reefr Wallet. All rights reserved.
 //
 
+import class WalletKitRust.HardwareBatchTokenFfi
 import enum WalletKitRust.HardwareKeyRequestFfi
 import enum WalletKitRust.HardwareKeyResponseFfi
 
@@ -67,21 +68,22 @@ public extension HardwareDevice {
     /// order. A PIN or passphrase prompt happens at most once, and no other
     /// command runs in between.
     ///
-    /// Cancelling the calling task stops the batch before its next read
-    /// with ``WalletKitError/userCancelled``, without waiting for the batch
-    /// to finish.
+    /// Cancelling the calling task stops only this batch, before its next
+    /// read (or before it starts), with ``WalletKitError/userCancelled``,
+    /// without waiting for it.
     ///
     /// - Throws: The errors ``publicKey(path:curve:)`` and
     ///   ``cardanoXpub(path:)`` throw.
     func readKeys(_ requests: [HardwareKeyRequest]) async throws -> [HardwareKeyResponse] {
         let raw = raw
+        let token = HardwareBatchTokenFfi()
 
         return try await withTaskCancellationHandler {
             try await remappingWalletKitError {
-                try await raw.readKeys(requests: requests.map(\.raw)).map(HardwareKeyResponse.init(raw:))
+                try await raw.readKeys(requests: requests.map(\.raw), token: token).map(HardwareKeyResponse.init(raw:))
             }
         } onCancel: {
-            raw.cancelPending()
+            token.cancel()
         }
     }
 
