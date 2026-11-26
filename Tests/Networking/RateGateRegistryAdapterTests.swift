@@ -93,6 +93,11 @@ struct RateGateRegistryAdapterTests {
             try await queued.value
         }
 
+        // Monitors hear of the cancel asynchronously, after the task has thrown.
+        for _ in 0..<200 where adapter.cancelled.withLock({ $0 }) == 0 {
+            try await _Concurrency.Task.sleep(for: .milliseconds(10))
+        }
+
         #expect(adapter.cancelled.withLock { $0 } == 1)
         #expect(adapter.lanes.withLock { $0.count } == 1)
         #expect(stub.capturedRequests.count == 1)
