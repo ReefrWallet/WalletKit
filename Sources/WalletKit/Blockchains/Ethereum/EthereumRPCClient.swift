@@ -179,7 +179,7 @@ public struct EthereumRPCClient: Sendable {
     /// minimal-digit hex integer (odd digit count is valid, e.g. `"0x1"` for
     /// 1 wei). Unlike "Data" hex (addresses, calldata), a Quantity is parsed
     /// as a plain big integer, not through `Data(hexString:)`.
-    private func parseQuantity(_ hex: String) throws -> BigUInt {
+    func parseQuantity(_ hex: String) throws -> BigUInt {
         let body = hex.hasPrefix("0x") ? String(hex.dropFirst(2)) : hex
         guard let value = BigUInt(body, radix: 16) else {
             throw BlockchainClientError.decodingFailed(reason: "invalid quantity hex: \(hex)")

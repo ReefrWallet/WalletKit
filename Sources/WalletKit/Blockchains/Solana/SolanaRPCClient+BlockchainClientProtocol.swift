@@ -75,8 +75,14 @@ extension SolanaRPCClient: BlockchainClientProtocol {
         return TokenInfo(decimals: decimals, name: metadata.name, isNative: false, symbol: metadata.symbol)
     }
 
+    /// Whether `owner` has ever been used: it holds lamports, has a
+    /// transaction signature, or owns a token account.
     public func isActiveAccount(_ owner: SolanaAddress) async throws -> Bool {
-        try await lamportBalance(of: owner) > 0
+        guard try await lamportBalance(of: owner) == 0 else {
+            return true
+        }
+
+        return try await hasHistoryOrTokenAccounts(owner)
     }
 
     public func isSupported(_ feature: BlockchainClientFeature) -> Bool {

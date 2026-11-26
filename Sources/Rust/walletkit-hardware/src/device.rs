@@ -1,6 +1,11 @@
 use async_trait::async_trait;
 
-use crate::{error::HardwareError, info::HardwareDeviceInfo, path::HardwarePathSegment};
+use crate::{
+    batch::{HardwareKeyRequest, HardwareKeyResponse},
+    error::HardwareError,
+    info::HardwareDeviceInfo,
+    path::HardwarePathSegment,
+};
 
 /// The elliptic curve to derive a hardware-sourced public key under.
 /// Mirrors `walletkit-ffi`'s `common::Curve` so vendor crates don't need to
@@ -741,6 +746,16 @@ pub trait HardwareDevice: Send + Sync {
         psbt: Vec<u8>,
         network: HardwareBitcoinNetwork,
     ) -> Result<Vec<u8>, HardwareError>;
+
+    /// Reads `requests` back to back as one device command, answering in
+    /// order. PIN and passphrase prompts happen at most once, before the
+    /// first read. Ends with `UserCancelled` between reads after
+    /// `cancel_pending`.
+    async fn read_keys(&self, requests: Vec<HardwareKeyRequest>) -> Result<Vec<HardwareKeyResponse>, HardwareError>;
+
+    /// Cancels `read_keys` batches issued before this call, queued or
+    /// running, at their next read. Returns at once.
+    fn cancel_pending(&self);
 
     /// Disconnects from this device.
     async fn disconnect(&self);

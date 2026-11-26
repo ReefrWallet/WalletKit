@@ -9,7 +9,7 @@ use walletkit_hardware::{
     CardanoRequiredSigner, CardanoSigningMode, CardanoTxFields, CardanoWitness, EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     EthereumTypedDataFields, HardwareBitcoinNetwork, HardwareButtonRequest, HardwareCurve,
     HardwareDevice as HardwareDeviceTrait, HardwareDeviceDelegate, HardwareDeviceInfo, HardwareError, HardwareInputRequest,
-    HardwarePathSegment, SolanaTxFields, TronTxFields,
+    HardwareKeyRequest, HardwareKeyResponse, HardwarePathSegment, SolanaTxFields, TronTxFields,
 };
 
 use super::{
@@ -162,8 +162,39 @@ impl HardwareDeviceTrait for TrezorDevice {
         self.worker.bitcoin_sign_psbt(psbt, network).await
     }
 
+    async fn read_keys(&self, requests: Vec<HardwareKeyRequest>) -> Result<Vec<HardwareKeyResponse>, HardwareError> {
+        self.worker.read_keys(requests).await
+    }
+
+    fn cancel_pending(&self) {
+        self.worker.cancel_pending();
+    }
+
     async fn disconnect(&self) {
         self.worker.disconnect().await
+    }
+}
+
+/// Runs on the device's worker thread: one read of a `read_keys` batch.
+pub(super) fn read_key(
+    trezor: &mut Trezor,
+    request: &HardwareKeyRequest,
+    delegate: &Arc<dyn HardwareDeviceDelegate>,
+    runtime: &tokio::runtime::Handle,
+) -> Result<HardwareKeyResponse, HardwareError> {
+    match request {
+        HardwareKeyRequest::CardanoXpub { path } => {
+            cardano_xpub(trezor, path, delegate, runtime).map(HardwareKeyResponse::CardanoXpub)
+        }
+        HardwareKeyRequest::ExtendedPublicKey { path } => {
+            bitcoin_xpub(trezor, path, delegate, runtime).map(HardwareKeyResponse::ExtendedPublicKey)
+        }
+        HardwareKeyRequest::PublicKey { path, curve: HardwareCurve::Secp256k1 } => {
+            get_public_key(trezor, path, delegate, runtime).map(HardwareKeyResponse::PublicKey)
+        }
+        HardwareKeyRequest::PublicKey { path, curve: HardwareCurve::Ed25519 } => {
+            solana_get_public_key(trezor, path, delegate, runtime).map(HardwareKeyResponse::PublicKey)
+        }
     }
 }
 

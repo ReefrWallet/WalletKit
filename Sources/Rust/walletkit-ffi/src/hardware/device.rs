@@ -330,6 +330,83 @@ impl HardwareDeviceFfi {
     pub async fn disconnect(&self) {
         self.inner.disconnect().await
     }
+
+    /// Reads `requests` back to back as one device command, answering in
+    /// order; a PIN or passphrase prompt happens at most once.
+    ///
+    /// Throws `.userCancelled` if `cancel_pending` ran first, or the cases
+    /// the single reads throw.
+    pub async fn read_keys(
+        &self,
+        requests: Vec<HardwareKeyRequestFfi>,
+    ) -> Result<Vec<HardwareKeyResponseFfi>, WalletKitErrorFfi> {
+        let curves: Vec<Option<CurveFfi>> = requests
+            .iter()
+            .map(|request| match request {
+                HardwareKeyRequestFfi::PublicKey { curve, .. } => Some(*curve),
+                _ => None,
+            })
+            .collect();
+        let responses = self.inner.read_keys(requests.iter().map(to_hardware_key_request).collect()).await?;
+
+        responses
+            .into_iter()
+            .zip(curves)
+            .map(|(response, curve)| match (response, curve) {
+                (hw::HardwareKeyResponse::CardanoXpub(xpub), _) => Ok(HardwareKeyResponseFfi::CardanoXpub {
+                    xpub: crate::blockchain_clients::cardano::normalize_account_xpub(&xpub)?,
+                }),
+                (hw::HardwareKeyResponse::ExtendedPublicKey(xpub), _) => {
+                    Ok(HardwareKeyResponseFfi::ExtendedPublicKey { xpub })
+                }
+                (hw::HardwareKeyResponse::PublicKey(bytes), Some(curve)) => {
+                    Ok(HardwareKeyResponseFfi::PublicKey { key: Arc::new(PublicKeyFfi::new(curve, bytes)) })
+                }
+                (hw::HardwareKeyResponse::PublicKey(_), None) => Err(WalletKitErrorFfi::InternalError {
+                    message: "device answered a public key to another request".to_string(),
+                }),
+            })
+            .collect()
+    }
+
+    /// Cancels `read_keys` batches issued before this call at their next
+    /// read, without waiting for them.
+    pub fn cancel_pending(&self) {
+        self.inner.cancel_pending();
+    }
+}
+
+/// One read of a `HardwareDeviceFfi::read_keys` batch.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum HardwareKeyRequestFfi {
+    /// The Cardano account extended public key at `path`.
+    CardanoXpub { path: DerivationPathFfi },
+    /// The secp256k1 extended public key at `path`, `xpub`-serialized.
+    ExtendedPublicKey { path: DerivationPathFfi },
+    /// The raw public key at `path`.
+    PublicKey { path: DerivationPathFfi, curve: CurveFfi },
+}
+
+/// The answer to one `HardwareKeyRequestFfi`, of the matching kind.
+#[derive(uniffi::Enum)]
+pub enum HardwareKeyResponseFfi {
+    CardanoXpub { xpub: String },
+    ExtendedPublicKey { xpub: String },
+    PublicKey { key: Arc<PublicKeyFfi> },
+}
+
+fn to_hardware_key_request(request: &HardwareKeyRequestFfi) -> hw::HardwareKeyRequest {
+    match request {
+        HardwareKeyRequestFfi::CardanoXpub { path } => {
+            hw::HardwareKeyRequest::CardanoXpub { path: to_hardware_segments(path) }
+        }
+        HardwareKeyRequestFfi::ExtendedPublicKey { path } => {
+            hw::HardwareKeyRequest::ExtendedPublicKey { path: to_hardware_segments(path) }
+        }
+        HardwareKeyRequestFfi::PublicKey { path, curve } => {
+            hw::HardwareKeyRequest::PublicKey { path: to_hardware_segments(path), curve: to_hardware_curve(*curve) }
+        }
+    }
 }
 
 fn to_hardware_segments(path: &DerivationPathFfi) -> Vec<hw::HardwarePathSegment> {

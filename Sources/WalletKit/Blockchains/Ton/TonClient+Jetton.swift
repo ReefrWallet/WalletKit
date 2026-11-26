@@ -120,6 +120,16 @@ public extension TonClient {
     /// The key ``getAllBalances(_:)`` uses for Gram.
     static var nativeTokenKey: String { "TON" }
 
+    /// Whether the indexer lists any Jetton wallet for `owner`, even an empty one.
+    func hasJettonWallets(owner: TonAddress) async throws -> Bool {
+        let page: JettonWalletsResponse = try await getIndexerPage(
+            "jetton/wallets",
+            query: ["owner_address": owner.rawString, "limit": "1", "offset": "0"]
+        )
+
+        return !page.jettonWallets.isEmpty
+    }
+
     /// The Jettons the indexer lists for `owner`, every page. Any failed page throws.
     internal func indexedJettonWallets(owner: TonAddress) async throws -> [TonIndexedJettonWallet] {
         var wallets: [String: TonIndexedJettonWallet] = [:]

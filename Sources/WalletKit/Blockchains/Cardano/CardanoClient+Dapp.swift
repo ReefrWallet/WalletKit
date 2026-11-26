@@ -82,6 +82,14 @@ extension CardanoClient {
         return CardanoAddressUsage(used: scan.used)
     }
 
+    /// Whether `owner` has used any address of its own: Cardano's
+    /// BIP-44 account-discovery rule. Addresses that only share the stake
+    /// key are not counted.
+    public func isUsedAccount(_ owner: CardanoAccountDescriptor) async throws -> Bool {
+        let utxoAddresses = try await utxoSnapshot(owner).addresses
+        return try await !scanUsage(owner, utxoAddresses: utxoAddresses).used.isEmpty
+    }
+
     /// The scan behind ``addressUsage(_:utxoAddresses:)``. `unmatched` holds listed
     /// addresses the account doesn't own; UTxO-only strangers are dropped silently.
     func scanUsage(

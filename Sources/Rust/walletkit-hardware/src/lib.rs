@@ -6,6 +6,7 @@
 //! Trezor devices. See `Walletkit/Docs/Overview.md`'s "Hardware wallet
 //! support".
 
+mod batch;
 mod delegate;
 mod device;
 mod error;
@@ -14,6 +15,7 @@ mod log;
 mod manager;
 mod path;
 
+pub use batch::{read_key_batch, BatchCancellation, HardwareKeyRequest, HardwareKeyResponse};
 pub use delegate::{HardwareButtonRequest, HardwareDeviceDelegate, HardwareInputRequest};
 pub use device::{
     CardanoAsset, CardanoCertificate, CardanoCertificateKind, CardanoCredential, CardanoDRep, CardanoDappOutput,

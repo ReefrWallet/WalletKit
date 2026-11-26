@@ -3016,6 +3016,12 @@ public protocol HardwareDeviceFfiProtocol: AnyObject, Sendable {
     func bitcoinXpub(path: DerivationPathFfi) async throws  -> String
     
     /**
+     * Cancels `read_keys` batches issued before this call at their next
+     * read, without waiting for them.
+     */
+    func cancelPending() 
+    
+    /**
      * Signs a dapp (CIP-30) Cardano transaction given its original bytes and
      * returns a witness set holding only the device's vkey witnesses.
      * `signing_paths` are the account keys that witness it. The device
@@ -3116,6 +3122,15 @@ public protocol HardwareDeviceFfiProtocol: AnyObject, Sendable {
      * other hardware-wallet `WalletKitError` cases.
      */
     func publicKey(path: DerivationPathFfi, curve: CurveFfi) async throws  -> PublicKeyFfi
+    
+    /**
+     * Reads `requests` back to back as one device command, answering in
+     * order; a PIN or passphrase prompt happens at most once.
+     *
+     * Throws `.userCancelled` if `cancel_pending` ran first, or the cases
+     * the single reads throw.
+     */
+    func readKeys(requests: [HardwareKeyRequestFfi]) async throws  -> [HardwareKeyResponseFfi]
     
     /**
      * Signs a Solana off-chain message (OCMS v1) on the device: a UTF-8
@@ -3253,6 +3268,18 @@ open func bitcoinXpub(path: DerivationPathFfi)async throws  -> String  {
             liftFunc: FfiConverterString.lift,
             errorHandler: FfiConverterTypeWalletKitErrorFfi_lift
         )
+}
+    
+    /**
+     * Cancels `read_keys` batches issued before this call at their next
+     * read, without waiting for them.
+     */
+open func cancelPending()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_walletkit_ffi_fn_method_hardwaredeviceffi_cancel_pending(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -3508,6 +3535,29 @@ open func publicKey(path: DerivationPathFfi, curve: CurveFfi)async throws  -> Pu
             completeFunc: ffi_walletkit_ffi_rust_future_complete_u64,
             freeFunc: ffi_walletkit_ffi_rust_future_free_u64,
             liftFunc: FfiConverterTypePublicKeyFfi_lift,
+            errorHandler: FfiConverterTypeWalletKitErrorFfi_lift
+        )
+}
+    
+    /**
+     * Reads `requests` back to back as one device command, answering in
+     * order; a PIN or passphrase prompt happens at most once.
+     *
+     * Throws `.userCancelled` if `cancel_pending` ran first, or the cases
+     * the single reads throw.
+     */
+open func readKeys(requests: [HardwareKeyRequestFfi])async throws  -> [HardwareKeyResponseFfi]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_walletkit_ffi_fn_method_hardwaredeviceffi_read_keys(
+                        self.uniffiCloneHandle(),FfiConverterSequenceTypeHardwareKeyRequestFfi.lower(requests)
+                )
+            },
+            pollFunc: ffi_walletkit_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_walletkit_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_walletkit_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeHardwareKeyResponseFfi.lift,
             errorHandler: FfiConverterTypeWalletKitErrorFfi_lift
         )
 }
@@ -9434,6 +9484,186 @@ public func FfiConverterTypeHardwareInputRequestFfi_lower(_ value: HardwareInput
 
 
 /**
+ * One read of a `HardwareDeviceFfi::read_keys` batch.
+ */
+
+public enum HardwareKeyRequestFfi: Equatable, Hashable, Codable {
+    
+    /**
+     * The Cardano account extended public key at `path`.
+     */
+    case cardanoXpub(path: DerivationPathFfi
+    )
+    /**
+     * The secp256k1 extended public key at `path`, `xpub`-serialized.
+     */
+    case extendedPublicKey(path: DerivationPathFfi
+    )
+    /**
+     * The raw public key at `path`.
+     */
+    case publicKey(path: DerivationPathFfi, curve: CurveFfi
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension HardwareKeyRequestFfi: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHardwareKeyRequestFfi: FfiConverterRustBuffer {
+    typealias SwiftType = HardwareKeyRequestFfi
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HardwareKeyRequestFfi {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .cardanoXpub(path: try FfiConverterTypeDerivationPathFfi.read(from: &buf)
+        )
+        
+        case 2: return .extendedPublicKey(path: try FfiConverterTypeDerivationPathFfi.read(from: &buf)
+        )
+        
+        case 3: return .publicKey(path: try FfiConverterTypeDerivationPathFfi.read(from: &buf), curve: try FfiConverterTypeCurveFfi.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HardwareKeyRequestFfi, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .cardanoXpub(path):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeDerivationPathFfi.write(path, into: &buf)
+            
+        
+        case let .extendedPublicKey(path):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeDerivationPathFfi.write(path, into: &buf)
+            
+        
+        case let .publicKey(path,curve):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeDerivationPathFfi.write(path, into: &buf)
+            FfiConverterTypeCurveFfi.write(curve, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHardwareKeyRequestFfi_lift(_ buf: RustBuffer) throws -> HardwareKeyRequestFfi {
+    return try FfiConverterTypeHardwareKeyRequestFfi.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHardwareKeyRequestFfi_lower(_ value: HardwareKeyRequestFfi) -> RustBuffer {
+    return FfiConverterTypeHardwareKeyRequestFfi.lower(value)
+}
+
+
+
+/**
+ * The answer to one `HardwareKeyRequestFfi`, of the matching kind.
+ */
+
+public enum HardwareKeyResponseFfi {
+    
+    case cardanoXpub(xpub: String
+    )
+    case extendedPublicKey(xpub: String
+    )
+    case publicKey(key: PublicKeyFfi
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension HardwareKeyResponseFfi: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHardwareKeyResponseFfi: FfiConverterRustBuffer {
+    typealias SwiftType = HardwareKeyResponseFfi
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HardwareKeyResponseFfi {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .cardanoXpub(xpub: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .extendedPublicKey(xpub: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .publicKey(key: try FfiConverterTypePublicKeyFfi.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HardwareKeyResponseFfi, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .cardanoXpub(xpub):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(xpub, into: &buf)
+            
+        
+        case let .extendedPublicKey(xpub):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(xpub, into: &buf)
+            
+        
+        case let .publicKey(key):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypePublicKeyFfi.write(key, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHardwareKeyResponseFfi_lift(_ buf: RustBuffer) throws -> HardwareKeyResponseFfi {
+    return try FfiConverterTypeHardwareKeyResponseFfi.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHardwareKeyResponseFfi_lower(_ value: HardwareKeyResponseFfi) -> RustBuffer {
+    return FfiConverterTypeHardwareKeyResponseFfi.lower(value)
+}
+
+
+
+/**
  * A physical/logical transport a hardware device can be reached over.
  */
 
@@ -11156,6 +11386,56 @@ fileprivate struct FfiConverterSequenceTypeCardanoStakingCertificateFfi: FfiConv
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeHardwareKeyRequestFfi: FfiConverterRustBuffer {
+    typealias SwiftType = [HardwareKeyRequestFfi]
+
+    public static func write(_ value: [HardwareKeyRequestFfi], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHardwareKeyRequestFfi.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HardwareKeyRequestFfi] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HardwareKeyRequestFfi]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHardwareKeyRequestFfi.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeHardwareKeyResponseFfi: FfiConverterRustBuffer {
+    typealias SwiftType = [HardwareKeyResponseFfi]
+
+    public static func write(_ value: [HardwareKeyResponseFfi], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHardwareKeyResponseFfi.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HardwareKeyResponseFfi] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HardwareKeyResponseFfi]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHardwareKeyResponseFfi.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeHardwareTransportKindFfi: FfiConverterRustBuffer {
     typealias SwiftType = [HardwareTransportKindFfi]
 
@@ -12425,6 +12705,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_walletkit_ffi_checksum_method_hardwaredeviceffi_bitcoin_xpub() != 41444) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_walletkit_ffi_checksum_method_hardwaredeviceffi_cancel_pending() != 42086) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_walletkit_ffi_checksum_method_hardwaredeviceffi_cardano_sign_dapp_tx() != 59644) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -12459,6 +12742,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_walletkit_ffi_checksum_method_hardwaredeviceffi_public_key() != 52681) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_walletkit_ffi_checksum_method_hardwaredeviceffi_read_keys() != 23008) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_walletkit_ffi_checksum_method_hardwaredeviceffi_solana_sign_message() != 32451) {

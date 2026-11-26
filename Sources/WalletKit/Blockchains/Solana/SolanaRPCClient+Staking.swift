@@ -644,25 +644,6 @@ private extension SolanaRPCClient {
         }
     }
 
-    /// `getMultipleAccounts` in pages of its limit; `nil` for each missing account.
-    func multipleAccounts(_ addresses: [String]) async throws -> [RawAccount?] {
-        var result: [RawAccount?] = []
-        var index = 0
-
-        while index < addresses.count {
-            let page = Array(addresses[index..<min(index + Self.multipleAccountsLimit, addresses.count)])
-            let response: SolanaRPCValue<[RawAccountEntry?]> = try await rpc.call(
-                method: "getMultipleAccounts",
-                params: MultipleAccountsParams(addresses: page)
-            )
-
-            result += response.value.map { $0?.account }
-            index += page.count
-        }
-
-        return result
-    }
-
     func inflationRewards(_ addresses: [String], epoch: UInt64) async throws -> [UInt64?] {
         var result: [UInt64?] = []
         var index = 0
@@ -1067,4 +1048,25 @@ private struct LandedTransaction: Decodable {
     }
 
     let meta: Meta
+}
+
+extension SolanaRPCClient {
+    /// `getMultipleAccounts` in pages of its limit; `nil` for each missing account.
+    func multipleAccounts(_ addresses: [String]) async throws -> [RawAccount?] {
+        var result: [RawAccount?] = []
+        var index = 0
+
+        while index < addresses.count {
+            let page = Array(addresses[index..<min(index + Self.multipleAccountsLimit, addresses.count)])
+            let response: SolanaRPCValue<[RawAccountEntry?]> = try await rpc.call(
+                method: "getMultipleAccounts",
+                params: MultipleAccountsParams(addresses: page)
+            )
+
+            result += response.value.map { $0?.account }
+            index += page.count
+        }
+
+        return result
+    }
 } // swiftlint:disable:this file_length
