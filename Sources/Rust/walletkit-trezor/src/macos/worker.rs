@@ -9,10 +9,10 @@ use std::{
 use tokio::sync::oneshot;
 use trezor_client::{protos, AvailableDevice, Trezor};
 use walletkit_hardware::{
-    CardanoDappTxRequest, CardanoDappTxSignature, CardanoMessageRequest, CardanoMessageSignature,
+    read_key_batch, BatchCancellation, BatchToken, CardanoDappTxRequest, CardanoDappTxSignature, CardanoMessageRequest, CardanoMessageSignature,
     CardanoTxFields, CardanoWitness, EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     EthereumTypedDataFields, HardwareBitcoinNetwork, HardwareButtonRequest, HardwareDeviceDelegate, HardwareError,
-    HardwarePathSegment, SolanaTxFields, TronTxFields, hw_log,
+    HardwareKeyRequest, HardwareKeyResponse, HardwarePathSegment, SolanaTxFields, TronTxFields, hw_log,
 };
 
 use super::{error::map_trezor_error, interaction::drive_interaction};
@@ -78,6 +78,13 @@ enum Command {
         network: HardwareBitcoinNetwork,
         reply: oneshot::Sender<Result<Vec<u8>, HardwareError>>,
     },
+    ReadKeys {
+        requests: Vec<HardwareKeyRequest>,
+        cancellation: Arc<BatchCancellation>,
+        ticket: u64,
+        token: Arc<BatchToken>,
+        reply: oneshot::Sender<Result<Vec<HardwareKeyResponse>, HardwareError>>,
+    },
     Disconnect,
 }
 
@@ -99,6 +106,7 @@ impl Command {
             Command::CardanoSignMessage { .. } => "CardanoSignMessage",
             Command::BitcoinXpub { .. } => "BitcoinXpub",
             Command::BitcoinSignPsbt { .. } => "BitcoinSignPsbt",
+            Command::ReadKeys { .. } => "ReadKeys",
             Command::Disconnect => "Disconnect",
         }
     }
@@ -120,6 +128,7 @@ impl Command {
 /// thread, unlike a `spawn_blocking` task.
 pub(super) struct DeviceWorker {
     command_tx: mpsc::Sender<Command>,
+    cancellation: Arc<BatchCancellation>,
     connected: Arc<AtomicBool>,
     /// Why the worker thread died, if it panicked.
     failure: Arc<Mutex<Option<String>>>,
@@ -204,7 +213,8 @@ impl DeviceWorker {
             runtime.block_on(delegate.did_disconnect());
         });
 
-        (DeviceWorker { command_tx, connected, failure }, setup_rx)
+        let cancellation = Arc::new(BatchCancellation::default());
+        (DeviceWorker { command_tx, cancellation, connected, failure }, setup_rx)
     }
 
     pub(super) fn is_connected(&self) -> bool {
@@ -367,6 +377,25 @@ impl DeviceWorker {
         reply_rx.await.map_err(|_| self.worker_lost())?
     }
 
+    pub(super) async fn read_keys(
+        &self,
+        requests: Vec<HardwareKeyRequest>,
+        token: Arc<BatchToken>,
+    ) -> Result<Vec<HardwareKeyResponse>, HardwareError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let cancellation = self.cancellation.clone();
+        let ticket = cancellation.ticket();
+        self.command_tx
+            .send(Command::ReadKeys { requests, cancellation, ticket, token, reply: reply_tx })
+            .map_err(|_| self.worker_lost())?;
+        reply_rx.await.map_err(|_| self.worker_lost())?
+    }
+
+    /// Cancels `read_keys` batches issued so far, between their reads.
+    pub(super) fn cancel_pending(&self) {
+        self.cancellation.cancel();
+    }
+
     pub(super) async fn disconnect(&self) {
         // Dropping the sender (implicitly, if this is the last handle)
         // would also end the loop, but sending `Disconnect` explicitly
@@ -454,6 +483,13 @@ fn handle(
         }
         Command::BitcoinXpub { path, reply } => {
             let result = super::device::bitcoin_xpub(trezor, &path, delegate, runtime);
+            reply_with(reply, result);
+        }
+        Command::ReadKeys { requests, cancellation, ticket, token, reply } => {
+            let is_cancelled = || token.is_cancelled() || cancellation.is_cancelled(ticket);
+            let result = read_key_batch(&requests, is_cancelled, |request| {
+                super::device::read_key(trezor, request, delegate, runtime)
+            });
             reply_with(reply, result);
         }
         Command::BitcoinSignPsbt { psbt, network, reply } => {

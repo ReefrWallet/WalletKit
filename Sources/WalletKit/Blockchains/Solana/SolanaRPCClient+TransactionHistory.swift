@@ -48,7 +48,7 @@ extension SolanaRPCClient {
         let until: String?
     }
 
-    private struct SignaturesForAddressParams: Encodable {
+    struct SignaturesForAddressParams: Encodable {
         let address: String
         let limit: UInt32
         let before: String?
@@ -70,7 +70,7 @@ extension SolanaRPCClient {
         }
     }
 
-    private struct SignatureInfo: Decodable {
+    struct SignatureInfo: Decodable {
         let signature: String
         let slot: UInt64
         let err: JSONValue?
@@ -79,7 +79,7 @@ extension SolanaRPCClient {
     /// Returns one page of signatures for `owner` — `getSignaturesForAddress`
     /// — newest-first, strictly between `before` (exclusive, older bound)
     /// and `until` (exclusive, newer bound).
-    private func signaturesForAddress(
+    func signaturesForAddress(
         _ owner: SolanaAddress,
         limit: UInt32,
         before: String?,

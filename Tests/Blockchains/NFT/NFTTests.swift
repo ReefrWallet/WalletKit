@@ -40,7 +40,13 @@ struct EthereumNFTTests {
     }
 
     @Test func erc721TransferCallsThreeArgumentSafeTransferFrom() throws {
-        let nft = NFTReference(collection: "0x" + String(repeating: "33", count: 20), isTransferable: true, standard: .erc721, tokenId: "42")
+        let nft = NFTReference(
+            collection: "0x" + String(repeating: "33", count: 20),
+            isTransferable: true,
+            standard: .erc721,
+            tokenId: "42"
+        )
+
         let data = try EthereumTransactionBuilder.nftTransferData(from: sender, to: recipient, nft: nft, quantity: 1)
 
         #expect(data.prefix(4) == EthereumABI.selector("safeTransferFrom(address,address,uint256)"))
@@ -50,7 +56,13 @@ struct EthereumNFTTests {
     }
 
     @Test func erc1155TransferCallsFiveArgumentSafeTransferFromWithEmptyBytes() throws {
-        let nft = NFTReference(collection: "0x" + String(repeating: "33", count: 20), isTransferable: true, standard: .erc1155, tokenId: "5")
+        let nft = NFTReference(
+            collection: "0x" + String(repeating: "33", count: 20),
+            isTransferable: true,
+            standard: .erc1155,
+            tokenId: "5"
+        )
+
         let data = try EthereumTransactionBuilder.nftTransferData(from: sender, to: recipient, nft: nft, quantity: 3)
 
         #expect(data.prefix(4) == Data([0xf2, 0x42, 0x43, 0x2a]))
@@ -63,7 +75,13 @@ struct EthereumNFTTests {
     }
 
     @Test func erc1155RejectsZeroQuantityAndNonDecimalIds() {
-        let zero = NFTReference(collection: "0x" + String(repeating: "33", count: 20), isTransferable: true, standard: .erc1155, tokenId: "5")
+        let zero = NFTReference(
+            collection: "0x" + String(repeating: "33", count: 20),
+            isTransferable: true,
+            standard: .erc1155,
+            tokenId: "5"
+        )
+
         let hex = NFTReference(collection: zero.collection, isTransferable: true, standard: .erc721, tokenId: "0x5")
 
         #expect(throws: BlockchainTransactionBuilderError.self) {
@@ -131,7 +149,9 @@ struct SolanaNFTTests {
         #expect(!fungible.isNonFungible)
 
         let unverified = try #require(
-            SolanaMetaplexMetadata(data: metadata(tokenStandard: 0, collection: Data(repeating: 7, count: 32), verified: false))
+            SolanaMetaplexMetadata(
+                data: metadata(tokenStandard: 0, collection: Data(repeating: 7, count: 32), verified: false)
+            )
         )
         #expect(unverified.collection == nil)
     }
@@ -168,7 +188,9 @@ struct SuiDisplayableObjectRuleTests {
 
     @Test func objectWithoutDisplayIsExcluded() {
         #expect(!SuiDisplayableObjectRule.includes(objectType: "0xabc::capy::Capy", displayFields: [:]))
-        #expect(!SuiDisplayableObjectRule.includes(objectType: "0xabc::capy::Capy", displayFields: ["description": "d"]))
+        #expect(
+            !SuiDisplayableObjectRule.includes(objectType: "0xabc::capy::Capy", displayFields: ["description": "d"])
+        )
     }
 }
 
@@ -192,7 +214,9 @@ struct AptosNFTMappingTests {
               {"amount": "3", "token_data_id": "0xe", "token_standard": "v1", "is_soulbound_v2": null,
                "non_transferrable_by_owner": null, "last_transaction_version": 103, "current_token_data": null}
             ],
-            "processor_status": [{"last_success_version": 500, "last_transaction_timestamp": "2026-11-21T10:00:00.123"}]}
+            "processor_status": [
+              {"last_success_version": 500, "last_transaction_timestamp": "2026-11-21T10:00:00.123"}
+            ]}
             """)
 
         #expect(result.cursor == nil)

@@ -103,11 +103,21 @@ public struct TonClient: BlockchainClientProtocol, Sendable {
         return try await jettonInfo(master: try makeAddress(token))
     }
 
-    /// Whether the account has ever been active: deployed or frozen. Use ``accountState(_:)`` to tell
-    /// an undeployed wallet from an unfunded one.
+    /// Whether the wallet has ever been used: it exists (deployed, frozen or funded but undeployed), has a
+    /// transaction, or owns a Jetton wallet. A deleted wallet has no state, so its indexed history is checked
+    /// too. Use ``accountState(_:)`` for the current state.
     public func isActiveAccount(_ owner: TonAddress) async throws -> Bool {
-        let state = try await accountState(owner)
-        return state == .active || state == .frozen
+        let information = try await accountInformation(owner)
+
+        guard information.state == .nonexistent, information.lastTransactionLt == nil else {
+            return true
+        }
+
+        guard try await !hasIndexedTransactions(owner) else {
+            return true
+        }
+
+        return try await hasJettonWallets(owner: owner)
     }
 
     public func isSupported(_ feature: BlockchainClientFeature) -> Bool {

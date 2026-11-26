@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use walletkit_hardware::{
-    CardanoDappTxRequest, CardanoDappTxSignature, CardanoMessageRequest, CardanoMessageSignature, CardanoTxFields,
+    BatchToken, CardanoDappTxRequest, CardanoDappTxSignature, CardanoMessageRequest, CardanoMessageSignature, CardanoTxFields,
     CardanoWitness, EthereumEIP1559Signature, EthereumEIP1559TxFields, EthereumSignature, EthereumTxFields,
     EthereumTypedDataFields, HardwareBitcoinNetwork, HardwareCurve, HardwareDevice as HardwareDeviceTrait,
     HardwareDeviceDelegate, HardwareDeviceInfo, HardwareDeviceManager as HardwareDeviceManagerTrait, HardwareError,
-    HardwarePathSegment, HardwareTransportKind, HardwareVendor, SolanaTxFields, TronTxFields,
+    HardwareKeyRequest, HardwareKeyResponse, HardwarePathSegment, HardwareTransportKind, HardwareVendor, SolanaTxFields, TronTxFields,
 };
 
 fn unavailable() -> HardwareError {
@@ -159,6 +159,16 @@ impl HardwareDeviceTrait for TrezorDevice {
     ) -> Result<Vec<u8>, HardwareError> {
         Err(unavailable())
     }
+
+    async fn read_keys(
+        &self,
+        _requests: Vec<HardwareKeyRequest>,
+        _token: Arc<BatchToken>,
+    ) -> Result<Vec<HardwareKeyResponse>, HardwareError> {
+        Err(unavailable())
+    }
+
+    fn cancel_pending(&self) {}
 
     async fn disconnect(&self) {}
 }

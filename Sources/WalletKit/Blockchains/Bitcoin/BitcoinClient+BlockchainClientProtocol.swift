@@ -54,6 +54,13 @@ extension BitcoinClient: BlockchainClientProtocol {
         return try await resolver.allAddresses().contains { $0.isUsed }
     }
 
+    /// Whether an external-chain (receive) address within the gap limit
+    /// has history: BIP-44's account-discovery rule. Change-only history
+    /// doesn't count.
+    public func hasExternalHistory(_ owner: BitcoinDescriptor) async throws -> Bool {
+        try await resolver(for: owner).addresses(chain: 0).contains { $0.isUsed }
+    }
+
     public nonisolated func isSupported(_ feature: BlockchainClientFeature) -> Bool {
         switch feature {
         case .multipleBalances: false

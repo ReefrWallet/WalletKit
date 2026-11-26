@@ -55,6 +55,8 @@ Start with a ``Mnemonic`` (or a SLIP-39 share, see ``Slip39``) to create or rest
 - ``HardwareDevice``
 - ``HardwareDeviceManagerProtocol``
 - ``HardwareDeviceDelegate``
+- ``HardwareKeyRequest``
+- ``HardwareKeyResponse``
 
 ### Testing Support
 

@@ -4,41 +4,40 @@
 
 WalletKit is a Swift toolkit for building non-custodial multi-chain crypto wallet applications on Apple platforms.
 
-> [!WARNING]
-> WalletKit is under active development and has not received a production security audit. Do not use it to protect real funds without completing your own security review and testing.
-
 ## Features
 
-- **Keys and accounts** — BIP-39 mnemonic generation and import with ten wordlists and optional seed passphrases.
-  SLIP-39 share decoding, single-share generation (20 or 33 words), multi-group share-set validation, and cancellable passphrase decryption to a 16–32-byte master secret that seeds BIP-32 and SLIP-0010 derivation.
-  BIP-32 secp256k1 and SLIP-0010 Ed25519 key derivation, extended-key serialization, raw private-key import, and address derivation and validation.
-- **Blockchain clients** — Balance and token metadata queries, paginated account history, fee estimation, and transaction construction and broadcast.
-  Batch balance queries and live transaction or block streams on supported backends.
-- **Hardware wallets** — Trezor discovery, connection, public-key retrieval, and on-device signing for supported transactions and messages over USB on macOS.
-- **Integration testing** — WalletKitTesting helpers for local Aptos, Bitcoin, Ethereum, Solana, and Sui nodes on macOS,
-  including node lifecycle, test account funding, and transaction confirmation.
+- **Keys and accounts** — BIP-39 mnemonic generation and import. SLIP-39 single/multi-share decoding, generation and validation. BIP-32 secp256k1 and SLIP-0010 Ed25519 derivation.
+- **Blockchain clients** — Balance and token metadata queries, history, fee estimation, transaction construction and broadcast. Batch queries and live streams on supported backends.
+  Account activity checks for discovering used accounts, batched per request where the backend allows it.
+- **NFTs** — Paged NFT listings with a snapshot position, and NFT transfers, on Aptos, Cardano, EVM chains, Solana, and Sui.
+- **Networking** — Request lanes, per-host rate gates, and retry policies for HTTP providers; `makeProvider` also takes
+  your own request adapters and event monitors.
+- **Hardware wallets** — Trezor discovery, connection, public-key retrieval, batched key and xpub reads and signing over USB on macOS.
+- **Integration testing** — WalletKitTesting helpers for testing against local blockchain nodes on macOS,
+  including node lifecycle, test account funding, transaction confirmation, and mock ERC-721 and ERC-1155 contracts.
 
 ## Supported blockchains
 
 All eight chains support local transaction signing. Trezor transaction signing is available for Bitcoin, Cardano,
 EVM chains, Solana, and Tron.
 
-- **Aptos** — APT, Coin, and Fungible Assets via REST and GraphQL, plus Wallet Standard account authenticators.
-- **Bitcoin** — Electrum and Esplora backends, SegWit and Taproot descriptors, watch-only accounts, and PSBTs.
-- **Cardano** — ADA and native assets via Blockfrost, BIP-39 and SLIP-39 account derivation, CIP-30 dapp primitives, and native staking.
-- **Ethereum and EVM chains** — ERC-20 tokens and approval events, contract calls, and EIP-191 and EIP-712 signing.
-- **Solana** — SPL Token, Token-2022, message signing, and native staking.
-- **Sui** — gRPC, programmable transactions, and native staking.
+- **Aptos** — APT, Coin, and Fungible Assets via REST and GraphQL, Wallet Standard account authenticators, and Token V2 NFTs (V1 tokens are listed only).
+- **Bitcoin** — Electrum and Esplora backends, SegWit and Taproot descriptors, watch-only accounts, PSBTs, and BIP-44 receive-chain usage checks.
+- **Cardano** — ADA and native assets via Blockfrost, BIP-39 and SLIP-39 account derivation, CIP-30 dapp primitives, native staking, and CIP-25 and CIP-68 NFTs.
+- **Ethereum and EVM chains** — ERC-20 tokens and approval events, ERC-721 and ERC-1155 NFTs, contract calls, and EIP-191 and EIP-712 signing.
+- **Solana** — SPL Token, Token-2022, Metaplex NFTs, message signing, and native staking.
+- **Sui** — gRPC, programmable transactions, native staking, and objects with Display metadata as NFTs.
 - **TON** — Gram and Jettons on V5R1 wallets via toncenter, deployment on first send, emulation-sized Jetton fees, trace-based delivery tracking, and a restart-safe send pipeline. Software signing only.
 - **Tron** — TRC-20 via TronGrid, optional TronScan history, and Stake 2.0.
 
+All blockchains support local signing. Trezor signing is only available for Bitcoin, Cardano, EVMs, Solana, and Tron.
+
 ## Installation
 
-Add WalletKit with Swift Package Manager. The Rust core comes prebuilt as `WalletKitFFI.xcframework`, attached to each
-[GitHub release](https://github.com/ReefrWallet/WalletKit/releases), so no Rust toolchain or Homebrew packages are needed:
+Add WalletKit with Swift Package Manager. The Rust core comes prebuilt as `WalletKitFFI.xcframework`, attached to each [GitHub release](https://github.com/ReefrWallet/WalletKit/releases), so no Rust toolchain or Homebrew packages are needed:
 
 ```swift
-.package(url: "https://github.com/ReefrWallet/WalletKit", from: "0.7.0")
+.package(url: "https://github.com/ReefrWallet/WalletKit", from: "0.10.0")
 ```
 
 ## Development
@@ -59,9 +58,8 @@ mise install
 make spm
 ```
 
-`make spm` builds `Frameworks/WalletKitFFI.xcframework` and the generated sources in `Sources/Generated`, which are
-committed. When the local XCFramework exists, `Package.swift` uses it instead of the release, so a dependent app can use
-a local checkout:
+`make spm` builds `Frameworks/WalletKitFFI.xcframework` and the generated sources in `Sources/Generated`.
+When the local XCFramework exists, `Package.swift` uses it instead of the release, so a dependent app can use a local checkout:
 
 ```swift
 .package(path: "../WalletKit")
@@ -76,8 +74,12 @@ Set `WALLETKIT_REMOTE_FFI=1` to use the released binary despite a local build.
 ```swift
 import WalletKit
 
+// Make an Ethereum client:
+
 let rpcURL = URL(string: "https://your-mainnet-rpc.example.net")!
 let client = EthereumRPCClient(endpoint: rpcURL, chainId: 1)
+
+// Generate a new key:
 
 let mnemonic = Mnemonic.generate(wordCount: .`12`)
 let derivationPath = try DerivationPath(.evm(EVMBlockchain(chainId: 1)), accountIndex: 0)
@@ -86,9 +88,13 @@ let privateKey = try mnemonic.toSeed()
     .derive(derivationPath)
     .privateKey()
 
-let signer = try EthereumPKeySigner(chainId: 1, privateKey: privateKey, derivationPath: path)
+// Prepare signer:
+
+let signer = try EthereumPKeySigner(chainId: 1, privateKey: privateKey, derivationPath: derivationPath)
 let myAddress = try signer.address()
 print("My address:", myAddress.checksummed)
+
+// Query own WETH balance:
 
 let weth = try EthereumAddress(string: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2")
 let balance = try await client.call(
@@ -99,6 +105,8 @@ let balance = try await client.call(
     )
 )
 print("My WETH balance (wei):", EthereumABI.decodeUInt256(balance))
+
+// Spend 0.1 ETH to mint 0.1 WETH
 
 let builder = EthereumTransactionBuilder(client: client)
 let unsigned = try await builder.buildCall(

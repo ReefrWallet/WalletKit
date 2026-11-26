@@ -108,9 +108,28 @@ public struct TronClient: BlockchainClientProtocol, Sendable { // swiftlint:disa
         )
     }
 
+    /// Whether `owner` has ever been used: the account is activated, or it
+    /// has TRC-20 history (receiving TRC-20 alone doesn't activate it).
     public func isActiveAccount(_ owner: TronAddress) async throws -> Bool {
         let response = try await post("wallet/getaccount", body: ["address": owner.string, "visible": true])
-        return !response.isEmpty
+
+        guard response.isEmpty else {
+            return true
+        }
+
+        var components = URLComponents(
+            url: endpoint.appending(path: "v1/accounts/\(owner.string)/transactions/trc20"),
+            resolvingAgainstBaseURL: false
+        )
+
+        components?.queryItems = [URLQueryItem(name: "limit", value: "1")]
+
+        guard let url = components?.url else {
+            throw WalletKitError.internalError(message: "Cannot construct Tron history URL.")
+        }
+
+        let history = try await get(url, apiKey: apiKey)
+        return !(history["data"] as? [Any] ?? []).isEmpty
     }
 
     public func isSupported(_ feature: BlockchainClientFeature) -> Bool {

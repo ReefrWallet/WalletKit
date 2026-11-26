@@ -56,6 +56,7 @@ extension EthereumTransactionBuilder: NFTTransactionBuilding {
                 selector: EthereumABI.selector("safeTransferFrom(address,address,uint256)"),
                 parameters: [.address(sender), .address(recipient), .uint256(tokenId)]
             )
+
         case .erc1155:
             guard quantity > 0 else {
                 throw BlockchainTransactionBuilderError.invalidToken(reason: "ERC-1155 quantity must be positive")
@@ -63,8 +64,11 @@ extension EthereumTransactionBuilder: NFTTransactionBuilding {
 
             return EthereumABI.encodeCall(
                 selector: EthereumABI.selector("safeTransferFrom(address,address,uint256,uint256,bytes)"),
-                parameters: [.address(sender), .address(recipient), .uint256(tokenId), .uint256(quantity), .bytes(Data())]
+                parameters: [
+                    .address(sender), .address(recipient), .uint256(tokenId), .uint256(quantity), .bytes(Data())
+                ]
             )
+
         default:
             throw BlockchainTransactionBuilderError.unsupportedNFT(reason: "\(nft.standard.rawValue) isn't an EVM standard")
         }
@@ -96,7 +100,9 @@ public extension EthereumRPCClient {
             }
 
             let signature = nft.standard == .erc1155 ? "uri(uint256)" : "tokenURI(uint256)"
-            return (contract, EthereumABI.encodeCall(selector: EthereumABI.selector(signature), parameters: [.uint256(tokenId)]))
+            let selector = EthereumABI.selector(signature)
+            let call = EthereumABI.encodeCall(selector: selector, parameters: [.uint256(tokenId)])
+            return (contract, call)
         }
 
         let results = try await batchedCalls(calls.compactMap(\.self), chunkSize: chunkSize)

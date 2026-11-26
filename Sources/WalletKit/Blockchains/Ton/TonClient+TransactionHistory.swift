@@ -118,6 +118,16 @@ extension TonClient {
         return transaction.deliveryStatus
     }
 
+    /// Whether the indexer has any transaction of `owner`, including one of a since-deleted wallet.
+    func hasIndexedTransactions(_ owner: TonAddress) async throws -> Bool {
+        let response: HistoryResponse = try await getIndexer(
+            "transactions",
+            query: ["account": owner.rawString, "limit": "1", "sort": "desc"]
+        )
+
+        return !response.transactions.isEmpty
+    }
+
     /// The wallet's transactions with a logical time above `lt`, oldest first.
     func indexedTransactions(
         of owner: TonAddress,

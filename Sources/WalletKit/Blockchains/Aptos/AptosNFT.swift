@@ -20,7 +20,10 @@ extension AptosClient: NFTListing {
             where: {
               owner_address: {_eq: $owner},
               _or: [
-                {token_standard: {_eq: "v2"}, _or: [{is_fungible_v2: {_eq: false}}, {is_fungible_v2: {_is_null: true}}]},
+                {
+                  token_standard: {_eq: "v2"},
+                  _or: [{is_fungible_v2: {_eq: false}}, {is_fungible_v2: {_is_null: true}}]
+                },
                 {token_standard: {_eq: "v1"}, amount: {_gt: "0"}}
               ]
             },
@@ -34,6 +37,7 @@ extension AptosClient: NFTListing {
               current_collection { collection_name }
             }
           }
+
           processor_status(where: {processor: {_eq: "token_v2_processor"}}) {
             last_success_version last_transaction_timestamp
           }
@@ -181,7 +185,9 @@ public extension AptosEntryFunction {
             module: framework,
             moduleName: "object",
             functionName: "transfer",
-            typeArguments: [.structTag(address: tokenModule.rawBytes, module: "token", name: "Token", typeArguments: [])],
+            typeArguments: [
+                .structTag(address: tokenModule.rawBytes, module: "token", name: "Token", typeArguments: [])
+            ],
             arguments: [object.rawBytes, recipient.rawBytes]
         )
     }

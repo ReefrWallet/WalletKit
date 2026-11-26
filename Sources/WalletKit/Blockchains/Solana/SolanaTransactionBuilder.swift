@@ -119,6 +119,7 @@ public struct SolanaTransactionBuilder: BlockchainTransactionBuilderProtocol {
             tokenAccounts: tokenAccounts,
             lastValidBlockHeight: lastValidBlockHeight
         )
+
         return try JSONEncoder().encode(envelope)
     }
 }
