@@ -1,6 +1,8 @@
 # WalletKit
 
 [![CI](https://github.com/ReefrWallet/WalletKit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ReefrWallet/WalletKit/actions/workflows/ci.yml)
+[![Swift 6.0](https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&logoColor=white)](https://www.swift.org)
+[![Release](https://img.shields.io/github/v/release/ReefrWallet/WalletKit?sort=semver)](https://github.com/ReefrWallet/WalletKit/releases/latest)
 
 WalletKit is a Swift toolkit for building non-custodial multi-chain crypto wallet applications on Apple platforms.
 
